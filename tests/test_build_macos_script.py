@@ -218,8 +218,14 @@ def test_pyinstaller_spec_bundles_pyopengl_wayland_backend():
 def test_github_workflow_uploads_macos_zip_without_artifact_rezipping():
     workflow = Path('.github/workflows/build.yml').read_text(encoding='utf-8')
 
+    assert 'uses: actions/checkout@v7' in workflow
+    assert (
+        'uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0'
+        in workflow
+    )
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.zip' in workflow
     assert 'uses: actions/upload-artifact@v7' in workflow
+    assert 'uses: actions/upload-artifact@v6' not in workflow
     assert 'name: Fleasion-v${{ env.APP_VERSION }}-MacOS-Universal.zip' in workflow
     assert 'archive: false' in workflow
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.dmg' not in workflow
@@ -239,6 +245,11 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
 
     assert 'workflow_dispatch:' in workflow
     assert 'contents: write' in workflow
+    assert 'uses: actions/checkout@v7' in workflow
+    assert (
+        'uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0'
+        in workflow
+    )
     assert 'ref: main' in workflow
     assert 'Checkout main for release' in workflow
     assert 'ref: ${{ needs.prepare.outputs.main_sha }}' in workflow
@@ -248,7 +259,7 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
         in workflow
     )
     assert (
-        'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux.zip'
+        'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux'
         in workflow
     )
     assert (
@@ -256,22 +267,14 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
         in workflow
     )
     assert 'artifact_path: dist/Fleasion-v*.exe' in workflow
-    assert 'artifact_path: dist/Fleasion-v*-Linux.zip' in workflow
+    assert 'artifact_path: dist/Fleasion-v*-Linux' in workflow
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.zip' in workflow
-    assert (
-        'zip -9 "Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux.zip"'
-        in workflow
-    )
-    assert (
-        'zip -9 "Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux.zip" '
-        '"Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux"' in workflow
-    )
+    assert 'Package Linux release zip' not in workflow
+    assert 'zip -9' not in workflow
     assert 'archive: false' in workflow
     assert 'uses: actions/download-artifact@v8' in workflow
     assert 'name: Fleasion-v${{ needs.prepare.outputs.app_version }}.exe' in workflow
-    assert (
-        'name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux.zip' in workflow
-    )
+    assert 'name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux' in workflow
     assert (
         'name: Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip'
         in workflow
