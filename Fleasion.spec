@@ -1,24 +1,29 @@
 # -*- mode: python ; coding: utf-8 -*-
-from collections.abc import Callable, Iterable
+from __future__ import annotations
+
 import importlib.util
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
-from typing import TYPE_CHECKING, TypeVar
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+    from typing import TypeAlias, TypeVar
+
     from PyInstaller.building.api import COLLECT, EXE, PYZ
     from PyInstaller.building.build_main import Analysis
     from PyInstaller.building.osx import BUNDLE
 
-type CollectionEntry = tuple[str, str]
-type TocEntry = tuple[object, ...]
-TocItem = TypeVar('TocItem', bound=tuple[object, ...])
+    CollectionEntry: TypeAlias = tuple[str, str]
+    TocEntry: TypeAlias = tuple[object, ...]
+    TocItem = TypeVar('TocItem', bound=tuple[object, ...])
+
 
 _QT_HIDDEN_IMPORTS = [
     'PyQt6.QtCore',
@@ -256,16 +261,16 @@ hiddenimports: list[str] = []
 
 # Keep Qt collection narrow. collect_all('PyQt6') pulls in QML/QtQuick,
 # Designer, SQL drivers, multimedia, translations, and other modules that the
-# app does not use, which more than doubles the one-file executable size.
+# app does not use, which more than doubles the one-file executable size
 hiddenimports.extend(_QT_HIDDEN_IMPORTS)
 
 # PyOpenGL resolves platform backends dynamically. The upstream PyInstaller
-# hook includes GLX on Linux, but Wayland sessions can select EGL instead.
+# hook includes GLX on Linux, but Wayland sessions can select EGL instead
 hiddenimports.extend(collect_submodules('OpenGL.arrays'))
 hiddenimports.extend(_OPENGL_HIDDEN_IMPORTS)
 
 # sounddevice/soundfile are single-file modules, but their native runtime
-# libraries live in sibling data packages that PyInstaller does not discover.
+# libraries live in sibling data packages that PyInstaller does not discover
 for audio_runtime_package in ('_sounddevice_data', '_soundfile_data'):
     _collect_optional_package(audio_runtime_package)
 
@@ -328,7 +333,7 @@ a.datas = _drop_entries(a.datas, _is_unused_qt_runtime_entry)
 if sys.platform.startswith('linux'):
     # The sounddevice hook and dependency scan can collect the build machine's
     # audio backend stack. That can silence playback on other distros, so the
-    # GUI player uses host PortAudio and host audio backend libraries.
+    # GUI player uses host PortAudio and host audio backend libraries
     a.binaries = _drop_entries(
         a.binaries,
         lambda entry: _entry_name_startswith(entry, _HOST_AUDIO_LIB_PREFIXES),
@@ -361,7 +366,7 @@ exe = EXE(
     exclude_binaries=sys.platform == 'darwin',
     # uac_admin is intentionally NOT set here.
     # We handle elevation at runtime in app.py so the user can choose
-    # read-only mode if they decline UAC, rather than being blocked entirely.
+    # read-only mode if they decline UAC, rather than being blocked entirely
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=_macos_target_arch,
