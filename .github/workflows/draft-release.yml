@@ -82,9 +82,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y zip libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libportaudio2 libpipewire-0.3-0 libspa-0.2-modules libpulse0
 
-      - name: Build Linux proxy helper
-        if: runner.os == 'Linux'
-        run: uv run pyinstaller --clean --noconfirm FleasionLinuxProxyHelper.spec
+      - name: Install UPX
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install upx -y --no-progress
+          upx --version
 
       - name: Build Windows package
         if: runner.os == 'Windows'
@@ -97,7 +100,7 @@ jobs:
       - name: Verify Linux audio runtime
         if: runner.os == 'Linux'
         run: |
-          archive_listing="$(uv run pyi-archive_viewer -b -l dist/Fleasion-v*)"
+          archive_listing="$(uv run pyi-archive_viewer -b -l dist/Fleasion-v*-Linux)"
           printf '%s\n' "$archive_listing" | grep -Ei 'portaudio|pulse|pipewire|jack|alsa|sound' || true
           if [[ "$archive_listing" =~ lib(portaudio|asound|jack|pulse|pulsecommon-|pipewire-) ]]; then
             echo "Linux package must use host audio backend libraries, not the GitHub runner copies." >&2
@@ -108,7 +111,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           cd dist
-          zip -9 "Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux.zip" "Fleasion-v${{ needs.prepare.outputs.app_version }}"
+          zip -9 "Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux.zip" "Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux"
 
       - name: Install Rosetta
         if: runner.os == 'macOS'
