@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer, QSharedMemory, QObject, pyqtSignal, pyqtSlot
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
-from PyQt6.QtWidgets import QApplication, QMessageBox, QPushButton, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel
+from PyQt6.QtWidgets import QApplication, QMessageBox, QPushButton, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QCheckBox
 
 from . import __version__
 from .config import ConfigManager
@@ -148,6 +148,13 @@ def _refresh_run_on_boot_ui(tray, enabled: bool) -> None:
         tray._refresh_settings_tab()
 
 
+def _refresh_desktop_integration_ui(tray, enabled: bool) -> None:
+    if tray is not None and hasattr(tray, 'desktop_integration_action'):
+        tray.desktop_integration_action.setChecked(enabled)
+    if tray is not None and hasattr(tray, '_refresh_settings_tab'):
+        tray._refresh_settings_tab()
+
+
 def _show_run_on_boot_failure(parent) -> None:
     msg = QMessageBox(parent)
     msg.setWindowTitle('Run on Boot Failed')
@@ -155,6 +162,7 @@ def _show_run_on_boot_failure(parent) -> None:
     msg.setText(
         'Failed to register autostart.\n'
         'Check the application log for details.\n\n'
+        'Turn off Run on Boot to stop this error from appearing.\n\n'
         'On Windows, ensure Fleasion is running as Administrator.'
     )
     if icon_path := get_icon_path():
@@ -163,15 +171,30 @@ def _show_run_on_boot_failure(parent) -> None:
     msg.exec()
 
 
-def _prompt_first_time_run_on_boot(config_manager: ConfigManager, tray=None) -> None:
-    """Ask first-time users whether Fleasion should start at login."""
+def _show_desktop_integration_failure(parent) -> None:
+    msg = QMessageBox(parent)
+    msg.setWindowTitle('Desktop Integration Failed')
+    msg.setIcon(QMessageBox.Icon.Warning)
+    msg.setText(
+        'Failed to create desktop/start menu integration.\n'
+        'Check the application log for details.\n\n'
+        'Turn off desktop integration creation to stop this error from appearing.'
+    )
+    if icon_path := get_icon_path():
+        from PyQt6.QtGui import QIcon
+        msg.setWindowIcon(QIcon(str(icon_path)))
+    msg.exec()
+
+
+def _prompt_first_time_startup_options(config_manager: ConfigManager, tray=None) -> None:
+    """Ask first-time users which startup integrations Fleasion should create."""
     _top = QApplication.topLevelWidgets()
     _parent = next((w for w in _top if w.isVisible()), None)
     _on_top = any(w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) for w in _top)
 
     dialog = QDialog(_parent)
     dialog.setModal(True)
-    dialog.setWindowTitle('Run on Boot')
+    dialog.setWindowTitle('Startup Integration')
     if _on_top:
         dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
     if icon_path := get_icon_path():
@@ -182,48 +205,65 @@ def _prompt_first_time_run_on_boot(config_manager: ConfigManager, tray=None) -> 
     label = QLabel(dialog)
     label.setWordWrap(True)
     message = (
-        'Do you want to enable run-on-boot?\n\n'
-        'It will launch Fleasion on boot.'
-        '\n\nOn this OS, boot launches will be auto-elevated.'
+        'Choose how Fleasion should integrate with your system.\n\n'
+        'Run on Boot launches Fleasion when you sign in. Desktop/start menu integration adds '
+        'Fleasion to your operating system launcher and is refreshed on each launch.'
     )
+    if sys.platform == 'win32':
+        message += '\n\nOn this OS, boot launches will be auto-elevated.'
     label.setText(message)
     layout.addWidget(label)
 
-    button_row = QHBoxLayout()
-    no_button = QPushButton('No', dialog)
-    yes_button = QPushButton('Yes', dialog)
-    yes_button.setDefault(True)
-    yes_button.setAutoDefault(True)
-    no_button.clicked.connect(dialog.reject)
-    yes_button.clicked.connect(dialog.accept)
-    button_row.addStretch(1)
-    button_row.addWidget(no_button)
-    button_row.addWidget(yes_button)
-    layout.addLayout(button_row)
+    checkbox_row = QHBoxLayout()
+    run_on_boot_chk = QCheckBox('Run on Boot', dialog)
+    desktop_integration_chk = QCheckBox('Desktop/Start Menu Integration', dialog)
+    run_on_boot_chk.setChecked(config_manager.run_on_boot)
+    desktop_integration_chk.setChecked(config_manager.desktop_integration)
+    checkbox_row.addWidget(run_on_boot_chk)
+    checkbox_row.addWidget(desktop_integration_chk)
+    checkbox_row.addStretch(1)
+    layout.addLayout(checkbox_row)
 
-    yes_button.setFocus(Qt.FocusReason.OtherFocusReason)
+    button_row = QHBoxLayout()
+    ok_button = QPushButton('OK', dialog)
+    ok_button.setDefault(True)
+    ok_button.setAutoDefault(True)
+    button_row.addStretch(1)
+    button_row.addWidget(ok_button)
+    layout.addLayout(button_row)
+    ok_button.clicked.connect(dialog.accept)
+
+    ok_button.setFocus(Qt.FocusReason.OtherFocusReason)
     dialog.show()
     dialog.raise_()
     dialog.activateWindow()
-    result = dialog.exec()
+    dialog.exec()
 
-    enable = result == QDialog.DialogCode.Accepted
+    enable_run_on_boot = run_on_boot_chk.isChecked()
+    enable_desktop_integration = desktop_integration_chk.isChecked()
+    try:
+        from .utils.desktop_integration import sync_desktop_integration
+        desktop_ok = sync_desktop_integration(enable_desktop_integration)
+    except Exception as exc:
+        desktop_ok = False
+        log_buffer.log('DesktopIntegration', f'First-time desktop integration prompt failed: {exc}')
+
     try:
         from .utils.autostart import sync_autostart
-        ok = sync_autostart(enable, CONFIG_DIR)
+        boot_ok = sync_autostart(enable_run_on_boot, CONFIG_DIR)
     except Exception as exc:
-        ok = False
+        boot_ok = False
         log_buffer.log('Autostart', f'First-time run-on-boot prompt failed: {exc}')
 
-    if ok:
-        config_manager.run_on_boot = enable
-        _refresh_run_on_boot_ui(tray, enable)
-        return
+    config_manager.run_on_boot = enable_run_on_boot if boot_ok else False
+    config_manager.desktop_integration = enable_desktop_integration if desktop_ok else False
+    _refresh_run_on_boot_ui(tray, config_manager.run_on_boot)
+    _refresh_desktop_integration_ui(tray, config_manager.desktop_integration)
 
-    config_manager.run_on_boot = False
-    _refresh_run_on_boot_ui(tray, False)
-    if enable:
+    if enable_run_on_boot and not boot_ok:
         _show_run_on_boot_failure(dialog.parentWidget())
+    if enable_desktop_integration and not desktop_ok:
+        _show_desktop_integration_failure(dialog.parentWidget())
 
 
 def _relaunch_as_admin(extra_args: str = '', parent_hwnd: int | None = None) -> bool:
@@ -1745,15 +1785,26 @@ def main():
     # Check for updates in the background
     start_update_check()
 
-    # Sync autostart on every launch (updates if launch method changed).
+    # Sync launch integrations on every launch (updates if launch method changed).
     # Windows needs elevation for Task Scheduler; macOS/Linux use user-session
     # launch entries and should reconcile from the normal GUI process.
+    _autostart_launch_sync_failed = False
+    _desktop_integration_launch_sync_failed = False
+    if config_manager.first_time_setup_complete and config_manager.desktop_integration:
+        try:
+            from .utils.desktop_integration import sync_desktop_integration
+            _desktop_integration_launch_sync_failed = not sync_desktop_integration(True)
+        except Exception as exc:
+            _desktop_integration_launch_sync_failed = True
+            log_buffer.log('DesktopIntegration', f'Launch desktop integration sync failed: {exc}')
+
     if config_manager.first_time_setup_complete and _should_sync_autostart_on_launch(config_manager.run_on_boot):
         try:
             from .utils.autostart import sync_autostart
-            sync_autostart(True, CONFIG_DIR)
-        except Exception:
-            pass
+            _autostart_launch_sync_failed = not sync_autostart(True, CONFIG_DIR)
+        except Exception as exc:
+            _autostart_launch_sync_failed = True
+            log_buffer.log('Autostart', f'Launch autostart sync failed: {exc}')
 
     # Start proxy only if enabled and we have admin rights
     if start_proxy:
@@ -1775,6 +1826,10 @@ def main():
     app.aboutToQuit.connect(tray.cleanup_tray_icon)
     single_instance_control_server = _start_single_instance_control_server(app, tray)
     log_buffer.log('App', f'Persistent log file: {LOG_FILE}')
+    if _autostart_launch_sync_failed:
+        QTimer.singleShot(0, lambda: _show_run_on_boot_failure(_visible_parent_widget()))
+    if _desktop_integration_launch_sync_failed:
+        QTimer.singleShot(0, lambda: _show_desktop_integration_failure(_visible_parent_widget()))
     _admin_prompt_shown = False
 
     def _request_admin_once():
@@ -1966,7 +2021,7 @@ def main():
             from PyQt6.QtGui import QIcon
             welcome_box.setWindowIcon(QIcon(str(icon_path)))
         welcome_box.exec()
-        _prompt_first_time_run_on_boot(config_manager, tray)
+        _prompt_first_time_startup_options(config_manager, tray)
         config_manager.first_time_setup_complete = True
         tray._show_replacer_config()
     elif not _suppress_dashboard and config_manager.open_dashboard_on_launch:

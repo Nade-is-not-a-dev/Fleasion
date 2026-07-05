@@ -422,6 +422,15 @@ class ConfigManager:
         self._save_settings()
 
     @property
+    def desktop_integration(self) -> bool:
+        return self.settings.get('desktop_integration', True)
+
+    @desktop_integration.setter
+    def desktop_integration(self, value: bool):
+        self.settings['desktop_integration'] = value
+        self._save_settings()
+
+    @property
     def close_to_tray(self) -> bool:
         """Get close to tray setting."""
         return self.settings.get('close_to_tray', True)

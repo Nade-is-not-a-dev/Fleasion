@@ -136,6 +136,7 @@ DEFAULT_SETTINGS = {
     'vpn_compat_max_assetdelivery_connections': 16,
     'vpn_compat_max_cdn_connections': 32,
     'run_on_boot': True,
+    'desktop_integration': True,
     'close_to_tray': True,
     'close_scraped_games_menu_on_open': True,
     'close_viewer_on_replace': True,

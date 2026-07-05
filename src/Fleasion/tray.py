@@ -264,6 +264,12 @@ class SystemTray:
         self.run_on_boot_action.triggered.connect(self._toggle_run_on_boot)
         convenience_menu.addAction(self.run_on_boot_action)
 
+        self.desktop_integration_action = QAction('Create desktop/start menu integration on boot', convenience_menu)
+        self.desktop_integration_action.setCheckable(True)
+        self.desktop_integration_action.setChecked(self.config_manager.desktop_integration)
+        self.desktop_integration_action.triggered.connect(self._toggle_desktop_integration)
+        convenience_menu.addAction(self.desktop_integration_action)
+
         # Close Roblox on Open
         self.close_scraped_games_action = QAction('Close Roblox on Open', convenience_menu)
         self.close_scraped_games_action.setCheckable(True)
@@ -477,7 +483,51 @@ class SystemTray:
             _warn.setText(
                 'Failed to register autostart.\n'
                 'Check the application log for details (autostart errors are logged at ERROR level).\n\n'
+                'Turn off Run on Boot to stop this error from appearing.\n\n'
                 'On Windows, ensure Fleasion is running as Administrator.'
+            )
+            if _on_top:
+                _warn.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+            _warn.exec()
+
+    def _toggle_desktop_integration(self):
+        """Toggle desktop/start-menu integration for the current platform."""
+        from .utils.desktop_integration import sync_desktop_integration
+
+        checked = self.desktop_integration_action.isChecked()
+        ok = sync_desktop_integration(checked)
+        if ok:
+            self.config_manager.desktop_integration = checked
+            if sys.platform.startswith('linux') and self.config_manager.run_on_boot:
+                from .utils.autostart import sync_autostart
+                from .utils import CONFIG_DIR
+                if not sync_autostart(True, CONFIG_DIR):
+                    from PyQt6.QtWidgets import QMessageBox, QApplication
+                    _top = QApplication.topLevelWidgets()
+                    _parent = next((w for w in _top if w.isVisible()), None)
+                    _warn = QMessageBox(_parent)
+                    _warn.setWindowTitle('Run on Boot Failed')
+                    _warn.setIcon(QMessageBox.Icon.Warning)
+                    _warn.setText(
+                        'Failed to refresh autostart after changing desktop integration.\n'
+                        'Check the application log for details.\n\n'
+                        'Turn off Run on Boot to stop this error from appearing.'
+                    )
+                    _warn.exec()
+            self._refresh_settings_tab()
+        else:
+            self.desktop_integration_action.setChecked(not checked)
+            from PyQt6.QtWidgets import QMessageBox, QApplication
+            _top = QApplication.topLevelWidgets()
+            _parent = next((w for w in _top if w.isVisible()), None)
+            _on_top = any(w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) for w in _top)
+            _warn = QMessageBox(_parent)
+            _warn.setWindowTitle('Desktop Integration Failed')
+            _warn.setIcon(QMessageBox.Icon.Warning)
+            _warn.setText(
+                'Failed to create desktop/start menu integration.\n'
+                'Check the application log for details.\n\n'
+                'Turn off desktop integration creation to stop this error.'
             )
             if _on_top:
                 _warn.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)

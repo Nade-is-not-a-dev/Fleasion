@@ -17,6 +17,7 @@ _DEFAULT_SETTINGS = {
     'theme': 'System',
     'wire_preserving_passthrough': False,
     'run_on_boot': True,
+    'desktop_integration': True,
     'export_naming': ['name', 'id'],
 }
 
@@ -157,6 +158,7 @@ class ConfigManagerEncodingTests(unittest.TestCase):
             manager = config_manager_module.ConfigManager()
 
             self.assertTrue(manager.run_on_boot)
+            self.assertTrue(manager.desktop_integration)
             self.assertEqual(manager.export_naming, ['name', 'id'])
 
     def test_dummy_replacement_ids_are_ignored(self):

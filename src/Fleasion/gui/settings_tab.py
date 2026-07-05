@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 from ..gui.theme import ThemeManager
 from .modifications_tab import CollapsibleSection
 from ..utils.autostart import sync_autostart
+from ..utils.desktop_integration import sync_desktop_integration
 from ..utils import CONFIG_DIR
 from ..utils.roblox_auth import (
     notify_auth_source_changed,
@@ -324,6 +325,11 @@ class SettingsTab(QWidget):
         self._run_on_boot_chk.toggled.connect(self._on_run_on_boot_toggled)
         section.add_widget(self._run_on_boot_chk)
 
+        self._desktop_integration_chk = QCheckBox("Create desktop/start menu integration on boot")
+        self._desktop_integration_chk.setChecked(self._config.desktop_integration)
+        self._desktop_integration_chk.toggled.connect(self._on_desktop_integration_toggled)
+        section.add_widget(self._desktop_integration_chk)
+
         self._close_scraped_games_chk = QCheckBox("Close Roblox on Open")
         self._close_scraped_games_chk.setChecked(self._config.close_scraped_games_on_open)
         self._close_scraped_games_chk.toggled.connect(self._on_close_scraped_games_toggled)
@@ -425,6 +431,7 @@ class SettingsTab(QWidget):
             (self._auto_clear_cache_chk, self._config.auto_delete_cache_on_exit),
             (self._clear_cache_launch_chk, self._config.clear_cache_on_launch),
             (self._run_on_boot_chk, self._config.run_on_boot),
+            (self._desktop_integration_chk, self._config.desktop_integration),
             (self._close_scraped_games_chk, self._config.close_scraped_games_on_open),
             (self._close_to_tray_chk, self._config.close_to_tray),
             (self._always_on_top_chk, self._config.always_on_top),
@@ -567,7 +574,35 @@ class SettingsTab(QWidget):
                 'Run on Boot Failed',
                 'Failed to register the autostart task.\n'
                 'Check the application log for details.\n\n'
+                'Turn off Run on Boot to stop this error from appearing.\n\n'
                 'On Windows, ensure Fleasion is running as Administrator.',
+            )
+
+    def _on_desktop_integration_toggled(self, checked: bool):
+        ok = sync_desktop_integration(checked)
+        if ok:
+            self._config.desktop_integration = checked
+            if self._tray and hasattr(self._tray, 'desktop_integration_action'):
+                self._tray.desktop_integration_action.setChecked(checked)
+            if sys.platform.startswith('linux') and self._config.run_on_boot:
+                if not sync_autostart(True, CONFIG_DIR):
+                    QMessageBox.warning(
+                        self,
+                        'Run on Boot Failed',
+                        'Failed to refresh the autostart task after changing desktop integration.\n'
+                        'Check the application log for details.\n\n'
+                        'Turn off Run on Boot to stop this error from appearing.',
+                    )
+        else:
+            self._desktop_integration_chk.blockSignals(True)
+            self._desktop_integration_chk.setChecked(not checked)
+            self._desktop_integration_chk.blockSignals(False)
+            QMessageBox.warning(
+                self,
+                'Desktop Integration Failed',
+                'Failed to create desktop/start menu integration.\n'
+                'Check the application log for details.\n\n'
+                'Turn off desktop integration creation to stop this error.',
             )
 
     def _on_always_on_top_toggled(self, checked: bool):
