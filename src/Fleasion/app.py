@@ -1532,8 +1532,6 @@ def main():
     _parser.add_argument('--proxy-debug', '-proxy-debug', action='store_true', help=_ap.SUPPRESS)
     _parser.add_argument('--proxy-debug-mode', choices=['a', 'b', 'c', 'd', 'e', 'full'], help=_ap.SUPPRESS)
     _parser.add_argument('--fleasion-user-localappdata', help=_ap.SUPPRESS)
-    _parser.add_argument('--install-desktop-entry', '--install-linux-desktop', action='store_true',
-                         help='Install the Linux desktop launcher, then exit')
     _parser.add_argument('--install-linux-privileged-helper', action='store_true',
                          help='Install the root-owned Linux proxy helper and Polkit policy, then exit')
     _parser.add_argument('--linux-helper-promptless', action='store_true',
@@ -1553,26 +1551,6 @@ def main():
         print(f'Installed Polkit policy: {result["policy"]}')
         if result.get('promptless_rule'):
             print(f'Installed promptless Polkit rule: {result["promptless_rule"]}')
-        sys.exit(0)
-
-    if _args.install_desktop_entry:
-        if not sys.platform.startswith('linux'):
-            print('Desktop entry installation is only supported on Linux.', file=sys.stderr)
-            sys.exit(1)
-        from .utils.platform_linux import install_desktop_entries
-
-        result = install_desktop_entries()
-        print(f'Installed desktop entry: {result["desktop_entry"]}')
-        print(f'Installed launcher: {result["launcher"]}')
-        if result.get('installed_app'):
-            print(f'Installed app binary: {result["installed_app"]}')
-        if result.get('installed_icon'):
-            print(f'Installed icon: {result["installed_icon"]}')
-        removed = result.get('removed_deprecated_entries') or []
-        if removed:
-            print('Removed deprecated non-admin desktop entries:')
-            for path in removed:
-                print(f'  {path}')
         sys.exit(0)
 
     _suppress_dashboard = _args.no_dashboard

@@ -34,11 +34,6 @@ cd fleasion
 # Run the application (auto-installs all dependencies)
 uv run Fleasion
 
-# Linux only: install the Mint/GNOME/KDE desktop launcher
-# This copies packaged Linux builds into ~/.local/share/Fleasion, creates one
-# Polkit-enabled launcher, and removes old non-admin/read-only entries.
-uv run Fleasion --install-desktop-entry
-
 # (OPTIONAL) Compile as a standalone Windows executable
 uv run pyinstaller Fleasion.spec
 
@@ -192,7 +187,7 @@ On first launch, Fleasion will:
 
 ### Run on Boot
 
-Fleasion can be configured to launch automatically via **Settings → Run on Boot**. On Windows this creates a Task Scheduler task with `RunLevel=HighestAvailable`. On macOS this creates an unprivileged LaunchAgent; the already-installed proxy helper starts separately as a LaunchDaemon, so boot launches do not request an administrator password. On Linux, run `uv run Fleasion --install-desktop-entry` once to add the app to your desktop menu. Packaged Linux builds are copied into `~/.local/share/Fleasion`, and the launcher starts through Polkit so proxy interception can update `/etc/hosts` and bind local port 443.
+Fleasion can be configured to launch automatically via **Settings -> Run on Boot**. On Windows this creates a Task Scheduler task with `RunLevel=HighestAvailable`. On macOS this creates an unprivileged LaunchAgent; the already-installed proxy helper starts separately as a LaunchDaemon, so boot launches do not request an administrator password. **Settings -> Create desktop/start menu integration on boot** adds or refreshes the OS launcher entry on Windows, macOS, and Linux. On Linux, packaged builds are copied into `~/.local/share/Fleasion`, and the launcher starts through Polkit so proxy interception can update `/etc/hosts` and bind local port 443.
 
 ## Project Structure
 
