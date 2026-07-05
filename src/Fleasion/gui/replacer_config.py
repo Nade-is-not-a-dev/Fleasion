@@ -766,7 +766,7 @@ class ReplacerConfigWindow(QDialog):
         row1.addSpacing(12)
 
         enabled_label = QLabel('Enabled:')
-        enabled_label.setFixedWidth(50)
+        enabled_label.setFixedWidth(54)
         row1.addWidget(enabled_label)
 
         self.enabled_menu_btn = QPushButton('Select...')
