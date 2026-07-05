@@ -305,6 +305,7 @@ def test_linux_proxy_start_emits_error_when_helper_denied(tmp_path, monkeypatch)
     monkeypatch.setattr(linux_proxy_helper, "install_ca_into_linux_trust", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(linux_proxy_helper, "linux_system_ca_needs_install", lambda _path: False)
     monkeypatch.setattr(linux_proxy_helper, "start_helper", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(linux_proxy_helper, "last_start_error_details", lambda: {})
 
     proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
     proxy.config_manager = SimpleNamespace(
@@ -327,6 +328,76 @@ def test_linux_proxy_start_emits_error_when_helper_denied(tmp_path, monkeypatch)
 
     assert proxy._running is False
     assert errors == [("linux_helper_unavailable", {})]
+
+
+def test_linux_proxy_start_emits_read_only_hosts_error(tmp_path, monkeypatch):
+    errors = []
+    ca_cert = tmp_path / "ca.crt"
+    ca_key = tmp_path / "ca.key"
+    leaf_cert = tmp_path / "leaf.crt"
+    leaf_key = tmp_path / "leaf.key"
+    default_cert = (tmp_path / "default.crt", tmp_path / "default.key")
+    for path in (ca_cert, ca_key, leaf_cert, leaf_key, *default_cert):
+        path.write_text("x", encoding="utf-8")
+
+    class _ProxyStub:
+        async def log_upstream_self_test(self, _hosts):
+            return None
+
+        def set_module_interceptors(self, _interceptors):
+            return None
+
+        async def start(self):
+            return None
+
+        async def stop(self):
+            return None
+
+    helper_error = {
+        "ok": False,
+        "code": "linux_hosts_read_only",
+        "error": "[Errno 30] Read-only file system: '/etc/hosts'",
+        "hosts": ["assetdelivery.roblox.com", "gamejoin.roblox.com"],
+    }
+
+    monkeypatch.setattr(proxy_master, "IS_MACOS", False)
+    monkeypatch.setattr(proxy_master, "IS_WINDOWS", False)
+    monkeypatch.setattr(proxy_master, "IS_LINUX", True)
+    monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
+    monkeypatch.setattr(proxy_master, "generate_ca", lambda _dir: (ca_cert, ca_key))
+    monkeypatch.setattr(proxy_master, "generate_host_cert", lambda *_args, **_kwargs: (leaf_cert, leaf_key))
+    monkeypatch.setattr(proxy_master, "generate_multi_host_cert", lambda *_args, **_kwargs: default_cert)
+    monkeypatch.setattr(proxy_master, "get_ca_pem", lambda _path: "ca")
+    monkeypatch.setattr(proxy_master, "_install_ca_into_roblox", lambda _pem: (True, {}))
+    monkeypatch.setattr(proxy_master, "_resolve_real_endpoints", lambda _hosts: {})
+    monkeypatch.setattr(proxy_master, "_run_tls_self_test", lambda *_args, **_kwargs: asyncio.sleep(0, result=True))
+    monkeypatch.setattr(proxy_master, "FleasionProxy", lambda **_kwargs: _ProxyStub())
+    monkeypatch.setattr(linux_proxy_helper, "install_ca_into_linux_trust", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(linux_proxy_helper, "linux_system_ca_needs_install", lambda _path: False)
+    monkeypatch.setattr(linux_proxy_helper, "start_helper", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(linux_proxy_helper, "last_start_error_details", lambda: helper_error)
+
+    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
+    proxy.config_manager = SimpleNamespace(
+        clear_cache_on_launch=False,
+        settings={},
+        upstream_transport_mode="direct",
+        vpn_compat_max_assetdelivery_connections=0,
+        vpn_compat_max_cdn_connections=0,
+    )
+    proxy.cache_scraper = SimpleNamespace(set_real_ips=lambda _ips: None)
+    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: False)
+    proxy._module_interceptors = []
+    proxy._on_proxy_start_error = lambda code, details: errors.append((code, details))
+    proxy._running = False
+    proxy._lock = threading.Lock()
+    proxy._loop = None
+    proxy._roblox_player_running = False
+
+    asyncio.run(proxy._run_proxy())
+
+    assert proxy._running is False
+    assert errors == [("linux_hosts_read_only", helper_error)]
 
 
 def test_linux_helper_does_not_intercept_profile_api_when_spoofer_disabled(monkeypatch):

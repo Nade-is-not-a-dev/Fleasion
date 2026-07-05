@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import errno
 import json
 import os
 import pwd
@@ -378,6 +379,53 @@ def _clean_hosts_content(content: str) -> str:
 
 def _write_hosts(content: str) -> None:
     HOSTS_FILE.write_text(content, encoding='utf-8')
+
+
+def _is_read_only_filesystem_error(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    while current is not None:
+        if isinstance(current, OSError) and current.errno == errno.EROFS:
+            return True
+        current = current.__cause__ if isinstance(current.__cause__, BaseException) else None
+    return 'read-only file system' in str(exc).lower()
+
+
+def _path_on_read_only_mount(path: Path) -> bool:
+    candidate = path
+    while not candidate.exists() and candidate != candidate.parent:
+        candidate = candidate.parent
+    try:
+        flags = os.statvfs(candidate).f_flag
+    except OSError:
+        return False
+    return bool(flags & getattr(os, 'ST_RDONLY', 1))
+
+
+def _system_hosts_path_is_read_only() -> bool:
+    return (
+        _path_on_read_only_mount(HOSTS_FILE)
+        or _path_on_read_only_mount(HOSTS_FILE.parent)
+        or _path_on_read_only_mount(Path('/'))
+    )
+
+
+def _host_failure_payload(args: argparse.Namespace, exc: BaseException) -> dict:
+    payload = {
+        'ok': False,
+        'error': str(exc),
+        'hosts_path': str(HOSTS_FILE),
+    }
+    if _is_read_only_filesystem_error(exc):
+        payload.update({
+            'code': 'linux_hosts_read_only',
+            'system_read_only': _system_hosts_path_is_read_only(),
+            'hosts': sorted(
+                host.strip().lower()
+                for host in str(getattr(args, 'hosts', '') or '').split(',')
+                if host.strip()
+            ),
+        })
+    return payload
 
 
 def _clear_hosts() -> None:
@@ -907,7 +955,7 @@ def main() -> None:
             with contextlib.suppress(OSError):
                 _safe_write_user_file(
                     ready_file,
-                    json.dumps({'ok': False, 'error': str(exc)}),
+                    json.dumps(_host_failure_payload(args, exc)),
                     owner_uid,
                     owner_gid,
                 )

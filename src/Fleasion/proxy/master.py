@@ -3215,7 +3215,7 @@ class ProxyMaster:
             self._running = False
             return
         if use_linux_helper:
-            from ..utils.linux_proxy_helper import start_helper
+            from ..utils.linux_proxy_helper import last_start_error_details, start_helper
 
             require_linux_system_ca = bool(active_hosts & USERNAME_SPOOFER_INTERCEPT_HOSTS)
             helper_ca_cert_path = ca_cert_path
@@ -3228,7 +3228,11 @@ class ProxyMaster:
             ):
                 await self._proxy.stop()
                 _set_active_hosts_loopbacks(None)
-                self._emit_proxy_start_error('linux_helper_unavailable', {})
+                details = last_start_error_details()
+                if details.get('code') == 'linux_hosts_read_only':
+                    self._emit_proxy_start_error('linux_hosts_read_only', details)
+                else:
+                    self._emit_proxy_start_error('linux_helper_unavailable', details)
                 self._running = False
                 return
             if not ca_patch_ok:

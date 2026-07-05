@@ -31,6 +31,7 @@ SYSTEM_CA_DIRS = (
     Path('/usr/local/share/ca-certificates'),
     Path('/etc/pki/ca-trust/source/anchors'),
 )
+_last_start_error_details: dict = {}
 
 
 def _host_subprocess_env() -> dict[str, str]:
@@ -150,6 +151,18 @@ def _read_ready() -> dict | None:
         return None
 
 
+def last_start_error_details() -> dict:
+    return dict(_last_start_error_details)
+
+
+def _set_last_start_error(details: dict | None = None, *, error: str | None = None) -> None:
+    _last_start_error_details.clear()
+    if details:
+        _last_start_error_details.update(details)
+    if error:
+        _last_start_error_details.setdefault('error', error)
+
+
 def _current_process_start_time() -> str | None:
     if not sys.platform.startswith('linux'):
         return None
@@ -258,18 +271,25 @@ def start_helper(
     require_system_ca: bool = False,
 ) -> bool:
     """Start the privileged Linux port/hosts helper and wait until it is ready."""
+    _set_last_start_error()
     pkexec = shutil.which('pkexec')
     if not pkexec:
-        log_buffer.log('ProxyHelper', 'Linux proxy helper failed: pkexec not found')
+        error = 'pkexec not found'
+        _set_last_start_error({'code': 'pkexec_not_found'}, error=error)
+        log_buffer.log('ProxyHelper', f'Linux proxy helper failed: {error}')
         return False
     if require_system_ca and ca_cert_path is None:
-        log_buffer.log('ProxyHelper', 'Linux proxy helper failed: system CA trust is required but no CA cert was supplied')
+        error = 'system CA trust is required but no CA cert was supplied'
+        _set_last_start_error(error=error)
+        log_buffer.log('ProxyHelper', f'Linux proxy helper failed: {error}')
         return False
     if not ensure_privileged_helper_installed(enable_promptless=True):
+        _set_last_start_error(error='privileged helper install failed')
         return False
     if require_system_ca and ca_cert_path is not None and not linux_system_ca_is_current(ca_cert_path):
         details = _install_ca_into_linux_system_store(ca_cert_path)
         if not details.get('ok'):
+            _set_last_start_error(details, error=f'system CA trust could not be installed: {details.get("error") or details}')
             log_buffer.log(
                 'ProxyHelper',
                 f'Linux proxy helper failed: system CA trust could not be installed: {details.get("error") or details}',
@@ -319,6 +339,7 @@ def start_helper(
     try:
         log_file = HELPER_LOG_FILE.open('ab')
     except OSError as exc:
+        _set_last_start_error(error=f'could not open Linux helper log: {exc}')
         log_buffer.log('ProxyHelper', f'Could not open Linux helper log: {exc}')
         return False
 
@@ -326,6 +347,7 @@ def start_helper(
         try:
             process = _popen_host_command(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
         except Exception as exc:
+            _set_last_start_error(error=f'could not start Linux proxy helper: {exc}')
             log_buffer.log('ProxyHelper', f'Could not start Linux proxy helper: {exc}')
             return False
 
@@ -335,15 +357,18 @@ def start_helper(
         if ready:
             if ready.get('ok'):
                 if require_system_ca and not (ready.get('system_ca') or {}).get('ok'):
+                    _set_last_start_error(ready, error='system CA trust was not confirmed')
                     log_buffer.log('ProxyHelper', 'Linux proxy helper failed: system CA trust was not confirmed')
                     return False
                 log_buffer.log('ProxyHelper', f'Linux proxy helper ready on port {PROXY_PORT}')
                 return True
+            _set_last_start_error(ready)
             log_buffer.log('ProxyHelper', f'Linux proxy helper failed: {ready.get("error") or "unknown error"}')
             return False
 
         returncode = process.poll()
         if returncode is not None:
+            _set_last_start_error(error=f'helper exited before becoming ready with code {returncode}')
             log_buffer.log(
                 'ProxyHelper',
                 f'Linux proxy helper exited before becoming ready with code {returncode}; log: {HELPER_LOG_FILE}',
@@ -351,6 +376,7 @@ def start_helper(
             return False
         time.sleep(0.2)
 
+    _set_last_start_error(error=f'timed out waiting for readiness; log: {HELPER_LOG_FILE}')
     log_buffer.log('ProxyHelper', f'Linux proxy helper timed out waiting for readiness; log: {HELPER_LOG_FILE}')
     return False
 

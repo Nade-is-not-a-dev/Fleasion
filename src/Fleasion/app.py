@@ -628,6 +628,66 @@ def _show_hosts_write_exhausted_dialog(details: dict):
         break
 
 
+def _show_linux_hosts_read_only_dialog(details: dict):
+    """Show Nix/NixOS guidance when /etc/hosts cannot be edited at runtime."""
+    raw_hosts = details.get('hosts') or (
+        'assetdelivery.roblox.com',
+        'contentdelivery.roblox.com',
+        'fts.rbxcdn.com',
+        'gamejoin.roblox.com',
+    )
+    hosts = sorted({str(host).strip().lower() for host in raw_hosts if str(host).strip()})
+    if not hosts:
+        hosts = [
+            'assetdelivery.roblox.com',
+            'contentdelivery.roblox.com',
+            'fts.rbxcdn.com',
+            'gamejoin.roblox.com',
+        ]
+
+    extra_hosts = '\n'.join(f'  127.0.0.1 {host}' for host in hosts)
+    nix_snippet = "networking.extraHosts =\n''\n" + extra_hosts + "\n'';"
+    raw_error = str(details.get('error') or '').strip()
+    hosts_path = str(details.get('hosts_path') or '/etc/hosts')
+
+    _top = QApplication.topLevelWidgets()
+    _parent = next((w for w in _top if w.isVisible()), None)
+    _on_top = any(w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) for w in _top)
+
+    msg = QMessageBox(_parent)
+    if _on_top:
+        msg.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+    msg.setWindowTitle('Read-Only Hosts File')
+    msg.setIcon(QMessageBox.Icon.Warning)
+    msg.setText('Fleasion cannot edit the Linux hosts file on this read-only system.')
+    msg.setTextFormat(Qt.TextFormat.RichText)
+    msg.setInformativeText(
+        f'The proxy helper got a read-only filesystem error while writing <code>{html.escape(hosts_path)}</code>. '
+        'On Nix/NixOS, add these hosts declaratively and rebuild your system:<br><br>'
+        '<b>In configuration.nix add:</b><br>'
+        f'<pre>{html.escape(nix_snippet)}</pre>'
+        'Then restart Fleasion after the rebuilt hosts file is active.'
+        + (f'<br><br>Technical details:<br>{html.escape(raw_error)}' if raw_error else '')
+    )
+    copy_button = msg.addButton('Copy Nix Snippet', QMessageBox.ButtonRole.ActionRole)
+    msg.addButton(QMessageBox.StandardButton.Ok)
+
+    if icon_path := get_icon_path():
+        from PyQt6.QtGui import QIcon
+        msg.setWindowIcon(QIcon(str(icon_path)))
+
+    for label in msg.findChildren(QLabel):
+        label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+            | Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+
+    msg.exec()
+    if msg.clickedButton() == copy_button:
+        QApplication.clipboard().setText(nix_snippet)
+        log_buffer.log('Hosts', 'Copied Nix extraHosts snippet to clipboard')
+
+
 def _show_macos_ca_patch_failed_dialog(details: dict):
     """Show a user-facing popup when the helper cannot verify Roblox cacert.pem."""
     _top = QApplication.topLevelWidgets()
@@ -1097,6 +1157,8 @@ class _ProxyErrorInvoker(QObject):
             _show_proxy_bind_error_dialog(details)
         elif code == 'hosts_write_exhausted':
             _show_hosts_write_exhausted_dialog(details)
+        elif code == 'linux_hosts_read_only':
+            _show_linux_hosts_read_only_dialog(details)
         elif code == 'macos_ca_patch_failed':
             _show_macos_ca_patch_failed_dialog(details)
 
@@ -1713,6 +1775,9 @@ def main():
     proxy_error_invoker.disable_proxy_features.connect(_handle_proxy_features_start_failure)
 
     def _on_proxy_start_error(code: str, details: dict):
+        if code == 'linux_hosts_read_only':
+            proxy_error_invoker.show_proxy_error.emit(code, dict(details))
+            return
         if code == 'linux_helper_unavailable':
             proxy_error_invoker.disable_proxy_features.emit(
                 'Linux Polkit approval was denied or the proxy helper could not start'

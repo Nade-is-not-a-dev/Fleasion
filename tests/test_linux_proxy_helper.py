@@ -183,6 +183,33 @@ def test_start_helper_installs_persistent_helper_before_launch(monkeypatch, tmp_
     assert commands[0][1] == str(linux_proxy_helper.INSTALLED_HELPER_PATH)
 
 
+def test_start_helper_records_read_only_hosts_ready_failure(monkeypatch, tmp_path):
+    class Process:
+        def poll(self):
+            return None
+
+    ready = {
+        'ok': False,
+        'code': 'linux_hosts_read_only',
+        'error': "[Errno 30] Read-only file system: '/etc/hosts'",
+        'hosts': ['assetdelivery.roblox.com', 'gamejoin.roblox.com'],
+    }
+
+    monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_READY_FILE', tmp_path / 'ready.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_STOP_FILE', tmp_path / 'stop')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_HOSTS_FILE', tmp_path / 'hosts.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_LOG_FILE', tmp_path / 'helper.log')
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else None)
+    monkeypatch.setattr(linux_proxy_helper, 'ensure_privileged_helper_installed', lambda **_kwargs: True)
+    monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
+    monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda *_args, **_kwargs: Process())
+    monkeypatch.setattr(linux_proxy_helper, '_read_ready', lambda: ready)
+
+    assert linux_proxy_helper.start_helper({'gamejoin.roblox.com'}, timeout=1.0) is False
+    assert linux_proxy_helper.last_start_error_details() == ready
+
+
 def test_update_helper_hosts_writes_atomic_hosts_request(monkeypatch, tmp_path):
     hosts_file = tmp_path / 'hosts.json'
     monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)

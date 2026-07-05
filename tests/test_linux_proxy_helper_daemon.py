@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import subprocess
 from types import SimpleNamespace
 
@@ -171,6 +172,20 @@ def test_read_hosts_update_accepts_allowlisted_hosts(tmp_path):
     hosts_file.write_text('{"hosts":["apis.roblox.com","gamejoin.roblox.com"]}', encoding='utf-8')
 
     assert daemon._read_hosts_update(hosts_file) == {'apis.roblox.com', 'gamejoin.roblox.com'}
+
+
+def test_host_failure_payload_marks_read_only_hosts_error(monkeypatch):
+    args = SimpleNamespace(hosts='gamejoin.roblox.com,assetdelivery.roblox.com')
+    error = OSError(errno.EROFS, 'Read-only file system', '/etc/hosts')
+    monkeypatch.setattr(daemon, '_system_hosts_path_is_read_only', lambda: True)
+
+    payload = daemon._host_failure_payload(args, error)
+
+    assert payload['ok'] is False
+    assert payload['code'] == 'linux_hosts_read_only'
+    assert payload['system_read_only'] is True
+    assert payload['hosts_path'] == str(daemon.HOSTS_FILE)
+    assert payload['hosts'] == ['assetdelivery.roblox.com', 'gamejoin.roblox.com']
 
 
 def test_parent_alive_rejects_linux_zombie_parent(monkeypatch):
