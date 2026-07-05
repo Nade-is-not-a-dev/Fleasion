@@ -5,23 +5,19 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
 
 def _default_settings_path() -> Path:
-    if sys.platform == 'darwin':
-        return Path.home() / 'Library' / 'Application Support' / 'FleasionNT' / 'settings.json'
+    repo_root = Path(__file__).resolve().parents[1]
+    src_dir = repo_root / 'src'
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
 
-    local_appdata = os.environ.get('LOCALAPPDATA')
-    if local_appdata:
-        return Path(local_appdata) / 'FleasionNT' / 'settings.json'
+    from Fleasion.utils.paths import CONFIG_FILE
 
-    if sys.platform == 'win32':
-        return Path.home() / 'AppData' / 'Local' / 'FleasionNT' / 'settings.json'
-
-    return Path.home() / 'FleasionNT' / 'settings.json'
+    return Path(CONFIG_FILE)
 
 
 def _load_settings(path: Path) -> dict:

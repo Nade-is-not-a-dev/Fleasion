@@ -184,11 +184,8 @@ def _prompt_first_time_run_on_boot(config_manager: ConfigManager, tray=None) -> 
     message = (
         'Do you want to enable run-on-boot?\n\n'
         'It will launch Fleasion on boot.'
+        '\n\nOn this OS, boot launches will be auto-elevated.'
     )
-    if sys.platform.startswith('linux'):
-        message += '\n\nOn Linux, you will need to manually approve authentication on every boot lol.'
-    else:
-        message += '\n\nOn this OS, boot launches will be auto-elevated.'
     label.setText(message)
     layout.addWidget(label)
 
