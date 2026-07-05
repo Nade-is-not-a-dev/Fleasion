@@ -27,7 +27,9 @@ def _build_script_functions() -> str:
     return '\n'.join(functions)
 
 
-def _run_verify_app_bundle(tmp_path: Path, app_path: Path) -> subprocess.CompletedProcess[str]:
+def _run_verify_app_bundle(
+    tmp_path: Path, app_path: Path
+) -> subprocess.CompletedProcess[str]:
     runner = tmp_path / 'verify_app_bundle.sh'
     runner.write_text(
         '\n'.join(
@@ -62,7 +64,7 @@ def _write_info_plist(
     icon_file: str = 'fleasionlogoHR.icns',
 ) -> None:
     (app_path / 'Contents' / 'Info.plist').write_text(
-        f'''<?xml version="1.0" encoding="UTF-8"?>
+        f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -74,7 +76,7 @@ def _write_info_plist(
 \t<string>{package_type}</string>
 </dict>
 </plist>
-''',
+""",
         encoding='utf-8',
     )
 
@@ -119,7 +121,9 @@ def test_macos_build_script_creates_permission_preserving_zip():
     assert 'ZIP_PATH="dist/${EXEC_NAME}-MacOS-Universal.zip"' in script
     assert 'ditto -c -k --sequesterRsrc --keepParent "$app_path" "$ZIP_PATH"' in script
     assert 'verify_zip_package "$ZIP_PATH"' in script
-    assert 'verify_app_bundle "${zip_check_dir}/${EXEC_NAME}.app" "Packaged zip"' in script
+    assert (
+        'verify_app_bundle "${zip_check_dir}/${EXEC_NAME}.app" "Packaged zip"' in script
+    )
     assert 'verify_app_archs "${zip_check_dir}/${EXEC_NAME}.app"' in script
     assert 'MacOS-Universal.dmg' not in script
     assert 'hdiutil create' not in script
@@ -138,13 +142,22 @@ def test_macos_build_targets_catalina_compatible_qt_runtime():
     assert 'case " $archs " in *" x86_64 "*) ;; *) continue ;; esac' in script
     assert 'otool -arch x86_64 -L "$file_path"' in script
     assert 'otool -arch x86_64 -l "$file_path"' in script
-    assert 'App contains binaries requiring newer than macOS ${MACOSX_DEPLOYMENT_TARGET}' in script
+    assert (
+        'App contains binaries requiring newer than macOS ${MACOSX_DEPLOYMENT_TARGET}'
+        in script
+    )
     assert 'verify_macos_compatibility "$app_path"' in script
     assert '\'pyqt6==6.2.3; platform_system == "Darwin"\'' in project
     assert '\'pyqt6-qt6==6.2.4; platform_system == "Darwin"\'' in project
     assert '\'pyqt6>=6.8.0; platform_system != "Darwin"\'' in project
-    assert '\'numpy==1.26.4; platform_system == "Darwin" and python_version < "3.13"\'' in project
-    assert '\'numpy>=2.0.0; platform_system != "Darwin" or python_version >= "3.13"\'' in project
+    assert (
+        '\'numpy==1.26.4; platform_system == "Darwin" and python_version < "3.13"\''
+        in project
+    )
+    assert (
+        '\'numpy>=2.0.0; platform_system != "Darwin" or python_version >= "3.13"\''
+        in project
+    )
 
 
 def test_macos_build_bundles_arch_specific_proxy_helpers():
@@ -153,8 +166,19 @@ def test_macos_build_bundles_arch_specific_proxy_helpers():
 
     assert 'HELPER_ARM64_EXEC_NAME="${HELPER_EXEC_NAME}-arm64"' in script
     assert 'HELPER_X86_EXEC_NAME="${HELPER_EXEC_NAME}-x86_64"' in script
-    assert 'save_arch_helper "$target_arch"' in script
-    assert 'save_arch_helper x86_64' in script
+    assert (
+        'MACOS_TARGET_ARCH="$target_arch" macos_uv run --python "$macos_python_path" pyinstaller --clean --noconfirm Fleasion.spec'
+        in script
+    )
+    assert (
+        'x86_uv run --python "$x86_python_path" pyinstaller --clean --noconfirm Fleasion.spec'
+        in script
+    )
+    assert 'FleasionProxyHelper.spec' in spec
+    assert (
+        'shutil.copy2(_bundled_legacy_macos_helper, _bundled_macos_helpers[target_arch])'
+        in spec
+    )
     assert 'require_only_archs "$arm_helper_path" arm64' in script
     assert 'require_only_archs "$x86_helper_path" x86_64' in script
     assert 'contains unexpected $found_arch slice; expected only' in script
@@ -162,8 +186,8 @@ def test_macos_build_bundles_arch_specific_proxy_helpers():
     assert 'Cryptodome/Hash/_ghash_clmul.abi3.so:x86_64' in script
     assert 'Cryptodome/Cipher/_raw_aesni.abi3.so:x86_64' in script
     assert 'cp -p "$x86_file" "$universal_file"' in script
-    assert "pathlib.Path('dist/fleasion-proxy-helper-arm64')" in spec
-    assert "pathlib.Path('dist/fleasion-proxy-helper-x86_64')" in spec
+    assert "Path('dist/fleasion-proxy-helper-arm64')" in spec
+    assert "Path('dist/fleasion-proxy-helper-x86_64')" in spec
 
 
 def test_macos_build_bundles_audio_runtime_libraries():
@@ -171,7 +195,8 @@ def test_macos_build_bundles_audio_runtime_libraries():
     spec = Path('Fleasion.spec').read_text(encoding='utf-8')
 
     assert "('_sounddevice_data', '_soundfile_data')" in spec
-    assert "collect_all(audio_runtime_package)" in spec
+    assert 'def _collect_optional_package(package: str)' in spec
+    assert 'collect_all(package)' in spec
     assert "'libportaudio.so'" in spec
     assert "'libpulse.so'" in spec
     assert "'libjack.so'" in spec
@@ -193,8 +218,14 @@ def test_pyinstaller_spec_bundles_pyopengl_wayland_backend():
 def test_github_workflow_uploads_macos_zip_without_artifact_rezipping():
     workflow = Path('.github/workflows/build.yml').read_text(encoding='utf-8')
 
+    assert 'uses: actions/checkout@v7' in workflow
+    assert (
+        'uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0'
+        in workflow
+    )
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.zip' in workflow
     assert 'uses: actions/upload-artifact@v7' in workflow
+    assert 'uses: actions/upload-artifact@v6' not in workflow
     assert 'name: Fleasion-v${{ env.APP_VERSION }}-MacOS-Universal.zip' in workflow
     assert 'archive: false' in workflow
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.dmg' not in workflow
@@ -214,22 +245,40 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
 
     assert 'workflow_dispatch:' in workflow
     assert 'contents: write' in workflow
+    assert 'uses: actions/checkout@v7' in workflow
+    assert (
+        'uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0'
+        in workflow
+    )
     assert 'ref: main' in workflow
     assert 'Checkout main for release' in workflow
     assert 'ref: ${{ needs.prepare.outputs.main_sha }}' in workflow
     assert 'release_tag: v${{ steps.version.outputs.app_version }}' in workflow
-    assert 'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}.exe' in workflow
-    assert 'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux.zip' in workflow
-    assert 'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip' in workflow
+    assert (
+        'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}.exe'
+        in workflow
+    )
+    assert (
+        'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux'
+        in workflow
+    )
+    assert (
+        'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip'
+        in workflow
+    )
     assert 'artifact_path: dist/Fleasion-v*.exe' in workflow
-    assert 'artifact_path: dist/Fleasion-v*-Linux.zip' in workflow
+    assert 'artifact_path: dist/Fleasion-v*-Linux' in workflow
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.zip' in workflow
-    assert 'zip -9 "Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux.zip"' in workflow
+    assert 'Package Linux release zip' not in workflow
+    assert 'zip -9' not in workflow
     assert 'archive: false' in workflow
     assert 'uses: actions/download-artifact@v8' in workflow
     assert 'name: Fleasion-v${{ needs.prepare.outputs.app_version }}.exe' in workflow
-    assert 'name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux.zip' in workflow
-    assert 'name: Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip' in workflow
+    assert 'name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux' in workflow
+    assert (
+        'name: Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip'
+        in workflow
+    )
     assert 'skip-decompress: true' in workflow
     assert 'gh release create "$RELEASE_TAG" release-files/*' in workflow
     assert '--draft' in workflow
@@ -238,7 +287,11 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
 
 def test_github_workflow_verifies_linux_gui_audio_runtime():
     workflow = Path('.github/workflows/build.yml').read_text(encoding='utf-8')
+    spec = Path('Fleasion.spec').read_text(encoding='utf-8')
 
+    assert 'artifact_path: dist/Fleasion-v*-Linux' in workflow
+    assert 'dist/Fleasion-v*-Linux)' in workflow
+    assert "_exe_name = f'{_exe_name}-Linux'" in spec
     assert 'libpipewire-0.3-0' in workflow
     assert 'libspa-0.2-modules' in workflow
     assert 'libpulse0' in workflow
@@ -288,4 +341,6 @@ def test_verify_app_bundle_rejects_plist_executable_mismatch(tmp_path):
     result = _run_verify_app_bundle(tmp_path, app_path)
 
     assert result.returncode != 0
-    assert "CFBundleExecutable is 'Fleasion' instead of 'Fleasion-v2.2.1'" in result.stderr
+    assert (
+        "CFBundleExecutable is 'Fleasion' instead of 'Fleasion-v2.2.1'" in result.stderr
+    )

@@ -2,7 +2,10 @@
 import os
 import sys
 
-_macos_target_arch = os.environ.get('MACOS_TARGET_ARCH') if sys.platform == 'darwin' else None
+_macos_target_arch = (
+    os.environ.get('MACOS_TARGET_ARCH') if sys.platform == 'darwin' else None
+)
+_use_upx = sys.platform == 'win32'
 
 a = Analysis(
     ['src/Fleasion/macos_proxy_helper_daemon.py'],
@@ -29,7 +32,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=_use_upx,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,

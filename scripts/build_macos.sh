@@ -15,9 +15,6 @@ EXEC_PATH="${APP_PATH}/Contents/MacOS/${EXEC_NAME}"
 HELPER_EXEC_NAME="fleasion-proxy-helper"
 HELPER_ARM64_EXEC_NAME="${HELPER_EXEC_NAME}-arm64"
 HELPER_X86_EXEC_NAME="${HELPER_EXEC_NAME}-x86_64"
-HELPER_DIST_PATH="dist/${HELPER_EXEC_NAME}"
-HELPER_ARM64_DIST_PATH="dist/${HELPER_ARM64_EXEC_NAME}"
-HELPER_X86_DIST_PATH="dist/${HELPER_X86_EXEC_NAME}"
 
 MACOS_TARGET_ARCH="${MACOS_TARGET_ARCH:-universal2}"
 MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.15}"
@@ -346,42 +343,11 @@ verify_macos_compatibility() {
     rm -f "$unavailable_frameworks" "$incompatible_minos"
 }
 
-save_arch_helper() {
-    target_arch="$1"
-    case "$target_arch" in
-        arm64)
-            arch_helper_path="$HELPER_ARM64_DIST_PATH"
-            arch_helper_name="$HELPER_ARM64_EXEC_NAME"
-            ;;
-        x86_64)
-            arch_helper_path="$HELPER_X86_DIST_PATH"
-            arch_helper_name="$HELPER_X86_EXEC_NAME"
-            ;;
-        *)
-            echo "Unsupported helper architecture: $target_arch" >&2
-            exit 1
-            ;;
-    esac
-
-    cp "$HELPER_DIST_PATH" "$arch_helper_path"
-    chmod "$(stat -f %Lp "$HELPER_DIST_PATH")" "$arch_helper_path"
-    require_only_archs "$arch_helper_path" "$target_arch"
-    echo "Saved ${arch_helper_name} (${target_arch})"
-}
-
 build_current_arch() {
     target_arch="$1"
     macos_python_path="$(find_macos_python)"
     rm -rf "$UV_MACOS_PROJECT_ENVIRONMENT"
     macos_uv sync --locked --python "$macos_python_path" --group dev
-
-    MACOS_TARGET_ARCH="$target_arch" macos_uv run --python "$macos_python_path" pyinstaller --clean --noconfirm FleasionProxyHelper.spec
-    if [ ! -x "$HELPER_DIST_PATH" ]; then
-        echo "Helper build completed, but expected executable was not found: $HELPER_DIST_PATH" >&2
-        exit 1
-    fi
-    require_archs "$HELPER_DIST_PATH" "$target_arch"
-    save_arch_helper "$target_arch"
 
     MACOS_TARGET_ARCH="$target_arch" macos_uv run --python "$macos_python_path" pyinstaller --clean --noconfirm Fleasion.spec
 
@@ -416,16 +382,6 @@ build_x86_64() {
     x86_python_path="$(find_x86_python)"
     rm -rf "$UV_X86_PROJECT_ENVIRONMENT"
     x86_uv sync --locked --python "$x86_python_path" --group dev
-
-    MACOS_TARGET_ARCH=x86_64 \
-    x86_uv run --python "$x86_python_path" pyinstaller --clean --noconfirm FleasionProxyHelper.spec
-
-    if [ ! -x "$HELPER_DIST_PATH" ]; then
-        echo "Intel helper build completed, but expected executable was not found: $HELPER_DIST_PATH" >&2
-        exit 1
-    fi
-    require_archs "$HELPER_DIST_PATH" x86_64
-    save_arch_helper x86_64
 
     MACOS_TARGET_ARCH=x86_64 \
     x86_uv run --python "$x86_python_path" pyinstaller --clean --noconfirm Fleasion.spec

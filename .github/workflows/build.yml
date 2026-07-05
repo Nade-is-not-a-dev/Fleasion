@@ -30,17 +30,17 @@ jobs:
             artifact_path: dist/Fleasion-v*.exe
           - name: Linux
             os: ubuntu-latest
-            artifact_path: dist/Fleasion-v*
+            artifact_path: dist/Fleasion-v*-Linux
           - name: macOS
             os: macos-latest
             artifact_path: dist/Fleasion-v*-MacOS-Universal.zip
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: true
 
@@ -62,9 +62,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libportaudio2 libpipewire-0.3-0 libspa-0.2-modules libpulse0
 
-      - name: Build Linux proxy helper
-        if: runner.os == 'Linux'
-        run: uv run pyinstaller --clean --noconfirm FleasionLinuxProxyHelper.spec
+      - name: Install UPX
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install upx -y --no-progress
+          upx --version
 
       - name: Build Windows package
         if: runner.os == 'Windows'
@@ -77,7 +80,7 @@ jobs:
       - name: Verify Linux audio runtime
         if: runner.os == 'Linux'
         run: |
-          archive_listing="$(uv run pyi-archive_viewer -b -l dist/Fleasion-v*)"
+          archive_listing="$(uv run pyi-archive_viewer -b -l dist/Fleasion-v*-Linux)"
           printf '%s\n' "$archive_listing" | grep -Ei 'portaudio|pulse|pipewire|jack|alsa|sound' || true
           if [[ "$archive_listing" =~ lib(portaudio|asound|jack|pulse|pulsecommon-|pipewire-) ]]; then
             echo "Linux package must use host audio backend libraries, not the GitHub runner copies." >&2
@@ -112,7 +115,7 @@ jobs:
 
       - name: Upload package
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Fleasion-v${{ env.APP_VERSION }}-Linux
           path: ${{ matrix.artifact_path }}
