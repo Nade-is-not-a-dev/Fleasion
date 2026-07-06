@@ -63,3 +63,23 @@ def test_copy_linux_app_payload_copies_frozen_binary_and_icon(tmp_path, monkeypa
     assert installed_app.read_bytes() == b"binary"
     assert installed_icon.read_bytes() == b"icon"
     assert installed_app.stat().st_mode & 0o111
+
+
+def test_copy_linux_app_payload_does_not_copy_nix_store_binary(monkeypatch, tmp_path):
+    source_binary = Path("/nix/store/abc123-fleasion/bin/Fleasion")
+    install_dir = tmp_path / ".local" / "share" / "Fleasion"
+    logs = []
+
+    monkeypatch.setattr(platform_linux.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(platform_linux.sys, "executable", str(source_binary))
+    monkeypatch.setattr(platform_linux, "LINUX_INSTALL_DIR", install_dir)
+    monkeypatch.setattr(platform_linux, "LINUX_INSTALLED_APP_PATH", install_dir / "Fleasion")
+    monkeypatch.setattr(platform_linux, "LINUX_INSTALLED_ICON_PATH", install_dir / "fleasionlogoHR.ico")
+    monkeypatch.setattr(platform_linux, "log_buffer", type("Log", (), {"log": staticmethod(lambda category, message: logs.append((category, message)))})())
+
+    installed_app, installed_icon = platform_linux._copy_linux_app_payload()
+
+    assert installed_app is None
+    assert installed_icon is None
+    assert not install_dir.exists()
+    assert any("Nix store executable" in message for _category, message in logs)

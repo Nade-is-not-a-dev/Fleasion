@@ -427,6 +427,13 @@ def _copy_linux_app_payload() -> tuple[Path | None, Path | None]:
         return None, None
 
     source = Path(sys.executable).resolve()
+    if source.is_relative_to(Path('/nix/store')):
+        log_buffer.log(
+            'App',
+            'Linux desktop integration detected a Nix store executable; using it directly instead of copying a stale per-user binary',
+        )
+        return None, None
+
     LINUX_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
     installed_app = LINUX_INSTALLED_APP_PATH
     if source != installed_app.resolve():
