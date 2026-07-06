@@ -126,6 +126,7 @@ def test_start_helper_passes_required_system_ca_flag(monkeypatch, tmp_path):
     monkeypatch.setattr(linux_proxy_helper, '_helper_command', lambda: ['/opt/fleasion-helper'])
     monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
     monkeypatch.setattr(linux_proxy_helper, 'ensure_privileged_helper_installed', lambda **_kwargs: True)
+    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_store_supported', lambda: True)
     monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_is_current', lambda _path: True)
     monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_needs_install', lambda _path: False)
     monkeypatch.setattr(
@@ -175,6 +176,7 @@ def test_start_helper_does_not_reinstall_system_ca_when_current(monkeypatch, tmp
     monkeypatch.setattr(linux_proxy_helper, '_helper_command', lambda: ['/opt/fleasion-helper'])
     monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
     monkeypatch.setattr(linux_proxy_helper, 'ensure_privileged_helper_installed', lambda **_kwargs: True)
+    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_store_supported', lambda: True)
     monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_is_current', lambda _path: True)
     monkeypatch.setattr(
         linux_proxy_helper,
@@ -226,6 +228,7 @@ def test_start_helper_combines_helper_update_with_missing_system_ca(monkeypatch,
     monkeypatch.setattr(linux_proxy_helper, '_installed_helper_metadata_is_current', lambda: installed['ok'])
     monkeypatch.setattr(linux_proxy_helper, '_persistent_helper_install_path_is_read_only', lambda: False)
     monkeypatch.setattr(linux_proxy_helper, 'install_privileged_helper', fake_install)
+    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_store_supported', lambda: True)
     monkeypatch.setattr(
         linux_proxy_helper,
         '_install_ca_into_linux_system_store',
@@ -251,6 +254,44 @@ def test_start_helper_combines_helper_update_with_missing_system_ca(monkeypatch,
 
     assert installed['kwargs'] == {'enable_promptless': True, 'ca_cert_path': ca}
     assert commands[0][1] == str(linux_proxy_helper.INSTALLED_HELPER_PATH)
+
+
+def test_start_helper_does_not_require_system_ca_when_store_is_unsupported(monkeypatch, tmp_path):
+    commands = []
+    ca = tmp_path / 'ca.crt'
+    ca.write_text('ca', encoding='utf-8')
+
+    class Process:
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_READY_FILE', tmp_path / 'ready.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_STOP_FILE', tmp_path / 'stop')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_HOSTS_FILE', tmp_path / 'hosts.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_LOG_FILE', tmp_path / 'helper.log')
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else None)
+    monkeypatch.setattr(linux_proxy_helper, '_helper_command', lambda: ['/opt/fleasion-helper'])
+    monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
+    monkeypatch.setattr(linux_proxy_helper, 'ensure_privileged_helper_installed', lambda **_kwargs: True)
+    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_store_supported', lambda: False)
+    monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda cmd, **_kwargs: commands.append(cmd) or Process())
+    monkeypatch.setattr(
+        linux_proxy_helper,
+        '_read_ready',
+        lambda: {'ok': True, 'system_ca': {'ok': False, 'error': 'no_supported_system_trust_store'}},
+    )
+
+    assert linux_proxy_helper.start_helper(
+        {'apis.roblox.com'},
+        ca_cert_path=ca,
+        require_system_ca=True,
+        timeout=1.0,
+    ) is True
+
+    assert '--ca-cert' in commands[0]
+    assert str(ca) in commands[0]
+    assert '--require-system-ca' not in commands[0]
 
 
 def test_start_helper_installs_persistent_helper_before_launch(monkeypatch, tmp_path):
@@ -525,6 +566,7 @@ def test_linux_system_ca_needs_install_false_when_current(monkeypatch, tmp_path)
     ca_dir.mkdir()
     (ca_dir / linux_proxy_helper.SYSTEM_CA_NAME).write_bytes(b'current')
     monkeypatch.setattr(linux_proxy_helper, 'SYSTEM_CA_DIRS', (ca_dir,))
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: f'/usr/sbin/{name}' if name == 'update-ca-certificates' else None)
 
     assert linux_proxy_helper.linux_system_ca_needs_install(ca) is False
 
@@ -536,5 +578,18 @@ def test_linux_system_ca_needs_install_true_when_stale(monkeypatch, tmp_path):
     ca_dir.mkdir()
     (ca_dir / linux_proxy_helper.SYSTEM_CA_NAME).write_bytes(b'old')
     monkeypatch.setattr(linux_proxy_helper, 'SYSTEM_CA_DIRS', (ca_dir,))
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: f'/usr/sbin/{name}' if name == 'update-ca-certificates' else None)
 
     assert linux_proxy_helper.linux_system_ca_needs_install(ca) is True
+
+
+def test_linux_system_ca_needs_install_false_when_store_unsupported(monkeypatch, tmp_path):
+    ca = tmp_path / 'ca.crt'
+    ca.write_bytes(b'current')
+    ca_dir = tmp_path / 'system-ca'
+    ca_dir.mkdir()
+    (ca_dir / linux_proxy_helper.SYSTEM_CA_NAME).write_bytes(b'old')
+    monkeypatch.setattr(linux_proxy_helper, 'SYSTEM_CA_DIRS', (ca_dir,))
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda _name: None)
+
+    assert linux_proxy_helper.linux_system_ca_needs_install(ca) is False

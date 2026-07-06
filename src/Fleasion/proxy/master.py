@@ -908,14 +908,14 @@ def _use_linux_privileged_helper() -> bool:
     return IS_LINUX and not _is_admin()
 
 
-def _ensure_linux_webview_trust_for_hosts(hosts: set[str], ca_cert_path: Path) -> bool:
-    """Ensure Linux/Sober WebUI trust before intercepting WebView-visible hosts."""
+def _ensure_linux_system_trust_for_hosts(hosts: set[str], ca_cert_path: Path) -> bool:
+    """Best-effort Linux system trust install before intercepting WebView-visible hosts."""
     if not IS_LINUX or not (set(hosts) & USERNAME_SPOOFER_INTERCEPT_HOSTS):
         return True
     if not ca_cert_path.is_file():
         log_buffer.log(
             'Certificate',
-            f'Linux system/WebView trust-store install failed: CA certificate not found: {ca_cert_path}',
+            f'Linux system trust-store install failed: CA certificate not found: {ca_cert_path}',
         )
         return False
 
@@ -929,13 +929,19 @@ def _ensure_linux_webview_trust_for_hosts(hosts: set[str], ca_cert_path: Path) -
     system = details.get('system') if isinstance(details, dict) else None
     if isinstance(system, dict) and system.get('ok'):
         return True
+    if isinstance(system, dict) and system.get('error') == 'no_supported_system_trust_store':
+        log_buffer.log(
+            'Certificate',
+            'Linux system trust-store install is unsupported on this distro; continuing with Sober cacert.pem trust only',
+        )
+        return True
 
     error = None
     if isinstance(system, dict):
         error = system.get('error') or system
     log_buffer.log(
         'Certificate',
-        f'Linux system/WebView trust-store install failed for WebUI intercepts: {error or details}',
+        f'Linux system trust-store install failed for WebView-visible intercepts: {error or details}',
     )
     return False
 
@@ -2729,10 +2735,10 @@ class ProxyMaster:
 
         if IS_LINUX and (desired_hosts & USERNAME_SPOOFER_INTERCEPT_HOSTS):
             ca_cert_path = _current_proxy_ca_dir() / 'ca.crt'
-            if not _ensure_linux_webview_trust_for_hosts(desired_hosts, ca_cert_path):
+            if not _ensure_linux_system_trust_for_hosts(desired_hosts, ca_cert_path):
                 log_buffer.log(
                     'Hosts',
-                    'Skipped Linux WebUI intercept update because system/WebView trust is not ready',
+                    'Skipped Linux WebView-visible intercept update because system trust is not ready',
                 )
                 return
 
@@ -3222,7 +3228,7 @@ class ProxyMaster:
         if (
             IS_LINUX
             and not use_linux_helper
-            and not _ensure_linux_webview_trust_for_hosts(active_hosts, ca_cert_path)
+            and not _ensure_linux_system_trust_for_hosts(active_hosts, ca_cert_path)
         ):
             self._running = False
             return

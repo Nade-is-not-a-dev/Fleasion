@@ -964,16 +964,22 @@ async def _serve(args: argparse.Namespace) -> int:
                                 install=False,
                             )
                             if update_ca_details is not None and not update_ca_details.get('ok'):
+                                error = update_ca_details.get("error") or update_ca_details
+                                if args.require_system_ca:
+                                    _log(
+                                        'Skipped Linux hosts update because system trust-store '
+                                        f'install failed: {error}'
+                                    )
+                                    continue
                                 _log(
-                                    'Skipped Linux hosts update because system trust-store '
-                                    f'install failed: {update_ca_details.get("error") or update_ca_details}'
+                                    'Continuing Linux hosts update without confirmed system trust-store '
+                                    f'install: {error}'
                                 )
-                            else:
-                                update_read_only_hosts_mode = _apply_hosts_or_use_existing_read_only(updated_hosts)
-                                _flush_dns()
-                                current_hosts = set(updated_hosts)
-                                read_only_hosts_mode = update_read_only_hosts_mode
-                                _log(f'Applied live hosts update: {", ".join(sorted(current_hosts))}')
+                            update_read_only_hosts_mode = _apply_hosts_or_use_existing_read_only(updated_hosts)
+                            _flush_dns()
+                            current_hosts = set(updated_hosts)
+                            read_only_hosts_mode = update_read_only_hosts_mode
+                            _log(f'Applied live hosts update: {", ".join(sorted(current_hosts))}')
                 except FileNotFoundError:
                     pass
                 except Exception as exc:

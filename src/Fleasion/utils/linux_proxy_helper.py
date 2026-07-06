@@ -373,12 +373,12 @@ def ensure_privileged_helper_installed(
         if store_names and all(str(store).endswith(':already-current') for store in store_names):
             log_buffer.log(
                 'Certificate',
-                f'CA already trusted in Linux system/WebView trust store during helper install{f" ({stores})" if stores else ""}',
+                f'CA already trusted in Linux system trust store during helper install{f" ({stores})" if stores else ""}',
             )
         else:
             log_buffer.log(
                 'Certificate',
-                f'Installed CA into Linux system/WebView trust store during helper install{f" ({stores})" if stores else ""}',
+                f'Installed CA into Linux system trust store during helper install{f" ({stores})" if stores else ""}',
             )
 
     if details.get('promptless_rule'):
@@ -411,8 +411,16 @@ def start_helper(
         _set_last_start_error(error=error)
         log_buffer.log('ProxyHelper', f'Linux proxy helper failed: {error}')
         return False
+    system_ca_supported = linux_system_ca_store_supported()
+    enforce_system_ca = require_system_ca and system_ca_supported
+    if require_system_ca and not system_ca_supported and ca_cert_path is not None:
+        log_buffer.log(
+            'Certificate',
+            'Linux system trust-store install is unsupported on this distro; '
+            'continuing without distro-wide CA trust',
+        )
     needs_system_ca_install = (
-        require_system_ca
+        enforce_system_ca
         and ca_cert_path is not None
         and not linux_system_ca_is_current(ca_cert_path)
     )
@@ -469,7 +477,7 @@ def start_helper(
         cmd.extend(['--parent-start-time', parent_start_time])
     if require_system_ca and ca_cert_path is not None:
         cmd.extend(['--ca-cert', str(ca_cert_path)])
-    if require_system_ca:
+    if enforce_system_ca:
         cmd.append('--require-system-ca')
 
     log_buffer.log('ProxyHelper', 'Requesting Linux Polkit approval for Fleasion hosts entries and port-443 relay')
@@ -493,7 +501,7 @@ def start_helper(
         ready = _read_ready()
         if ready:
             if ready.get('ok'):
-                if require_system_ca and not (ready.get('system_ca') or {}).get('ok'):
+                if enforce_system_ca and not (ready.get('system_ca') or {}).get('ok'):
                     _set_last_start_error(ready, error='system CA trust was not confirmed')
                     log_buffer.log('ProxyHelper', 'Linux proxy helper failed: system CA trust was not confirmed')
                     return False
@@ -752,14 +760,20 @@ def linux_system_ca_is_current(ca_cert_path: Path) -> bool:
     return False
 
 
+def linux_system_ca_store_supported() -> bool:
+    """Return True when this host has a system trust store Fleasion can refresh."""
+    return any(
+        bool(shutil.which(command)) and directory.is_dir()
+        for command, directory in zip(
+            ('update-ca-certificates', 'update-ca-trust'),
+            SYSTEM_CA_DIRS,
+        )
+    )
+
+
 def linux_system_ca_needs_install(ca_cert_path: Path) -> bool:
     """Return True when a supported Linux system CA target is missing/stale."""
-    supported_targets = [
-        directory / SYSTEM_CA_NAME
-        for directory in SYSTEM_CA_DIRS
-        if directory.is_dir()
-    ]
-    if not supported_targets:
+    if not linux_system_ca_store_supported():
         return False
     if linux_system_ca_is_current(ca_cert_path):
         return False
@@ -803,9 +817,9 @@ def _install_ca_into_linux_system_store(ca_cert_path: Path) -> dict:
         stores = ', '.join(details.get('stores') or [])
         store_names = details.get('stores') or []
         if store_names and all(str(store).endswith(':already-current') for store in store_names):
-            log_buffer.log('Certificate', f'CA already trusted in Linux system/WebView trust store{f" ({stores})" if stores else ""}')
+            log_buffer.log('Certificate', f'CA already trusted in Linux system trust store{f" ({stores})" if stores else ""}')
         else:
-            log_buffer.log('Certificate', f'Installed CA into Linux system/WebView trust store{f" ({stores})" if stores else ""}')
+            log_buffer.log('Certificate', f'Installed CA into Linux system trust store{f" ({stores})" if stores else ""}')
     else:
         err = details.get('error') or (result.stderr or output or str(result.returncode)).strip()
         log_buffer.log('Certificate', f'Failed to install CA into Linux system trust store: {err}')
@@ -823,11 +837,17 @@ def install_ca_into_linux_trust(
     if not sys.platform.startswith('linux'):
         return {'ok': True, 'skipped': 'not_linux'}
 
-    if install_system and linux_system_ca_needs_install(ca_cert_path):
+    if install_system and not linux_system_ca_store_supported() and not linux_system_ca_is_current(ca_cert_path):
+        system = {'ok': False, 'skipped': 'unsupported', 'error': 'no_supported_system_trust_store'}
+        log_buffer.log(
+            'Certificate',
+            'Skipping Linux system trust-store install: no supported system trust store found',
+        )
+    elif install_system and linux_system_ca_needs_install(ca_cert_path):
         system = _install_ca_into_linux_system_store(ca_cert_path)
     elif install_system:
         system = {'ok': True, 'skipped': 'already_installed'}
-        log_buffer.log('Certificate', 'CA already trusted in Linux system/WebView trust store')
+        log_buffer.log('Certificate', 'CA already trusted in Linux system trust store')
     else:
         system = {'ok': False, 'skipped': 'handled_by_privileged_helper'}
     nss = _install_ca_into_browser_nss(ca_cert_path) if install_nss else []

@@ -436,6 +436,30 @@ def test_linux_startup_treats_manual_profile_api_hosts_entry_as_active(monkeypat
     assert any("existing Linux loopback hosts entries" in message for _category, message in logs)
 
 
+def test_linux_system_trust_unsupported_does_not_block_profile_api(monkeypatch, tmp_path):
+    ca = tmp_path / "ca.crt"
+    ca.write_text("ca", encoding="utf-8")
+    logs = []
+
+    monkeypatch.setattr(proxy_master, "IS_LINUX", True)
+    monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
+    monkeypatch.setattr(
+        linux_proxy_helper,
+        "install_ca_into_linux_trust",
+        lambda *_args, **_kwargs: {
+            "ok": False,
+            "system": {"ok": False, "error": "no_supported_system_trust_store"},
+            "nss": [],
+        },
+    )
+
+    assert proxy_master._ensure_linux_system_trust_for_hosts(
+        set(proxy_master.USERNAME_SPOOFER_INTERCEPT_HOSTS),
+        ca,
+    ) is True
+    assert any("unsupported on this distro" in message for _category, message in logs)
+
+
 def test_linux_helper_intercepts_profile_api_when_spoofer_enabled(monkeypatch):
     monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
 
@@ -491,7 +515,7 @@ def test_linux_helper_refresh_requests_helper_update_without_direct_hosts_write(
     monkeypatch.setattr(proxy_master, "_add_hosts_entries", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("direct add should not run")))
     monkeypatch.setattr(proxy_master, "_remove_hosts_entries", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("direct remove should not run")))
     monkeypatch.setattr(proxy_master, "_resolve_real_endpoints", lambda hosts: {host: [] for host in hosts})
-    monkeypatch.setattr(proxy_master, "_ensure_linux_webview_trust_for_hosts", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(proxy_master, "_ensure_linux_system_trust_for_hosts", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
 
     import Fleasion.utils.linux_proxy_helper as linux_proxy_helper
@@ -523,7 +547,7 @@ def test_linux_helper_refresh_skips_profile_api_when_webview_trust_fails(monkeyp
 
     monkeypatch.setattr(proxy_master, "IS_LINUX", True)
     monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
-    monkeypatch.setattr(proxy_master, "_ensure_linux_webview_trust_for_hosts", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(proxy_master, "_ensure_linux_system_trust_for_hosts", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
 
     import Fleasion.utils.linux_proxy_helper as linux_proxy_helper
@@ -543,7 +567,7 @@ def test_linux_helper_refresh_skips_profile_api_when_webview_trust_fails(monkeyp
 
     assert helper_updates == []
     assert proxy._active_intercept_hosts == set(proxy_master.BASE_INTERCEPT_HOSTS)
-    assert any("system/WebView trust is not ready" in message for _category, message in logs)
+    assert any("system trust is not ready" in message for _category, message in logs)
 
 
 def test_macos_roblox_dir_discovery_excludes_studio_saved_dirs(tmp_path, monkeypatch):
