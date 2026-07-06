@@ -1,6 +1,7 @@
 from Fleasion import app as app_module
 from Fleasion.app import (
     _handle_single_instance_command,
+    _linux_hosts_nix_snippet,
     _looks_like_macos_fleasion_command,
     _should_reclaim_stale_single_instance,
     _should_sync_autostart_on_launch,
@@ -101,3 +102,9 @@ def test_autostart_resync_still_requires_admin_on_windows(monkeypatch):
 
     monkeypatch.setattr(app_module, "_is_admin", lambda: True)
     assert _should_sync_autostart_on_launch(True)
+
+
+def test_linux_hosts_nix_snippet_default_includes_profile_api_host():
+    snippet = _linux_hosts_nix_snippet({})
+
+    assert "127.0.0.1 apis.roblox.com" in snippet

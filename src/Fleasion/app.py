@@ -628,9 +628,9 @@ def _show_hosts_write_exhausted_dialog(details: dict):
         break
 
 
-def _show_linux_hosts_read_only_dialog(details: dict):
-    """Show Nix/NixOS guidance when /etc/hosts cannot be edited at runtime."""
+def _linux_hosts_nix_snippet(details: dict) -> str:
     raw_hosts = details.get('hosts') or (
+        'apis.roblox.com',
         'assetdelivery.roblox.com',
         'contentdelivery.roblox.com',
         'fts.rbxcdn.com',
@@ -639,6 +639,7 @@ def _show_linux_hosts_read_only_dialog(details: dict):
     hosts = sorted({str(host).strip().lower() for host in raw_hosts if str(host).strip()})
     if not hosts:
         hosts = [
+            'apis.roblox.com',
             'assetdelivery.roblox.com',
             'contentdelivery.roblox.com',
             'fts.rbxcdn.com',
@@ -646,7 +647,12 @@ def _show_linux_hosts_read_only_dialog(details: dict):
         ]
 
     extra_hosts = '\n'.join(f'  127.0.0.1 {host}' for host in hosts)
-    nix_snippet = "networking.extraHosts =\n''\n" + extra_hosts + "\n'';"
+    return "networking.extraHosts =\n''\n" + extra_hosts + "\n'';"
+
+
+def _show_linux_hosts_read_only_dialog(details: dict):
+    """Show Nix/NixOS guidance when /etc/hosts cannot be edited at runtime."""
+    nix_snippet = _linux_hosts_nix_snippet(details)
     raw_error = str(details.get('error') or '').strip()
     hosts_path = str(details.get('hosts_path') or '/etc/hosts')
 
