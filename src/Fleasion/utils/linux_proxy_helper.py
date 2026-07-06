@@ -35,6 +35,7 @@ SYSTEM_CA_DIRS = (
     Path('/etc/pki/ca-trust/source/anchors'),
 )
 _last_start_error_details: dict = {}
+_force_source_helper_for_session = False
 
 
 def _host_subprocess_env() -> dict[str, str]:
@@ -107,6 +108,15 @@ def _is_trusted_installed_helper(path: Path = INSTALLED_HELPER_PATH) -> bool:
     )
 
 
+def _error_text_is_read_only_filesystem(error: object) -> bool:
+    text = str(error or '').lower()
+    return (
+        'read-only file system' in text
+        or 'errno 30' in text
+        or 'os error 30' in text
+    )
+
+
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open('rb') as fh:
@@ -166,14 +176,9 @@ def _installed_policy_is_current() -> bool:
 
 def _helper_command() -> list[str]:
     """Return a Python-free helper command for frozen builds when possible."""
-    if _is_trusted_installed_helper():
+    if not _force_source_helper_for_session and _is_trusted_installed_helper():
         return [str(INSTALLED_HELPER_PATH)]
-    helper_path = _source_helper_path()
-    if helper_path.name == HELPER_BUNDLED_EXECUTABLE_NAME:
-        return [str(helper_path)]
-    if getattr(sys, 'frozen', False):
-        return [sys.executable, '--linux-proxy-helper']
-    return [sys.executable, str(helper_path)]
+    return _source_helper_command()
 
 
 def _source_helper_command() -> list[str]:
@@ -278,10 +283,12 @@ def install_privileged_helper(*, enable_promptless: bool = False, timeout: float
 
 def ensure_privileged_helper_installed(*, enable_promptless: bool = True) -> bool:
     """Ensure runtime launches use Fleasion's installed Polkit action."""
+    global _force_source_helper_for_session
     trusted_helper = _is_trusted_installed_helper()
     current_policy = _installed_policy_is_current()
     current_metadata = _installed_helper_metadata_is_current()
     if trusted_helper and current_policy and current_metadata:
+        _force_source_helper_for_session = False
         return True
 
     if trusted_helper and current_policy and not current_metadata:
@@ -290,10 +297,18 @@ def ensure_privileged_helper_installed(*, enable_promptless: bool = True) -> boo
         log_buffer.log('ProxyHelper', 'Installing Fleasion Linux privileged helper for persistent proxy permissions')
     details = install_privileged_helper(enable_promptless=enable_promptless)
     if not details.get('ok'):
+        error = details.get('error') or details
         log_buffer.log(
             'ProxyHelper',
-            f'Linux privileged helper install failed: {details.get("error") or details}',
+            f'Linux privileged helper install failed: {error}',
         )
+        if _error_text_is_read_only_filesystem(error):
+            _force_source_helper_for_session = True
+            log_buffer.log(
+                'ProxyHelper',
+                'Persistent Linux helper install path is read-only; using the current helper directly for this session',
+            )
+            return True
         return False
 
     if not _is_trusted_installed_helper():
@@ -312,6 +327,7 @@ def ensure_privileged_helper_installed(*, enable_promptless: bool = True) -> boo
         log_buffer.log('ProxyHelper', 'Updated Fleasion proxy helper for this app build')
     else:
         log_buffer.log('ProxyHelper', 'Installed Fleasion proxy helper Polkit action')
+    _force_source_helper_for_session = False
     return True
 
 

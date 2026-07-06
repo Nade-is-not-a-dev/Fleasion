@@ -217,6 +217,41 @@ def test_start_helper_updates_stale_installed_helper_before_launch(monkeypatch, 
     assert commands[0][1] == str(linux_proxy_helper.INSTALLED_HELPER_PATH)
 
 
+def test_start_helper_uses_source_helper_when_persistent_install_path_is_read_only(monkeypatch, tmp_path):
+    commands = []
+
+    class Process:
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(linux_proxy_helper, '_force_source_helper_for_session', False)
+    monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_READY_FILE', tmp_path / 'ready.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_STOP_FILE', tmp_path / 'stop')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_HOSTS_FILE', tmp_path / 'hosts.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_LOG_FILE', tmp_path / 'helper.log')
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else None)
+    monkeypatch.setattr(linux_proxy_helper, '_is_trusted_installed_helper', lambda: False)
+    monkeypatch.setattr(linux_proxy_helper, '_installed_policy_is_current', lambda: False)
+    monkeypatch.setattr(linux_proxy_helper, '_installed_helper_metadata_is_current', lambda: False)
+    monkeypatch.setattr(
+        linux_proxy_helper,
+        'install_privileged_helper',
+        lambda **_kwargs: {
+            'ok': False,
+            'error': "[Errno 30] Read-only file system: '/usr/local/libexec/fleasion-linux-proxy-helper'",
+        },
+    )
+    monkeypatch.setattr(linux_proxy_helper, '_source_helper_command', lambda: ['/current/fleasion-helper'])
+    monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
+    monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda cmd, **_kwargs: commands.append(cmd) or Process())
+    monkeypatch.setattr(linux_proxy_helper, '_read_ready', lambda: {'ok': True})
+
+    assert linux_proxy_helper.start_helper({'gamejoin.roblox.com'}, timeout=1.0) is True
+
+    assert commands[0][:2] == ['/usr/bin/pkexec', '/current/fleasion-helper']
+
+
 def test_start_helper_records_read_only_hosts_ready_failure(monkeypatch, tmp_path):
     class Process:
         def poll(self):

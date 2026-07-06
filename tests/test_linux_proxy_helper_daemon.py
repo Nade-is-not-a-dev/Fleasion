@@ -201,6 +201,51 @@ def test_read_hosts_update_accepts_allowlisted_hosts(tmp_path):
     assert daemon._read_hosts_update(hosts_file) == {'apis.roblox.com', 'gamejoin.roblox.com'}
 
 
+def test_apply_hosts_continues_when_read_only_hosts_already_has_entries(tmp_path, monkeypatch):
+    hosts_file = tmp_path / 'hosts'
+    hosts_file.write_text(
+        '127.0.0.1 assetdelivery.roblox.com\n'
+        '127.0.0.1 gamejoin.roblox.com\n',
+        encoding='utf-8',
+    )
+
+    def fail_apply(_hosts):
+        raise OSError(errno.EROFS, 'Read-only file system', str(hosts_file))
+
+    monkeypatch.setattr(daemon, 'HOSTS_FILE', hosts_file)
+    monkeypatch.setattr(daemon, '_clear_hosts', lambda: None)
+    monkeypatch.setattr(daemon, '_install_boot_guard', lambda: False)
+    monkeypatch.setattr(daemon, '_apply_hosts', fail_apply)
+
+    assert daemon._apply_hosts_or_use_existing_read_only({
+        'assetdelivery.roblox.com',
+        'gamejoin.roblox.com',
+    }) is True
+
+
+def test_apply_hosts_raises_when_read_only_hosts_is_missing_entries(tmp_path, monkeypatch):
+    hosts_file = tmp_path / 'hosts'
+    hosts_file.write_text('127.0.0.1 assetdelivery.roblox.com\n', encoding='utf-8')
+
+    def fail_apply(_hosts):
+        raise OSError(errno.EROFS, 'Read-only file system', str(hosts_file))
+
+    monkeypatch.setattr(daemon, 'HOSTS_FILE', hosts_file)
+    monkeypatch.setattr(daemon, '_clear_hosts', lambda: None)
+    monkeypatch.setattr(daemon, '_install_boot_guard', lambda: False)
+    monkeypatch.setattr(daemon, '_apply_hosts', fail_apply)
+
+    try:
+        daemon._apply_hosts_or_use_existing_read_only({
+            'assetdelivery.roblox.com',
+            'gamejoin.roblox.com',
+        })
+    except OSError as exc:
+        assert exc.errno == errno.EROFS
+    else:
+        raise AssertionError('expected read-only hosts failure when mappings are missing')
+
+
 def test_host_failure_payload_marks_read_only_hosts_error(monkeypatch):
     args = SimpleNamespace(hosts='gamejoin.roblox.com,assetdelivery.roblox.com')
     error = OSError(errno.EROFS, 'Read-only file system', '/etc/hosts')

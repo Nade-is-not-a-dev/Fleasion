@@ -406,6 +406,31 @@ def _clean_hosts_content(content: str) -> str:
     )
 
 
+def _hosts_content_has_loopback_entries(content: str, hosts: set[str]) -> bool:
+    required = {host.strip().lower() for host in hosts if host.strip()}
+    found: set[str] = set()
+    for raw_line in content.splitlines():
+        active = raw_line.split('#', 1)[0].strip()
+        if not active:
+            continue
+        parts = active.split()
+        if len(parts) < 2 or parts[0] != '127.0.0.1':
+            continue
+        for hostname in parts[1:]:
+            host = hostname.strip().lower()
+            if host in required:
+                found.add(host)
+    return required <= found
+
+
+def _hosts_file_has_loopback_entries(hosts: set[str]) -> bool:
+    try:
+        content = HOSTS_FILE.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return False
+    return _hosts_content_has_loopback_entries(content, hosts)
+
+
 def _write_hosts(content: str) -> None:
     HOSTS_FILE.write_text(content, encoding='utf-8')
 
@@ -584,6 +609,23 @@ def _apply_hosts(hosts: set[str]) -> None:
     entries = '\n'.join(f'127.0.0.1 {host} {HOSTS_MARKER}' for host in sorted(hosts))
     new_content = f'{cleaned}\n{entries}\n' if cleaned else f'{entries}\n'
     _write_hosts(new_content)
+
+
+def _apply_hosts_or_use_existing_read_only(hosts: set[str]) -> bool:
+    """Apply hosts entries, or continue when an immutable hosts file already has them."""
+    try:
+        _clear_hosts()
+        _install_boot_guard()
+        _apply_hosts(hosts)
+        return False
+    except OSError as exc:
+        if _is_read_only_filesystem_error(exc) and _hosts_file_has_loopback_entries(hosts):
+            _log(
+                'System hosts file is read-only, but required Fleasion loopback entries '
+                'are already present; continuing without managing /etc/hosts'
+            )
+            return True
+        raise
 
 
 def _flush_dns() -> None:
@@ -841,11 +883,9 @@ async def _serve(args: argparse.Namespace) -> int:
     sockets = ', '.join(str(sock.getsockname()) for sock in (server.sockets or ()))
     _log(f'Listening on {sockets}; relaying to {args.backend_host}:{args.backend_port}')
 
-    _clear_hosts()
-    _install_boot_guard()
-    _apply_hosts(hosts)
+    read_only_hosts_mode = _apply_hosts_or_use_existing_read_only(hosts)
     _flush_dns()
-    ready_payload = {'ok': True, 'pid': os.getpid()}
+    ready_payload = {'ok': True, 'pid': os.getpid(), 'read_only_hosts_mode': read_only_hosts_mode}
     if system_ca_details is not None:
         ready_payload['system_ca'] = system_ca_details
     _safe_write_user_file(ready_file, json.dumps(ready_payload), owner_uid, owner_gid)
@@ -880,10 +920,10 @@ async def _serve(args: argparse.Namespace) -> int:
                                     f'install failed: {update_ca_details.get("error") or update_ca_details}'
                                 )
                             else:
-                                _clear_hosts()
-                                _apply_hosts(updated_hosts)
+                                update_read_only_hosts_mode = _apply_hosts_or_use_existing_read_only(updated_hosts)
                                 _flush_dns()
                                 current_hosts = set(updated_hosts)
+                                read_only_hosts_mode = update_read_only_hosts_mode
                                 _log(f'Applied live hosts update: {", ".join(sorted(current_hosts))}')
                 except FileNotFoundError:
                     pass
@@ -893,9 +933,11 @@ async def _serve(args: argparse.Namespace) -> int:
     finally:
         server.close()
         await server.wait_closed()
-        _clear_hosts()
+        if not read_only_hosts_mode:
+            _clear_hosts()
         _flush_dns()
-        _remove_boot_guard()
+        if not read_only_hosts_mode:
+            _remove_boot_guard()
         ready_file.unlink(missing_ok=True)
         stop_file.unlink(missing_ok=True)
         _log('Cleaned hosts entries and stopped')
