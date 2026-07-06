@@ -2647,7 +2647,7 @@ class ProxyMaster:
             hosts = set(BASE_INTERCEPT_HOSTS)
         spoofer = getattr(self, 'username_spoofer', None)
         spoofer_enabled = spoofer is not None and spoofer.is_enabled()
-        if spoofer_enabled and (self._roblox_player_running or _use_linux_privileged_helper()):
+        if spoofer_enabled:
             hosts.update(USERNAME_SPOOFER_INTERCEPT_HOSTS)
         return hosts
 

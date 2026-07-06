@@ -425,6 +425,20 @@ def test_linux_helper_intercepts_profile_api_when_spoofer_enabled(monkeypatch):
     )
 
 
+def test_spoofer_intercepts_profile_api_before_player_detected(monkeypatch):
+    monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: False)
+
+    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
+    proxy.config_manager = SimpleNamespace(settings={})
+    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: True)
+    proxy._roblox_player_running = False
+
+    assert proxy._desired_intercept_hosts() == (
+        set(proxy_master.BASE_INTERCEPT_HOSTS)
+        | set(proxy_master.USERNAME_SPOOFER_INTERCEPT_HOSTS)
+    )
+
+
 def test_linux_helper_preloads_profile_api_when_spoofer_enabled_before_sober(monkeypatch):
     monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
 
