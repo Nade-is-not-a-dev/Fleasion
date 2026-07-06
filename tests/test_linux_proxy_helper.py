@@ -128,6 +128,11 @@ def test_start_helper_passes_required_system_ca_flag(monkeypatch, tmp_path):
     monkeypatch.setattr(linux_proxy_helper, 'ensure_privileged_helper_installed', lambda **_kwargs: True)
     monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_is_current', lambda _path: True)
     monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_needs_install', lambda _path: False)
+    monkeypatch.setattr(
+        linux_proxy_helper,
+        '_install_ca_into_linux_system_store',
+        lambda _path: {'ok': True, 'stores': ['system-ca:already-current']},
+    )
     monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', fake_popen)
     monkeypatch.setattr(
         linux_proxy_helper,
@@ -149,6 +154,103 @@ def test_start_helper_passes_required_system_ca_flag(monkeypatch, tmp_path):
     assert '--parent-start-time' in commands[0]
     assert '12345' in commands[0]
     assert '--require-system-ca' in commands[0]
+
+
+def test_start_helper_does_not_reinstall_system_ca_when_current(monkeypatch, tmp_path):
+    commands = []
+    install_calls = []
+    ca = tmp_path / 'ca.crt'
+    ca.write_text('ca', encoding='utf-8')
+
+    class Process:
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_READY_FILE', tmp_path / 'ready.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_STOP_FILE', tmp_path / 'stop')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_HOSTS_FILE', tmp_path / 'hosts.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_LOG_FILE', tmp_path / 'helper.log')
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else None)
+    monkeypatch.setattr(linux_proxy_helper, '_helper_command', lambda: ['/opt/fleasion-helper'])
+    monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
+    monkeypatch.setattr(linux_proxy_helper, 'ensure_privileged_helper_installed', lambda **_kwargs: True)
+    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_is_current', lambda _path: True)
+    monkeypatch.setattr(
+        linux_proxy_helper,
+        '_install_ca_into_linux_system_store',
+        lambda _path: install_calls.append(_path) or {'ok': True},
+    )
+    monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda cmd, **_kwargs: commands.append(cmd) or Process())
+    monkeypatch.setattr(linux_proxy_helper, '_read_ready', lambda: {'ok': True, 'system_ca': {'ok': True}})
+
+    assert linux_proxy_helper.start_helper(
+        {'apis.roblox.com'},
+        ca_cert_path=ca,
+        require_system_ca=True,
+        timeout=1.0,
+    ) is True
+
+    assert install_calls == []
+    assert commands
+
+
+def test_start_helper_combines_helper_update_with_missing_system_ca(monkeypatch, tmp_path):
+    commands = []
+    installed = {'ok': False}
+    ca = tmp_path / 'ca.crt'
+    ca.write_text('ca', encoding='utf-8')
+
+    class Process:
+        def poll(self):
+            return None
+
+    def fake_install(**kwargs):
+        installed['ok'] = True
+        installed['kwargs'] = kwargs
+        return {
+            'ok': True,
+            'helper': str(linux_proxy_helper.INSTALLED_HELPER_PATH),
+            'promptless_rule': None,
+            'system_ca': {'ok': True, 'stores': ['update-ca-certificates']},
+        }
+
+    monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_READY_FILE', tmp_path / 'ready.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_STOP_FILE', tmp_path / 'stop')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_HOSTS_FILE', tmp_path / 'hosts.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_LOG_FILE', tmp_path / 'helper.log')
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else None)
+    monkeypatch.setattr(linux_proxy_helper, '_is_trusted_installed_helper', lambda: installed['ok'])
+    monkeypatch.setattr(linux_proxy_helper, '_installed_policy_is_current', lambda: installed['ok'])
+    monkeypatch.setattr(linux_proxy_helper, '_installed_helper_metadata_is_current', lambda: installed['ok'])
+    monkeypatch.setattr(linux_proxy_helper, '_persistent_helper_install_path_is_read_only', lambda: False)
+    monkeypatch.setattr(linux_proxy_helper, 'install_privileged_helper', fake_install)
+    monkeypatch.setattr(
+        linux_proxy_helper,
+        '_install_ca_into_linux_system_store',
+        lambda _path: (_ for _ in ()).throw(AssertionError('separate system CA prompt should not run')),
+    )
+    monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
+    monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda cmd, **_kwargs: commands.append(cmd) or Process())
+    monkeypatch.setattr(linux_proxy_helper, '_read_ready', lambda: {'ok': True, 'system_ca': {'ok': True}})
+
+    def current_after_helper(_path):
+        if installed['ok']:
+            return True
+        return False
+
+    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_is_current', current_after_helper)
+
+    assert linux_proxy_helper.start_helper(
+        {'apis.roblox.com'},
+        ca_cert_path=ca,
+        require_system_ca=True,
+        timeout=1.0,
+    ) is True
+
+    assert installed['kwargs'] == {'enable_promptless': True, 'ca_cert_path': ca}
+    assert commands[0][1] == str(linux_proxy_helper.INSTALLED_HELPER_PATH)
 
 
 def test_start_helper_installs_persistent_helper_before_launch(monkeypatch, tmp_path):
@@ -357,7 +459,7 @@ def test_install_ca_into_nss_db_replaces_then_adds(monkeypatch, tmp_path):
         tmp_path / 'ca.crt',
     )
 
-    assert result == {'db': str(tmp_path / 'nssdb'), 'ok': True}
+    assert result == {'db': str(tmp_path / 'nssdb'), 'ok': True, 'status': 'installed'}
     assert calls[0][0][:5] == [
         '/usr/bin/certutil',
         '-D',
@@ -376,6 +478,43 @@ def test_install_ca_into_nss_db_replaces_then_adds(monkeypatch, tmp_path):
         'C,,',
         '-i',
         str(tmp_path / 'ca.crt'),
+    ]
+
+
+def test_install_ca_into_nss_db_skips_when_already_current(monkeypatch, tmp_path):
+    calls = []
+    ca = tmp_path / 'ca.crt'
+    ca.write_text(
+        '-----BEGIN CERTIFICATE-----\ncurrent\n-----END CERTIFICATE-----\n',
+        encoding='utf-8',
+    )
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+
+        class Result:
+            returncode = 0
+            stdout = '-----BEGIN CERTIFICATE-----\ncurrent\n-----END CERTIFICATE-----\n'
+            stderr = ''
+
+        return Result()
+
+    monkeypatch.setattr(linux_proxy_helper.subprocess, 'run', fake_run)
+
+    result = linux_proxy_helper._install_ca_into_nss_db(
+        '/usr/bin/certutil',
+        tmp_path / 'nssdb',
+        ca,
+    )
+
+    assert result == {'db': str(tmp_path / 'nssdb'), 'ok': True, 'status': 'already_current'}
+    assert len(calls) == 1
+    assert calls[0][0][:5] == [
+        '/usr/bin/certutil',
+        '-L',
+        '-d',
+        f'sql:{tmp_path / "nssdb"}',
+        '-n',
     ]
 
 

@@ -1,10 +1,51 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 import errno
 import json
 import subprocess
 from types import SimpleNamespace
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
+
 from Fleasion import linux_proxy_helper_daemon as daemon
+
+
+def _make_ca_pem(common_name='Fleasion Proxy CA', organization='Fleasion', *, is_ca=True, can_sign=True) -> bytes:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, organization),
+        x509.NameAttribute(NameOID.COMMON_NAME, common_name),
+    ])
+    now = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=1))
+        .not_valid_after(now + timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=is_ca, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=can_sign,
+                crl_sign=can_sign,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .sign(key, hashes.SHA256())
+    )
+    return cert.public_bytes(serialization.Encoding.PEM)
 
 
 def test_host_subprocess_env_restores_pyinstaller_original_library_path(monkeypatch, tmp_path):
@@ -146,7 +187,63 @@ def test_install_privileged_helper_writes_current_metadata(tmp_path, monkeypatch
     }
 
 
-def test_install_system_ca_skips_update_when_target_is_current(tmp_path, monkeypatch):
+def test_install_privileged_helper_can_install_system_ca_in_same_prompt(tmp_path, monkeypatch):
+    source = tmp_path / 'linux_proxy_helper_daemon.py'
+    source.write_text('print("helper")\n', encoding='utf-8')
+    ca = tmp_path / 'home' / '.config' / daemon.CONFIG_DIR_NAME / 'proxy_ca' / 'ca.crt'
+    ca.parent.mkdir(parents=True)
+    ca.write_text('ca', encoding='utf-8')
+    install_root = tmp_path / 'usr' / 'local' / 'libexec'
+    policy_root = tmp_path / 'polkit'
+    legacy_policy_root = tmp_path / 'legacy-polkit'
+
+    monkeypatch.setattr(daemon, 'INSTALLED_HELPER_PATH', install_root / 'fleasion-linux-proxy-helper')
+    monkeypatch.setattr(daemon, 'INSTALLED_HELPER_SCRIPT_PATH', install_root / 'fleasion-linux-proxy-helper.py')
+    monkeypatch.setattr(daemon, 'INSTALLED_HELPER_METADATA_PATH', install_root / 'fleasion-linux-proxy-helper.metadata.json')
+    monkeypatch.setattr(daemon, 'POLKIT_POLICY_PATH', policy_root / 'com.fleasion.proxy-helper.policy')
+    monkeypatch.setattr(daemon, 'LEGACY_POLKIT_POLICY_PATH', legacy_policy_root / 'com.fleasion.proxy-helper.policy')
+    monkeypatch.setattr(daemon.os, 'chown', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(daemon, '_validate_install_system_ca_args', lambda value: ca if value == str(ca) else None)
+    monkeypatch.setattr(daemon, '_install_system_ca', lambda path: {'ok': path == ca, 'stores': ['update-ca-certificates']})
+
+    details = daemon._install_privileged_helper(str(source), ca_cert=str(ca))
+
+    assert details['ok'] is True
+    assert details['system_ca'] == {'ok': True, 'stores': ['update-ca-certificates']}
+
+
+def test_validate_fleasion_ca_certificate_accepts_fleasion_ca(tmp_path):
+    ca = tmp_path / 'ca.crt'
+    ca.write_bytes(_make_ca_pem())
+
+    daemon._validate_fleasion_ca_certificate(ca)
+
+
+def test_validate_fleasion_ca_certificate_rejects_non_fleasion_subject(tmp_path):
+    ca = tmp_path / 'ca.crt'
+    ca.write_bytes(_make_ca_pem(common_name='Other CA', organization='Other'))
+
+    try:
+        daemon._validate_fleasion_ca_certificate(ca)
+    except RuntimeError as exc:
+        assert 'not Fleasion Proxy CA' in str(exc)
+    else:
+        raise AssertionError('expected non-Fleasion CA rejection')
+
+
+def test_validate_fleasion_ca_certificate_rejects_non_ca(tmp_path):
+    ca = tmp_path / 'ca.crt'
+    ca.write_bytes(_make_ca_pem(is_ca=False))
+
+    try:
+        daemon._validate_fleasion_ca_certificate(ca)
+    except RuntimeError as exc:
+        assert 'not marked as a certificate authority' in str(exc)
+    else:
+        raise AssertionError('expected non-CA rejection')
+
+
+def test_install_system_ca_refreshes_trust_when_target_is_current(tmp_path, monkeypatch):
     ca = tmp_path / 'ca.crt'
     ca.write_bytes(b'current')
     ca_dir = tmp_path / 'ca-certificates'
@@ -179,7 +276,7 @@ def test_install_system_ca_skips_update_when_target_is_current(tmp_path, monkeyp
         'stores': ['update-ca-certificates:already-current'],
         'failures': [],
     }
-    assert calls == []
+    assert calls == [['/usr/sbin/update-ca-certificates']]
 
 
 def test_read_hosts_update_rejects_non_allowlisted_hosts(tmp_path):

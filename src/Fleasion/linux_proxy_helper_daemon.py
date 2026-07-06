@@ -171,6 +171,7 @@ def _install_privileged_helper(
     *,
     enable_promptless: bool = False,
     source_helper_needs_dispatch_flag: bool = False,
+    ca_cert: str | None = None,
 ) -> dict:
     source = Path(source_helper or '').resolve(strict=False)
     if not source.is_file() or source.is_symlink():
@@ -205,7 +206,7 @@ def _install_privileged_helper(
             0o644,
         )
 
-        return {
+        details = {
             'ok': True,
             'helper': str(INSTALLED_HELPER_PATH),
             'helper_metadata': metadata,
@@ -213,6 +214,17 @@ def _install_privileged_helper(
             'legacy_policy': str(LEGACY_POLKIT_POLICY_PATH),
             'promptless_rule': None,
         }
+        if ca_cert:
+            try:
+                ca_path = _validate_install_system_ca_args(ca_cert)
+                system_ca = _install_system_ca(ca_path)
+            except Exception as exc:
+                system_ca = {'ok': False, 'error': str(exc)}
+            details['system_ca'] = system_ca
+            if not system_ca.get('ok'):
+                details['ok'] = False
+                details['error'] = system_ca.get('error') or system_ca
+        return details
     except Exception as exc:
         return {'ok': False, 'error': str(exc)}
 
@@ -363,6 +375,7 @@ def _validate_install_system_ca_args(ca_cert: str | None) -> Path:
     invoking_uid = _pkexec_uid()
     if invoking_uid is None:
         _reject_symlink(ca_path, 'CA certificate')
+        _validate_fleasion_ca_certificate(ca_path)
         return ca_path
 
     try:
@@ -377,7 +390,43 @@ def _validate_install_system_ca_args(ca_cert: str | None) -> Path:
     ):
         raise RuntimeError('CA certificate must be the invoking user Fleasion proxy CA')
     _reject_symlink(ca_path, 'CA certificate')
+    _validate_fleasion_ca_certificate(ca_path)
     return ca_path
+
+
+def _validate_fleasion_ca_certificate(ca_path: Path) -> None:
+    """Reject non-Fleasion CA material before installing system trust."""
+    try:
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+    except Exception as exc:
+        raise RuntimeError(f'could not load certificate validator: {exc}') from exc
+
+    try:
+        cert = x509.load_pem_x509_certificate(ca_path.read_bytes())
+    except Exception as exc:
+        raise RuntimeError(f'CA certificate is not a valid PEM certificate: {exc}') from exc
+
+    cn_attrs = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+    org_attrs = cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)
+    common_name = cn_attrs[0].value if cn_attrs else ''
+    organization = org_attrs[0].value if org_attrs else ''
+    if cert.subject != cert.issuer or common_name != 'Fleasion Proxy CA' or organization != 'Fleasion':
+        raise RuntimeError('CA certificate is not Fleasion Proxy CA')
+
+    try:
+        basic_constraints = cert.extensions.get_extension_for_class(x509.BasicConstraints).value
+    except x509.ExtensionNotFound as exc:
+        raise RuntimeError('CA certificate is missing basic constraints') from exc
+    if not basic_constraints.ca:
+        raise RuntimeError('CA certificate is not marked as a certificate authority')
+
+    try:
+        key_usage = cert.extensions.get_extension_for_class(x509.KeyUsage).value
+    except x509.ExtensionNotFound as exc:
+        raise RuntimeError('CA certificate is missing key usage') from exc
+    if not key_usage.key_cert_sign:
+        raise RuntimeError('CA certificate is not allowed to sign certificates')
 
 
 def _validate_hosts(hosts: set[str]) -> set[str]:
@@ -687,15 +736,15 @@ def _install_system_ca(ca_cert: Path) -> dict:
     if update_ca_certificates and SYSTEM_CA_DIRS[0].is_dir():
         target = SYSTEM_CA_DIRS[0] / SYSTEM_CA_NAME
         try:
-            if _target_has_ca(ca_cert, target):
-                stores.append('update-ca-certificates:already-current')
-                ok, err = True, ''
-            else:
+            already_current = _target_has_ca(ca_cert, target)
+            if not already_current:
                 _copy_ca(ca_cert, target)
-                ok, err = _run_trust_update([update_ca_certificates])
+            ok, err = _run_trust_update([update_ca_certificates])
             if ok:
-                if not stores or stores[-1] != 'update-ca-certificates:already-current':
-                    stores.append('update-ca-certificates')
+                stores.append(
+                    'update-ca-certificates:already-current'
+                    if already_current else 'update-ca-certificates'
+                )
             else:
                 failures.append({'store': 'update-ca-certificates', 'error': err})
         except Exception as exc:
@@ -704,15 +753,15 @@ def _install_system_ca(ca_cert: Path) -> dict:
     if update_ca_trust and SYSTEM_CA_DIRS[1].is_dir():
         target = SYSTEM_CA_DIRS[1] / SYSTEM_CA_NAME
         try:
-            if _target_has_ca(ca_cert, target):
-                stores.append('update-ca-trust:already-current')
-                ok, err = True, ''
-            else:
+            already_current = _target_has_ca(ca_cert, target)
+            if not already_current:
                 _copy_ca(ca_cert, target)
-                ok, err = _run_trust_update([update_ca_trust, 'extract'])
+            ok, err = _run_trust_update([update_ca_trust, 'extract'])
             if ok:
-                if not stores or stores[-1] != 'update-ca-trust:already-current':
-                    stores.append('update-ca-trust')
+                stores.append(
+                    'update-ca-trust:already-current'
+                    if already_current else 'update-ca-trust'
+                )
             else:
                 failures.append({'store': 'update-ca-trust', 'error': err})
         except Exception as exc:
@@ -977,6 +1026,7 @@ def main() -> None:
             args.source_helper,
             enable_promptless=args.enable_promptless,
             source_helper_needs_dispatch_flag=args.source_helper_needs_dispatch_flag,
+            ca_cert=args.ca_cert,
         )
         print(json.dumps(details), flush=True)
         raise SystemExit(0 if details.get('ok') else 1)

@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -36,6 +37,10 @@ SYSTEM_CA_DIRS = (
 )
 _last_start_error_details: dict = {}
 _force_source_helper_for_session = False
+_PEM_CERT_BLOCK_RE = re.compile(
+    r'-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----',
+    re.DOTALL,
+)
 
 
 def _host_subprocess_env() -> dict[str, str]:
@@ -257,7 +262,12 @@ def update_helper_hosts(hosts: set[str]) -> bool:
         return False
 
 
-def install_privileged_helper(*, enable_promptless: bool = False, timeout: float = 120.0) -> dict:
+def install_privileged_helper(
+    *,
+    enable_promptless: bool = False,
+    timeout: float = 120.0,
+    ca_cert_path: Path | None = None,
+) -> dict:
     """Install the root-owned helper and Polkit policy with one admin approval."""
     pkexec = shutil.which('pkexec')
     if not pkexec:
@@ -275,6 +285,8 @@ def install_privileged_helper(*, enable_promptless: bool = False, timeout: float
         cmd.append('--source-helper-needs-dispatch-flag')
     if enable_promptless:
         cmd.append('--enable-promptless')
+    if ca_cert_path is not None:
+        cmd.extend(['--ca-cert', str(ca_cert_path)])
 
     try:
         result = _run_host_command(
@@ -299,7 +311,11 @@ def install_privileged_helper(*, enable_promptless: bool = False, timeout: float
     return details
 
 
-def ensure_privileged_helper_installed(*, enable_promptless: bool = True) -> bool:
+def ensure_privileged_helper_installed(
+    *,
+    enable_promptless: bool = True,
+    ca_cert_path: Path | None = None,
+) -> bool:
     """Ensure runtime launches use Fleasion's installed Polkit action."""
     global _force_source_helper_for_session
     trusted_helper = _is_trusted_installed_helper()
@@ -321,7 +337,10 @@ def ensure_privileged_helper_installed(*, enable_promptless: bool = True) -> boo
         log_buffer.log('ProxyHelper', 'Updating Fleasion Linux privileged helper to match this app build')
     else:
         log_buffer.log('ProxyHelper', 'Installing Fleasion Linux privileged helper for persistent proxy permissions')
-    details = install_privileged_helper(enable_promptless=enable_promptless)
+    install_kwargs = {'enable_promptless': enable_promptless}
+    if ca_cert_path is not None:
+        install_kwargs['ca_cert_path'] = ca_cert_path
+    details = install_privileged_helper(**install_kwargs)
     if not details.get('ok'):
         error = details.get('error') or details
         log_buffer.log(
@@ -346,6 +365,21 @@ def ensure_privileged_helper_installed(*, enable_promptless: bool = True) -> boo
     if not _installed_helper_metadata_is_current():
         log_buffer.log('ProxyHelper', 'Linux privileged helper install finished but helper metadata was not current')
         return False
+
+    system_ca = details.get('system_ca') if isinstance(details.get('system_ca'), dict) else None
+    if system_ca and system_ca.get('ok'):
+        stores = ', '.join(system_ca.get('stores') or [])
+        store_names = system_ca.get('stores') or []
+        if store_names and all(str(store).endswith(':already-current') for store in store_names):
+            log_buffer.log(
+                'Certificate',
+                f'CA already trusted in Linux system/WebView trust store during helper install{f" ({stores})" if stores else ""}',
+            )
+        else:
+            log_buffer.log(
+                'Certificate',
+                f'Installed CA into Linux system/WebView trust store during helper install{f" ({stores})" if stores else ""}',
+            )
 
     if details.get('promptless_rule'):
         log_buffer.log('ProxyHelper', 'Installed promptless Polkit rule for Fleasion proxy helper')
@@ -377,10 +411,19 @@ def start_helper(
         _set_last_start_error(error=error)
         log_buffer.log('ProxyHelper', f'Linux proxy helper failed: {error}')
         return False
-    if not ensure_privileged_helper_installed(enable_promptless=True):
+    needs_system_ca_install = (
+        require_system_ca
+        and ca_cert_path is not None
+        and not linux_system_ca_is_current(ca_cert_path)
+    )
+    helper_install_ca = ca_cert_path if needs_system_ca_install else None
+    if not ensure_privileged_helper_installed(
+        enable_promptless=True,
+        ca_cert_path=helper_install_ca,
+    ):
         _set_last_start_error(error='privileged helper install failed')
         return False
-    if require_system_ca and ca_cert_path is not None and not linux_system_ca_is_current(ca_cert_path):
+    if needs_system_ca_install and ca_cert_path is not None and not linux_system_ca_is_current(ca_cert_path):
         details = _install_ca_into_linux_system_store(ca_cert_path)
         if not details.get('ok'):
             _set_last_start_error(details, error=f'system CA trust could not be installed: {details.get("error") or details}')
@@ -571,8 +614,47 @@ def _ensure_shared_nss_db(home: Path) -> Path | None:
     return None
 
 
+def _normalize_pem_for_compare(text: str) -> str:
+    blocks = _PEM_CERT_BLOCK_RE.findall(text.replace('\r\n', '\n').replace('\r', '\n'))
+    if blocks:
+        return '\n'.join(block.strip() for block in blocks) + '\n'
+    return text.strip() + '\n'
+
+
+def _nss_db_fleasion_ca_status(certutil: str, db_dir: Path, ca_cert_path: Path) -> str:
+    """Return missing/current/stale for Fleasion's CA nickname in an NSS DB."""
+    try:
+        ca_pem = _normalize_pem_for_compare(ca_cert_path.read_text(encoding='utf-8'))
+        result = _run_host_command(
+            [
+                certutil,
+                '-L',
+                '-d',
+                f'sql:{db_dir}',
+                '-n',
+                NSS_CERT_NICKNAME,
+                '-a',
+            ],
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=10,
+        )
+    except Exception:
+        return 'missing'
+    if result.returncode != 0:
+        return 'missing'
+    stored_pem = _normalize_pem_for_compare(result.stdout or '')
+    return 'current' if stored_pem == ca_pem else 'stale'
+
+
 def _install_ca_into_nss_db(certutil: str, db_dir: Path, ca_cert_path: Path) -> dict:
     db_arg = f'sql:{db_dir}'
+    status = _nss_db_fleasion_ca_status(certutil, db_dir, ca_cert_path)
+    if status == 'current':
+        return {'db': str(db_dir), 'ok': True, 'status': 'already_current'}
+
     _run_host_command(
         [certutil, '-D', '-d', db_arg, '-n', NSS_CERT_NICKNAME],
         capture_output=True,
@@ -602,7 +684,11 @@ def _install_ca_into_nss_db(certutil: str, db_dir: Path, ca_cert_path: Path) -> 
         return {'db': str(db_dir), 'ok': False, 'error': str(exc)}
 
     if result.returncode == 0:
-        return {'db': str(db_dir), 'ok': True}
+        return {
+            'db': str(db_dir),
+            'ok': True,
+            'status': 'refreshed' if status == 'stale' else 'installed',
+        }
     err = (result.stderr or result.stdout or '').strip()
     return {'db': str(db_dir), 'ok': False, 'error': err or str(result.returncode)}
 
@@ -624,9 +710,16 @@ def _install_ca_into_browser_nss(ca_cert_path: Path) -> list[dict]:
 
     results = [_install_ca_into_nss_db(certutil, db, ca_cert_path) for db in sorted(dbs)]
     ok_count = sum(1 for item in results if item.get('ok'))
+    already_count = sum(1 for item in results if item.get('status') == 'already_current')
+    installed_count = sum(1 for item in results if item.get('status') == 'installed')
+    refreshed_count = sum(1 for item in results if item.get('status') == 'refreshed')
     fail_count = len(results) - ok_count
-    if ok_count:
-        log_buffer.log('Certificate', f'Installed CA into {format_count(ok_count, "Linux browser NSS database")}')
+    if already_count:
+        log_buffer.log('Certificate', f'CA already trusted in {format_count(already_count, "Linux browser NSS database")}')
+    if installed_count:
+        log_buffer.log('Certificate', f'Installed CA into {format_count(installed_count, "Linux browser NSS database")}')
+    if refreshed_count:
+        log_buffer.log('Certificate', f'Refreshed CA in {format_count(refreshed_count, "Linux browser NSS database")}')
     if fail_count:
         log_buffer.log('Certificate', f'Failed to install CA into {format_count(fail_count, "Linux browser NSS database")}')
         for item in results:
@@ -708,7 +801,11 @@ def _install_ca_into_linux_system_store(ca_cert_path: Path) -> dict:
     details.setdefault('ok', result.returncode == 0)
     if result.returncode == 0 and details.get('ok'):
         stores = ', '.join(details.get('stores') or [])
-        log_buffer.log('Certificate', f'Installed CA into Linux system trust store{f" ({stores})" if stores else ""}')
+        store_names = details.get('stores') or []
+        if store_names and all(str(store).endswith(':already-current') for store in store_names):
+            log_buffer.log('Certificate', f'CA already trusted in Linux system/WebView trust store{f" ({stores})" if stores else ""}')
+        else:
+            log_buffer.log('Certificate', f'Installed CA into Linux system/WebView trust store{f" ({stores})" if stores else ""}')
     else:
         err = details.get('error') or (result.stderr or output or str(result.returncode)).strip()
         log_buffer.log('Certificate', f'Failed to install CA into Linux system trust store: {err}')
@@ -716,7 +813,12 @@ def _install_ca_into_linux_system_store(ca_cert_path: Path) -> dict:
     return details
 
 
-def install_ca_into_linux_trust(ca_cert_path: Path, *, install_system: bool = True) -> dict:
+def install_ca_into_linux_trust(
+    ca_cert_path: Path,
+    *,
+    install_system: bool = True,
+    install_nss: bool = True,
+) -> dict:
     """Trust Fleasion's CA for Linux browsers and system TLS clients."""
     if not sys.platform.startswith('linux'):
         return {'ok': True, 'skipped': 'not_linux'}
@@ -725,9 +827,10 @@ def install_ca_into_linux_trust(ca_cert_path: Path, *, install_system: bool = Tr
         system = _install_ca_into_linux_system_store(ca_cert_path)
     elif install_system:
         system = {'ok': True, 'skipped': 'already_installed'}
+        log_buffer.log('Certificate', 'CA already trusted in Linux system/WebView trust store')
     else:
         system = {'ok': False, 'skipped': 'handled_by_privileged_helper'}
-    nss = _install_ca_into_browser_nss(ca_cert_path)
+    nss = _install_ca_into_browser_nss(ca_cert_path) if install_nss else []
     return {
         'ok': bool(system.get('ok')) or any(item.get('ok') for item in nss),
         'system': system,

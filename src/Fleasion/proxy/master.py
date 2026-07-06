@@ -908,6 +908,38 @@ def _use_linux_privileged_helper() -> bool:
     return IS_LINUX and not _is_admin()
 
 
+def _ensure_linux_webview_trust_for_hosts(hosts: set[str], ca_cert_path: Path) -> bool:
+    """Ensure Linux/Sober WebUI trust before intercepting WebView-visible hosts."""
+    if not IS_LINUX or not (set(hosts) & USERNAME_SPOOFER_INTERCEPT_HOSTS):
+        return True
+    if not ca_cert_path.is_file():
+        log_buffer.log(
+            'Certificate',
+            f'Linux system/WebView trust-store install failed: CA certificate not found: {ca_cert_path}',
+        )
+        return False
+
+    from ..utils.linux_proxy_helper import install_ca_into_linux_trust
+
+    details = install_ca_into_linux_trust(
+        ca_cert_path,
+        install_system=True,
+        install_nss=False,
+    )
+    system = details.get('system') if isinstance(details, dict) else None
+    if isinstance(system, dict) and system.get('ok'):
+        return True
+
+    error = None
+    if isinstance(system, dict):
+        error = system.get('error') or system
+    log_buffer.log(
+        'Certificate',
+        f'Linux system/WebView trust-store install failed for WebUI intercepts: {error or details}',
+    )
+    return False
+
+
 def _extract_exe_from_command(command: str) -> Optional[Path]:
     """Extract an executable path from a registry shell/open command string."""
     if not command:
@@ -2668,6 +2700,22 @@ class ProxyMaster:
                 self._active_intercept_hosts = set(desired_hosts)
                 return
 
+        if IS_LINUX and (desired_hosts & USERNAME_SPOOFER_INTERCEPT_HOSTS):
+            ca_cert_path = _current_proxy_ca_dir() / 'ca.crt'
+            if not _ensure_linux_webview_trust_for_hosts(desired_hosts, ca_cert_path):
+                log_buffer.log(
+                    'Hosts',
+                    'Skipped Linux WebUI intercept update because system/WebView trust is not ready',
+                )
+                return
+
+        with self._lock:
+            if desired_hosts == self._active_intercept_hosts:
+                return
+            if not self._hosts_installed or self._proxy is None:
+                self._active_intercept_hosts = set(desired_hosts)
+                return
+
             if _use_linux_privileged_helper():
                 from ..utils.linux_proxy_helper import update_helper_hosts
 
@@ -3144,6 +3192,13 @@ class ProxyMaster:
         # ── Start TLS proxy server ────────────────────────────────────────
         use_linux_helper = _use_linux_privileged_helper()
         listen_port = MACOS_PROXY_BACKEND_PORT if IS_MACOS or use_linux_helper else PROXY_PORT
+        if (
+            IS_LINUX
+            and not use_linux_helper
+            and not _ensure_linux_webview_trust_for_hosts(active_hosts, ca_cert_path)
+        ):
+            self._running = False
+            return
         self._proxy = FleasionProxy(
             texture_stripper=self._texture_stripper,
             cache_scraper=self.cache_scraper,

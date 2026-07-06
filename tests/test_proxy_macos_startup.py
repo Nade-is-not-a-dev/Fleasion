@@ -466,6 +466,7 @@ def test_linux_helper_refresh_requests_helper_update_without_direct_hosts_write(
     monkeypatch.setattr(proxy_master, "_add_hosts_entries", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("direct add should not run")))
     monkeypatch.setattr(proxy_master, "_remove_hosts_entries", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("direct remove should not run")))
     monkeypatch.setattr(proxy_master, "_resolve_real_endpoints", lambda hosts: {host: [] for host in hosts})
+    monkeypatch.setattr(proxy_master, "_ensure_linux_webview_trust_for_hosts", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
 
     import Fleasion.utils.linux_proxy_helper as linux_proxy_helper
@@ -489,6 +490,35 @@ def test_linux_helper_refresh_requests_helper_update_without_direct_hosts_write(
     assert endpoint_hosts == [expected]
     assert proxy._active_intercept_hosts == expected
     assert any("Requested Linux helper intercept update" in message for _category, message in logs)
+
+
+def test_linux_helper_refresh_skips_profile_api_when_webview_trust_fails(monkeypatch):
+    logs = []
+    helper_updates = []
+
+    monkeypatch.setattr(proxy_master, "IS_LINUX", True)
+    monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
+    monkeypatch.setattr(proxy_master, "_ensure_linux_webview_trust_for_hosts", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
+
+    import Fleasion.utils.linux_proxy_helper as linux_proxy_helper
+
+    monkeypatch.setattr(linux_proxy_helper, "update_helper_hosts", lambda hosts: helper_updates.append(set(hosts)) or True)
+
+    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
+    proxy.config_manager = SimpleNamespace(settings={})
+    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: True)
+    proxy._roblox_player_running = False
+    proxy._active_intercept_hosts = set(proxy_master.BASE_INTERCEPT_HOSTS)
+    proxy._hosts_installed = True
+    proxy._proxy = SimpleNamespace()
+    proxy._lock = threading.Lock()
+
+    proxy.refresh_username_spoofer_interception()
+
+    assert helper_updates == []
+    assert proxy._active_intercept_hosts == set(proxy_master.BASE_INTERCEPT_HOSTS)
+    assert any("system/WebView trust is not ready" in message for _category, message in logs)
 
 
 def test_macos_roblox_dir_discovery_excludes_studio_saved_dirs(tmp_path, monkeypatch):
