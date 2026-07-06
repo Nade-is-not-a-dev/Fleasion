@@ -4,8 +4,6 @@ import sys
 import os
 from pathlib import Path
 
-from platformdirs import user_config_dir
-
 # Application metadata
 APP_NAME = 'Fleasion'
 APP_VERSION = '2.2.1'
@@ -69,7 +67,10 @@ def _get_local_appdata() -> Path:
 def _get_config_dir() -> Path:
     """Return Fleasion's app configuration directory."""
     if sys.platform.startswith('linux'):
-        return Path(user_config_dir(APP_NAME))
+        xdg_config_home = os.environ.get('XDG_CONFIG_HOME')
+        if xdg_config_home:
+            return Path(os.path.expandvars(xdg_config_home)).expanduser() / APP_NAME
+        return USER_HOME / '.config' / APP_NAME
     return LOCAL_APPDATA / 'FleasionNT'
 
 

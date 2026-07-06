@@ -94,7 +94,10 @@ def test_set_roblosecurity_clears_read_only_before_write(tmp_path, monkeypatch):
     monkeypatch.setattr(
         roblox_auth,
         'win32crypt',
-        SimpleNamespace(CryptProtectData=lambda data, *_args: data),
+        SimpleNamespace(
+            CryptProtectData=lambda data, *_args: data,
+            CryptUnprotectData=lambda data, *_args: (None, data),
+        ),
     )
 
     assert roblox_auth.set_roblosecurity('new-cookie', cookie_path) is True

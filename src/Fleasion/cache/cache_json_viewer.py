@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 
 # Custom data role to flag leaf scalar items as word-wrap eligible (not preview/summary nodes)
 _WRAP_ROLE = Qt.ItemDataRole.UserRole + 1
+_DUPLICATE_COMBINE_LIMIT = 250
 
 
 class _WordWrapDelegate(QStyledItemDelegate):
@@ -150,35 +151,39 @@ class CacheJsonViewer(QWidget):
 
     def _populate_tree(self):
         """Populate the tree with JSON data."""
-        self.tree.clear()
-        self.node_values = {}
-        self.node_is_leaf = {}
-        self._lazy_arrays = {}
-        
-        if isinstance(self.data, (dict, list)):
-            items = (
-                self.data.items() if isinstance(self.data, dict) else enumerate(self.data)
-            )
-            if isinstance(self.data, dict):
-                # Find duplicate values for display combination
-                duplicate_map = self._get_duplicate_values_in_dict(self.data)
-                processed_keys = set()
-                for k, v in items:
-                    if k not in processed_keys:
-                        # Get all keys with same value (including this one)
-                        keys_with_same_value = self._find_keys_with_same_value(self.data, k, duplicate_map)
-                        # Mark all these keys as processed
-                        processed_keys.update(keys_with_same_value)
-                        # Create combined key display
-                        combined_key = '+'.join(keys_with_same_value)
-                        self._add_node(self.tree, combined_key, v)
+        self.tree.blockSignals(True)
+        self.tree.setUpdatesEnabled(False)
+        try:
+            self.tree.clear()
+            self.node_values = {}
+            self.node_is_leaf = {}
+            self._lazy_arrays = {}
+
+            if isinstance(self.data, (dict, list)):
+                items = (
+                    self.data.items() if isinstance(self.data, dict) else enumerate(self.data)
+                )
+                if isinstance(self.data, dict) and len(self.data) <= _DUPLICATE_COMBINE_LIMIT:
+                    # Duplicate combining is useful for small metadata objects, but
+                    # deep hashing every value in large JSON objects is expensive.
+                    duplicate_map = self._get_duplicate_values_in_dict(self.data)
+                    processed_keys = set()
+                    for k, v in items:
+                        if k not in processed_keys:
+                            keys_with_same_value = self._find_keys_with_same_value(self.data, k, duplicate_map)
+                            processed_keys.update(keys_with_same_value)
+                            combined_key = '+'.join(keys_with_same_value)
+                            self._add_node(self.tree, combined_key, v)
+                else:
+                    for k, v in items:
+                        self._add_node(
+                            self.tree, f'[{k}]' if isinstance(self.data, list) else k, v
+                        )
             else:
-                for k, v in items:
-                    self._add_node(
-                        self.tree, f'[{k}]' if isinstance(self.data, list) else k, v
-                    )
-        else:
-            self._add_node(self.tree, '', self.data)
+                self._add_node(self.tree, '', self.data)
+        finally:
+            self.tree.setUpdatesEnabled(True)
+            self.tree.blockSignals(False)
 
     def _get_duplicate_values_in_dict(self, obj: dict) -> dict:
         """Map values to list of keys that share that value. Only for hashable values."""
@@ -320,49 +325,54 @@ class CacheJsonViewer(QWidget):
     def _on_item_expanded(self, item):
         """Called when a tree item is expanded - load children for lazy-loaded arrays/dicts."""
         item_id = id(item)
-        
-        # Check if this is a lazy-loaded array
-        if item_id in self._lazy_arrays:
-            array_info = self._lazy_arrays[item_id]
-            
-            # Skip if already loaded
-            if array_info['loaded']:
-                return
-            
-            # Mark as loaded
-            array_info['loaded'] = True
-            array_data = array_info['array_data']
-            
-            # Remove placeholder
-            if item.childCount() > 0:
-                item.removeChild(item.child(0))
-            
-            # Add all array items
-            for idx, v in enumerate(array_data):
-                self._add_node(item, f'[{idx}]', v)
-        
-        # Check if this is a dict that needs children loaded
-        elif item_id in self.node_values and isinstance(self.node_values[item_id], dict):
-            # Remove placeholder if present
-            if item.childCount() == 1:
-                child_text = item.child(0).text(0)
-                if child_text == '(loading...)':
+        updates_enabled = self.tree.updatesEnabled()
+        self.tree.setUpdatesEnabled(False)
+        try:
+            # Check if this is a lazy-loaded array
+            if item_id in self._lazy_arrays:
+                array_info = self._lazy_arrays[item_id]
+
+                # Skip if already loaded
+                if array_info['loaded']:
+                    return
+
+                # Mark as loaded
+                array_info['loaded'] = True
+                array_data = array_info['array_data']
+
+                # Remove placeholder
+                if item.childCount() > 0:
                     item.removeChild(item.child(0))
-                    
-                    # Add actual dict children with duplicate value combining
-                    dict_obj = self.node_values[item_id]
-                    duplicate_map = self._get_duplicate_values_in_dict(dict_obj)
-                    processed_keys = set()
-                    
-                    for k, v in dict_obj.items():
-                        if k not in processed_keys:
-                            # Get all keys with same value
-                            keys_with_same_value = self._find_keys_with_same_value(dict_obj, k, duplicate_map)
-                            # Mark all these keys as processed
-                            processed_keys.update(keys_with_same_value)
-                            # Create combined key display
-                            combined_key = '+'.join(keys_with_same_value)
-                            self._add_node(item, combined_key, v)
+
+                # Add all array items
+                for idx, v in enumerate(array_data):
+                    self._add_node(item, f'[{idx}]', v)
+
+            # Check if this is a dict that needs children loaded
+            elif item_id in self.node_values and isinstance(self.node_values[item_id], dict):
+                # Remove placeholder if present
+                if item.childCount() == 1:
+                    child_text = item.child(0).text(0)
+                    if child_text == '(loading...)':
+                        item.removeChild(item.child(0))
+
+                        # Add actual dict children with duplicate value combining
+                        dict_obj = self.node_values[item_id]
+                        if len(dict_obj) <= _DUPLICATE_COMBINE_LIMIT:
+                            duplicate_map = self._get_duplicate_values_in_dict(dict_obj)
+                            processed_keys = set()
+
+                            for k, v in dict_obj.items():
+                                if k not in processed_keys:
+                                    keys_with_same_value = self._find_keys_with_same_value(dict_obj, k, duplicate_map)
+                                    processed_keys.update(keys_with_same_value)
+                                    combined_key = '+'.join(keys_with_same_value)
+                                    self._add_node(item, combined_key, v)
+                        else:
+                            for k, v in dict_obj.items():
+                                self._add_node(item, k, v)
+        finally:
+            self.tree.setUpdatesEnabled(updates_enabled)
 
     def _expand_all(self):
         """Expand all nodes in the tree."""
@@ -371,9 +381,13 @@ class CacheJsonViewer(QWidget):
             item.setExpanded(True)
             for i in range(item.childCount()):
                 expand_recursive(item.child(i))
-        
-        for i in range(self.tree.topLevelItemCount()):
-            expand_recursive(self.tree.topLevelItem(i))
+
+        self.tree.setUpdatesEnabled(False)
+        try:
+            for i in range(self.tree.topLevelItemCount()):
+                expand_recursive(self.tree.topLevelItem(i))
+        finally:
+            self.tree.setUpdatesEnabled(True)
 
     def _collapse_all(self):
         """Collapse all nodes in the tree."""
@@ -381,9 +395,13 @@ class CacheJsonViewer(QWidget):
             item.setExpanded(False)
             for i in range(item.childCount()):
                 collapse_recursive(item.child(i))
-        
-        for i in range(self.tree.topLevelItemCount()):
-            collapse_recursive(self.tree.topLevelItem(i))
+
+        self.tree.setUpdatesEnabled(False)
+        try:
+            for i in range(self.tree.topLevelItemCount()):
+                collapse_recursive(self.tree.topLevelItem(i))
+        finally:
+            self.tree.setUpdatesEnabled(True)
 
     def _on_search_text_changed(self, text: str):
         """Handle search text change."""

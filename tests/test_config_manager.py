@@ -138,6 +138,28 @@ class ConfigManagerEncodingTests(unittest.TestCase):
 
             self.assertEqual(manager.replacement_rules, [])
 
+    def test_cached_config_refreshes_after_file_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_manager_module = self._load_manager_for(Path(tmp))
+            configs_dir = Path(tmp) / 'FleasionNT' / 'configs'
+            configs_dir.mkdir(parents=True)
+            config_path = configs_dir / 'Default.json'
+            config_path.write_text(
+                json.dumps({'replacement_rules': [{'name': 'Old', 'replace_ids': ['1']}]}),
+                encoding='utf-8',
+            )
+
+            manager = config_manager_module.ConfigManager()
+            self.assertEqual(manager.replacement_rules[0]['name'], 'Old')
+
+            config_path.write_text(
+                json.dumps({'replacement_rules': [{'name': 'New', 'replace_ids': ['2', '3']}]}),
+                encoding='utf-8',
+            )
+
+            self.assertEqual(manager.replacement_rules[0]['name'], 'New')
+            self.assertEqual(manager.replacement_rules[0]['replace_ids'], ['2', '3'])
+
     def test_wire_preserving_passthrough_defaults_off_and_rejects_string_trueish_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_manager_module = self._load_manager_for(Path(tmp))

@@ -22,16 +22,100 @@ _FALLBACK_JSON_ENCODINGS = (
     'utf-32-be',
     'cp1252',
 )
+_ASSET_TYPE_IDS = {
+    'image': 1, 'tshirt': 2, 'audio': 3, 'mesh': 4, 'lua': 5,
+    'html': 6, 'text': 7, 'hat': 8, 'place': 9, 'model': 10,
+    'shirt': 11, 'pants': 12, 'decal': 13, 'avatar': 16, 'head': 17,
+    'face': 18, 'gear': 19, 'badge': 21, 'groupemblem': 22,
+    'animation': 24, 'arms': 25, 'legs': 26, 'torso': 27,
+    'rightarm': 28, 'leftarm': 29, 'leftleg': 30, 'rightleg': 31,
+    'package': 32, 'youtubevideo': 33, 'gamepass': 34, 'app': 35,
+    'code': 37, 'plugin': 38, 'solidmodel': 39, 'meshpart': 40,
+    'hairaccessory': 41, 'faceaccessory': 42, 'neckaccessory': 43,
+    'shoulderaccessory': 44, 'frontaccessory': 45, 'backaccessory': 46,
+    'waistaccessory': 47, 'climbanimation': 48, 'deathanimation': 49,
+    'fallanimation': 50, 'idleanimation': 51, 'jumpanimation': 52,
+    'runanimation': 53, 'swimanimation': 54, 'walkanimation': 55,
+    'poseanimation': 56, 'earaccessory': 57, 'eyeaccessory': 58,
+    'localizationtablemanifest': 59, 'emoteanimation': 61, 'video': 62,
+    'texturepack': 63, 'tshirtaccessory': 64, 'shirtaccessory': 65,
+    'pantsaccessory': 66, 'jacketaccessory': 67, 'sweateraccessory': 68,
+    'shortsaccessory': 69, 'leftshoeaccessory': 70, 'rightshoeaccessory': 71,
+    'dressskirtaccessory': 72, 'fontfamily': 73, 'fontface': 74,
+    'meshhiddensurfaceremoval': 75, 'eyebrowaccessory': 76,
+    'eyelashaccessory': 77, 'moodanimation': 78, 'dynamichead': 79,
+    'codesnippet': 80,
+}
+_VIRTUAL_ANIM_TYPES = {
+    'r6animation': 'R6Animation',
+    'r15animation': 'R15Animation',
+    'nonplayeranimation': 'NonPlayerAnimation',
+    'r6 animation': 'R6Animation',
+    'r15 animation': 'R15Animation',
+    'non-player animation': 'NonPlayerAnimation',
+}
+
+
+def _json_loads(raw: bytes | str) -> Any:
+    return json.loads(raw)
+
+
+def _write_json(path: Path, data: Any) -> None:
+    with path.open('w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
 
 
 class ConfigManager:
     """Manages application settings and replacement configurations."""
 
     def __init__(self):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._config_names_cache: list[str] | None = None
+        self._config_names_signature: tuple[tuple[str, int, int], ...] | None = None
+        self._config_data_cache: dict[str, tuple[tuple[int, int] | None, dict]] = {}
+        self._all_replacements_cache_signature: tuple | None = None
+        self._all_replacements_cache: tuple[dict[int | str, int], set[int | str], dict[int | str, str], dict[int | str, str]] | None = None
         self.settings = self._load_settings()
         self._ensure_default_config()
         self.reconcile_configs(save=False)
+
+    @staticmethod
+    def _file_signature(path: Path) -> tuple[int, int] | None:
+        try:
+            stat_result = path.stat()
+        except OSError:
+            return None
+        return stat_result.st_mtime_ns, stat_result.st_size
+
+    def _scan_config_files(self) -> tuple[list[str], tuple[tuple[str, int, int], ...]]:
+        CONFIGS_FOLDER.mkdir(parents=True, exist_ok=True)
+        entries: list[tuple[str, str, int, int]] = []
+        for path in CONFIGS_FOLDER.glob('*.json'):
+            try:
+                stat_result = path.stat()
+            except OSError:
+                continue
+            entries.append((path.stem, path.name, stat_result.st_mtime_ns, stat_result.st_size))
+        entries.sort(key=lambda item: item[0])
+        return [name for name, *_ in entries], tuple((filename, mtime, size) for _, filename, mtime, size in entries)
+
+    def _mark_replacements_dirty(self) -> None:
+        self._all_replacements_cache_signature = None
+        self._all_replacements_cache = None
+
+    def _refresh_config_names_cache(self) -> list[str]:
+        names, signature = self._scan_config_files()
+        if signature != self._config_names_signature:
+            live_names = set(names)
+            self._config_data_cache = {
+                name: cached
+                for name, cached in self._config_data_cache.items()
+                if name in live_names
+            }
+            self._config_names_cache = names
+            self._config_names_signature = signature
+            self._mark_replacements_dirty()
+        return list(self._config_names_cache or [])
 
     def _load_settings(self) -> dict:
         """Load settings from disk."""
@@ -65,24 +149,20 @@ class ConfigManager:
             config_path = CONFIGS_FOLDER / f'{name}.json'
             if not config_path.exists():
                 try:
-                    with Path(config_path).open('w', encoding='utf-8') as f:
-                        json.dump(data, f, indent=2)
+                    _write_json(Path(config_path), data)
                 except OSError:
                     pass
 
     def _ensure_default_config(self):
         """Ensure at least one default config exists."""
         if not self.config_names:
-            default_path = CONFIGS_FOLDER / 'Default.json'
-            with Path(default_path).open('w', encoding='utf-8') as f:
-                json.dump({'replacement_rules': []}, f, indent=2)
+            self._save_config('Default', {'replacement_rules': []})
 
     def _save_settings(self):
         """Save settings to disk."""
         with self._lock:
             CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-            with Path(CONFIG_FILE).open('w', encoding='utf-8') as f:
-                json.dump(self.settings, f, indent=2)
+            _write_json(Path(CONFIG_FILE), self.settings)
 
     def _get_config_path(self, name: str) -> Path:
         """Get the path for a config file."""
@@ -103,25 +183,31 @@ class ConfigManager:
         """Return legacy text encodings to try after strict JSON decoding fails."""
         preferred = locale.getpreferredencoding(False)
         encodings: list[str] = []
+        seen: set[str] = set()
         for encoding in (*_FALLBACK_JSON_ENCODINGS, preferred):
-            if encoding and encoding.lower() not in {e.lower() for e in encodings}:
+            normalized = encoding.lower() if encoding else ''
+            if normalized and normalized not in seen:
                 encodings.append(encoding)
+                seen.add(normalized)
         return tuple(encodings)
 
     def _load_json_file(self, path: Path) -> Any:
         """Load JSON and recover legacy non-UTF files when possible."""
         raw = path.read_bytes()
         decode_error: UnicodeDecodeError | None = None
+        json_error: json.JSONDecodeError | None = None
 
         try:
-            return json.loads(raw)
+            return _json_loads(raw)
         except UnicodeDecodeError as exc:
             decode_error = exc
+        except json.JSONDecodeError as exc:
+            json_error = exc
 
         for encoding in self._fallback_json_encodings():
             try:
                 text = raw.decode(encoding)
-                loaded = json.loads(text)
+                loaded = _json_loads(text)
             except (LookupError, UnicodeDecodeError, json.JSONDecodeError):
                 continue
 
@@ -129,15 +215,16 @@ class ConfigManager:
             # do not depend on locale-specific decoding.
             try:
                 self._clear_read_only(path)
-                with path.open('w', encoding='utf-8') as f:
-                    json.dump(loaded, f, indent=2)
+                _write_json(path, loaded)
             except OSError:
                 pass
             return loaded
 
         if decode_error is not None:
             raise decode_error
-        return json.loads(raw)
+        if json_error is not None:
+            raise json_error
+        return _json_loads(raw)
 
     @staticmethod
     def _normalize_config_data(data: Any) -> dict:
@@ -155,13 +242,22 @@ class ConfigManager:
     def _load_config(self, name: str) -> dict:
         """Load a config from disk."""
         path = self._get_config_path(name)
+        signature = self._file_signature(path)
+        cached = self._config_data_cache.get(name)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+
         if path.exists():
             try:
                 self._clear_read_only(path)
-                return self._normalize_config_data(self._load_json_file(Path(path)))
+                loaded = self._normalize_config_data(self._load_json_file(Path(path)))
+                self._config_data_cache[name] = (self._file_signature(path), loaded)
+                return loaded
             except (json.JSONDecodeError, OSError, UnicodeDecodeError):
                 pass
-        return {'replacement_rules': []}
+        loaded = {'replacement_rules': []}
+        self._config_data_cache[name] = (signature, loaded)
+        return loaded
 
     def _save_config(self, name: str, data: dict):
         """Save a config to disk."""
@@ -169,8 +265,11 @@ class ConfigManager:
             CONFIGS_FOLDER.mkdir(parents=True, exist_ok=True)
             path = self._get_config_path(name)
             self._clear_read_only(path)
-            with Path(path).open('w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2)
+            _write_json(Path(path), data)
+            self._config_data_cache[name] = (self._file_signature(path), data)
+            self._config_names_cache = None
+            self._config_names_signature = None
+            self._mark_replacements_dirty()
 
     @property
     def strip_textures(self) -> bool:
@@ -631,6 +730,7 @@ class ConfigManager:
     def enabled_configs(self, value: list[str]):
         """Set list of enabled configs."""
         self.settings['enabled_configs'] = value
+        self._mark_replacements_dirty()
         self._save_settings()
 
     def is_config_enabled(self, name: str) -> bool:
@@ -708,8 +808,7 @@ class ConfigManager:
     @property
     def config_names(self) -> list[str]:
         """Get list of all config names."""
-        CONFIGS_FOLDER.mkdir(parents=True, exist_ok=True)
-        return sorted([p.stem for p in CONFIGS_FOLDER.glob('*.json')])
+        return self._refresh_config_names_cache()
 
     def refresh_config_names(self):
         """Refresh config names from disk (for external changes)."""
@@ -771,6 +870,10 @@ class ConfigManager:
             return False
         try:
             self._get_config_path(name).unlink()
+            self._config_data_cache.pop(name, None)
+            self._config_names_cache = None
+            self._config_names_signature = None
+            self._mark_replacements_dirty()
             # Remove from enabled configs if present
             if name in self.enabled_configs:
                 configs = self.enabled_configs.copy()
@@ -795,6 +898,12 @@ class ConfigManager:
             return False
         try:
             self._get_config_path(old_name).rename(self._get_config_path(new_name))
+            cached = self._config_data_cache.pop(old_name, None)
+            if cached is not None:
+                self._config_data_cache[new_name] = (self._file_signature(self._get_config_path(new_name)), cached[1])
+            self._config_names_cache = None
+            self._config_names_signature = None
+            self._mark_replacements_dirty()
             # Update enabled_configs
             if old_name in self.enabled_configs:
                 configs = self.enabled_configs.copy()
@@ -843,40 +952,23 @@ class ConfigManager:
             - local_replacements: dict mapping asset IDs/types to local file paths
 
         """
+        enabled_configs = tuple(self.enabled_configs)
+        signature = tuple(
+            (config_name, self._file_signature(self._get_config_path(config_name)))
+            for config_name in enabled_configs
+        )
+        if (
+            self._all_replacements_cache is not None
+            and self._all_replacements_cache_signature == signature
+        ):
+            return self._all_replacements_cache
+
         replacements: dict[int | str, int] = {}
         removals: set[int | str] = set()
         cdn_replacements: dict[int | str, str] = {}
         local_replacements: dict[int | str, str] = {}
 
-        # Map of known asset type names to their IDs (for validation)
-        ASSET_TYPES = {
-            'image': 1, 'tshirt': 2, 'audio': 3, 'mesh': 4, 'lua': 5,
-            'html': 6, 'text': 7, 'hat': 8, 'place': 9, 'model': 10,
-            'shirt': 11, 'pants': 12, 'decal': 13, 'avatar': 16, 'head': 17,
-            'face': 18, 'gear': 19, 'badge': 21, 'groupemblem': 22,
-            'animation': 24, 'arms': 25, 'legs': 26, 'torso': 27,
-            'rightarm': 28, 'leftarm': 29, 'leftleg': 30, 'rightleg': 31,
-            'package': 32, 'youtubevideo': 33, 'gamepass': 34, 'app': 35,
-            'code': 37, 'plugin': 38, 'solidmodel': 39, 'meshpart': 40,
-            'hairaccessory': 41, 'faceaccessory': 42, 'neckaccessory': 43,
-            'shoulderaccessory': 44, 'frontaccessory': 45, 'backaccessory': 46,
-            'waistaccessory': 47, 'climbanimation': 48, 'deathanimation': 49,
-            'fallanimation': 50, 'idleanimation': 51, 'jumpanimation': 52,
-            'runanimation': 53, 'swimanimation': 54, 'walkanimation': 55,
-            'poseanimation': 56, 'earaccessory': 57, 'eyeaccessory': 58,
-            'localizationtablemanifest': 59, 'emoteanimation': 61, 'video': 62,
-            'texturepack': 63, 'tshirtaccessory': 64, 'shirtaccessory': 65,
-            'pantsaccessory': 66, 'jacketaccessory': 67, 'sweateraccessory': 68,
-            'shortsaccessory': 69, 'leftshoeaccessory': 70, 'rightshoeaccessory': 71,
-            'dressskirtaccessory': 72, 'fontfamily': 73, 'fontface': 74,
-            'meshhiddensurfaceremoval': 75, 'eyebrowaccessory': 76,
-            'eyelashaccessory': 77, 'moodanimation': 78, 'dynamichead': 79,
-            'codesnippet': 80,
-        }
-
-        for config_name in self.enabled_configs:
-            if config_name not in self.config_names:
-                continue
+        for config_name in enabled_configs:
             for rule in self._iter_replacement_rules(self.get_replacement_rules(config_name)):
                 if not isinstance(rule, dict):
                     continue
@@ -917,18 +1009,10 @@ class ConfigManager:
                     if isinstance(v, str):
                         v_lower = v.lower()
                         # Virtual animation rig-filter types - kept as canonical string keys
-                        _VIRTUAL_ANIM = {
-                            'r6animation':        'R6Animation',
-                            'r15animation':       'R15Animation',
-                            'nonplayeranimation': 'NonPlayerAnimation',
-                            'r6 animation':        'R6Animation',
-                            'r15 animation':       'R15Animation',
-                            'non-player animation': 'NonPlayerAnimation',
-                        }
-                        if v_lower in _VIRTUAL_ANIM:
-                            parsed_ids.append(_VIRTUAL_ANIM[v_lower])
-                        elif v_lower in ASSET_TYPES:
-                            numeric_id = ASSET_TYPES[v_lower]
+                        if v_lower in _VIRTUAL_ANIM_TYPES:
+                            parsed_ids.append(_VIRTUAL_ANIM_TYPES[v_lower])
+                        elif v_lower in _ASSET_TYPE_IDS:
+                            numeric_id = _ASSET_TYPE_IDS[v_lower]
                             parsed_ids.append(numeric_id)
 
                 if mode == 'remove':
@@ -961,4 +1045,11 @@ class ConfigManager:
                     else:
                         removals.update(parsed_ids)
 
-        return replacements, removals, cdn_replacements, local_replacements
+        self._all_replacements_cache_signature = signature
+        self._all_replacements_cache = (
+            replacements,
+            removals,
+            cdn_replacements,
+            local_replacements,
+        )
+        return self._all_replacements_cache

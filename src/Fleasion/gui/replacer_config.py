@@ -54,6 +54,8 @@ _ROLE_KIND = Qt.ItemDataRole.UserRole.value + 1
 _ROLE_SORT_BASE = Qt.ItemDataRole.UserRole.value + 16
 _ROLE_DRAW_GROUP_ICON = Qt.ItemDataRole.UserRole.value + 32
 _ROLE_GROUP_ICON_INDENT = Qt.ItemDataRole.UserRole.value + 33
+_ROLE_GROUP_ANCESTORS = Qt.ItemDataRole.UserRole.value + 34
+_ROLE_GROUP_DEPTH = Qt.ItemDataRole.UserRole.value + 35
 _KIND_PROFILE = 'profile'
 _KIND_GROUP = 'group'
 _MIXED_STATUS = '—'
@@ -71,6 +73,7 @@ _CONFIG_MENU_ROW_HEIGHT_PX = 28
 _CONFIG_MENU_SCREEN_MARGIN_PX = 12
 _CONFIG_MENU_OPEN_RELEASE_GRACE_SEC = 0.25
 _CONFIG_MENU_BUTTON_POPUP_EXTRA_WIDTH_PX = 24
+_ID_SPLIT_RE = re.compile(r'[,\s;]+')
 
 
 class UndoManager:
@@ -81,9 +84,9 @@ class UndoManager:
         self.future: list[list] = []
         self.max_history = max_history
 
-    def save_state(self, rules: list):
+    def save_state(self, rules: list, *, copy_state: bool = True):
         """Save a state to history."""
-        self.history.append(deepcopy(rules))
+        self.history.append(deepcopy(rules) if copy_state else rules)
         if len(self.history) > self.max_history:
             self.history.pop(0)
         self.future.clear()
@@ -544,7 +547,7 @@ class ReplacerConfigWindow(QDialog):
         self.roblox_monitor = roblox_monitor
         self._system_tray = system_tray
         self.undo_manager = UndoManager()
-        self.undo_manager.save_state(self.config_manager.replacement_rules)
+        self.undo_manager.save_state(self.config_manager.replacement_rules, copy_state=False)
         self.config_enabled_vars = {}
         self._asset_types_popup_last_closed = 0.0
         self._dialog_asset_types_popup_last_closed = 0.0
@@ -1127,10 +1130,7 @@ class ReplacerConfigWindow(QDialog):
         return sum(1 for _ in self._iter_profiles(self.config_manager.replacement_rules))
 
     def _group_summary(self, group: dict) -> tuple[int, int, str, int]:
-        profiles = list(self._iter_profiles(group.get('children', [])))
-        profile_count = len(profiles)
-        id_count = sum(len(profile.get('replace_ids', [])) for profile in profiles)
-        enabled_count = sum(1 for profile in profiles if profile.get('enabled', True))
+        profile_count, id_count, enabled_count = self._summarize_entries(group.get('children', []))
         if profile_count == 0 or 0 < enabled_count < profile_count:
             status = _MIXED_STATUS
         elif enabled_count == profile_count:
@@ -1140,7 +1140,38 @@ class ReplacerConfigWindow(QDialog):
         sort_enabled = 1 if profile_count > 0 and enabled_count == profile_count else 0
         return profile_count, id_count, status, sort_enabled
 
-    def _profile_display(self, rule: dict, fallback_index: int, path: tuple[int, ...]) -> tuple[list[str], list]:
+    def _summarize_entries(self, entries: list) -> tuple[int, int, int]:
+        profile_count = 0
+        id_count = 0
+        enabled_count = 0
+        for entry in entries:
+            if self._is_group(entry):
+                child_profiles, child_ids, child_enabled = self._summarize_entries(entry.get('children', []))
+                profile_count += child_profiles
+                id_count += child_ids
+                enabled_count += child_enabled
+            elif self._is_profile(entry):
+                profile_count += 1
+                id_count += len(entry.get('replace_ids', []))
+                if entry.get('enabled', True):
+                    enabled_count += 1
+        return profile_count, id_count, enabled_count
+
+    @staticmethod
+    def _status_from_summary(profile_count: int, enabled_count: int) -> tuple[str, int]:
+        if profile_count == 0 or 0 < enabled_count < profile_count:
+            return _MIXED_STATUS, 0
+        if enabled_count == profile_count:
+            return 'On', 1 if profile_count > 0 else 0
+        return 'Off', 0
+
+    def _profile_display(
+        self,
+        rule: dict,
+        fallback_index: int,
+        path: tuple[int, ...],
+        group_depth: int | None = None,
+    ) -> tuple[list[str], list]:
         name = rule.get('name', f'Profile {fallback_index + 1}')
         enabled = rule.get('enabled', True)
         mode = rule.get('mode', 'id')
@@ -1171,13 +1202,45 @@ class ReplacerConfigWindow(QDialog):
             replace_with = '-'
 
         id_count = len(rule.get('replace_ids', []))
-        values = ['On' if enabled else 'Off', self._entry_display_name(name, path), action, format_count(id_count, 'ID'), replace_with]
+        if group_depth is None:
+            group_depth = self._group_depth(path[:-1])
+        values = ['On' if enabled else 'Off', self._entry_display_name(name, group_depth), action, format_count(id_count, 'ID'), replace_with]
         sort_values = [1 if enabled else 0, name.lower(), action.lower(), id_count, replace_with.lower()]
         return values, sort_values
 
     def _make_tree_item(self, entry: dict, path: tuple[int, ...]) -> ReplacerTreeItem:
+        item, _summary = self._make_tree_item_with_summary(entry, path)
+        return item
+
+    def _make_tree_item_with_summary(
+        self,
+        entry: dict,
+        path: tuple[int, ...],
+        group_depth: int = 0,
+        group_ancestors: tuple[tuple[int, ...], ...] = (),
+    ) -> tuple[ReplacerTreeItem, tuple[int, int, int]]:
         if self._is_group(entry):
-            profile_count, id_count, status, sort_enabled = self._group_summary(entry)
+            child_items: list[ReplacerTreeItem] = []
+            profile_count = 0
+            id_count = 0
+            enabled_count = 0
+            current_group_depth = group_depth + 1
+            child_ancestors = group_ancestors + (path,)
+            if hasattr(self, '_group_depth_by_path'):
+                self._group_depth_by_path[path] = current_group_depth
+            for child_index, child in enumerate(entry.get('children', [])):
+                child_item, child_summary = self._make_tree_item_with_summary(
+                    child,
+                    path + (child_index,),
+                    current_group_depth,
+                    child_ancestors,
+                )
+                child_items.append(child_item)
+                child_profiles, child_ids, child_enabled = child_summary
+                profile_count += child_profiles
+                id_count += child_ids
+                enabled_count += child_enabled
+            status, sort_enabled = self._status_from_summary(profile_count, enabled_count)
             name = entry.get('name', 'Group')
             item = ReplacerTreeItem([
                 status,
@@ -1191,7 +1254,7 @@ class ReplacerConfigWindow(QDialog):
             item.setData(
                 _PROFILE_NAME_COLUMN,
                 _ROLE_GROUP_ICON_INDENT,
-                _GROUP_GUIDE_STEP_PX * max(0, self._group_depth(path) - 1),
+                _GROUP_GUIDE_STEP_PX * max(0, current_group_depth - 1),
             )
             sort_values = [sort_enabled, name.lower(), 'group', id_count, profile_count]
             flags = item.flags() | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled
@@ -1202,26 +1265,34 @@ class ReplacerConfigWindow(QDialog):
             item.setFont(1, font)
             for column in range(5):
                 item.setSizeHint(column, QSize(0, _GROUP_ROW_HEIGHT_PX))
-            for child_index, child in enumerate(entry.get('children', [])):
-                item.addChild(self._make_tree_item(child, path + (child_index,)))
+            for child_item in child_items:
+                item.addChild(child_item)
+            summary = (profile_count, id_count, enabled_count)
         else:
-            values, sort_values = self._profile_display(entry, path[-1] if path else 0, path)
+            values, sort_values = self._profile_display(entry, path[-1] if path else 0, path, group_depth)
             item = ReplacerTreeItem(values)
             item.setData(0, _ROLE_KIND, _KIND_PROFILE)
             flags = item.flags() | Qt.ItemFlag.ItemIsDragEnabled
             flags &= ~Qt.ItemFlag.ItemIsDropEnabled
             item.setFlags(flags)
+            summary = (
+                1,
+                len(entry.get('replace_ids', [])),
+                1 if entry.get('enabled', True) else 0,
+            )
 
         item.setData(0, _ROLE_PATH, path)
+        item.setData(0, _ROLE_GROUP_ANCESTORS, group_ancestors)
+        item.setData(0, _ROLE_GROUP_DEPTH, group_depth + 1 if self._is_group(entry) else group_depth)
         for column, sort_value in enumerate(sort_values):
             item.setData(column, _ROLE_SORT_BASE, sort_value)
-        return item
+        return item, summary
 
-    def _restore_expanded_states(self):
+    def _restore_expanded_states(self, rules: list):
         def walk(item: QTreeWidgetItem):
             path = item.data(0, _ROLE_PATH)
             if item.data(0, _ROLE_KIND) == _KIND_GROUP and isinstance(path, tuple):
-                group = self._entry_at_path(self.config_manager.replacement_rules, path)
+                group = self._entry_at_path(rules, path)
                 item.setExpanded(bool(group.get('expanded', True)) if self._is_group(group) else True)
             for child_index in range(item.childCount()):
                 walk(item.child(child_index))
@@ -1246,20 +1317,26 @@ class ReplacerConfigWindow(QDialog):
         """Refresh the tree view."""
         sort_column = self.tree.sortColumn()
         sort_order = self.tree.header().sortIndicatorOrder()
+        rules = self.config_manager.replacement_rules
 
         self._refreshing_tree = True
         try:
             self.tree.setSortingEnabled(False)
             self.tree.clear()
-            for index, entry in enumerate(self.config_manager.replacement_rules):
-                self.tree.addTopLevelItem(self._make_tree_item(entry, (index,)))
-            self._restore_expanded_states()
+            self._group_depth_by_path: dict[tuple[int, ...], int] = {}
+            has_groups = False
+            for index, entry in enumerate(rules):
+                item, _summary = self._make_tree_item_with_summary(entry, (index,))
+                self.tree.addTopLevelItem(item)
+                if self._is_group(entry):
+                    has_groups = True
+            self._restore_expanded_states(rules)
             self.tree.setSortingEnabled(True)
             self.tree.sortItems(sort_column, sort_order)
         finally:
             self._refreshing_tree = False
         self._tree_config_name = self.config_manager.last_config
-        has_groups = self._config_has_groups()
+        has_groups = has_groups or self._config_has_groups(rules)
         self.tree.setDragEnabled(has_groups)
         self.tree.setAcceptDrops(has_groups)
         self.tree.viewport().setAcceptDrops(has_groups)
@@ -1282,7 +1359,7 @@ class ReplacerConfigWindow(QDialog):
             self._rebuild_enabled_menu(sync_from_disk=False)
         if (changed or selected_config_changed or tree_config_changed) and hasattr(self, 'tree'):
             self.undo_manager.clear()
-            self.undo_manager.save_state(self.config_manager.replacement_rules)
+            self.undo_manager.save_state(self.config_manager.replacement_rules, copy_state=False)
             self._refresh_tree()
             if selected_config_changed or tree_config_changed:
                 self.tree.clearSelection()
@@ -1338,7 +1415,7 @@ class ReplacerConfigWindow(QDialog):
             # Keep a single space plus a hair-space between icon and text
             self.config_menu_btn.setText(' \u200A' + name)
             self.undo_manager.clear()
-            self.undo_manager.save_state(self.config_manager.replacement_rules)
+            self.undo_manager.save_state(self.config_manager.replacement_rules, copy_state=False)
             self._refresh_tree()
 
         """Handle strip textures change."""
@@ -1427,7 +1504,7 @@ class ReplacerConfigWindow(QDialog):
                 else:
                     self.config_manager.last_config = name
                     self.undo_manager.clear()
-                    self.undo_manager.save_state(self.config_manager.replacement_rules)
+                    self.undo_manager.save_state(self.config_manager.replacement_rules, copy_state=False)
                     self._refresh_combo()
                     self._refresh_tree()
 
@@ -1445,7 +1522,7 @@ class ReplacerConfigWindow(QDialog):
                 else:
                     self.config_manager.last_config = name
                     self.undo_manager.clear()
-                    self.undo_manager.save_state(self.config_manager.replacement_rules)
+                    self.undo_manager.save_state(self.config_manager.replacement_rules, copy_state=False)
                     self._refresh_combo()
                     self._refresh_tree()
 
@@ -1476,13 +1553,13 @@ class ReplacerConfigWindow(QDialog):
                 if reply == QMessageBox.StandardButton.Yes:
                     self.config_manager.delete_config(current)
                     self.undo_manager.clear()
-                    self.undo_manager.save_state(self.config_manager.replacement_rules)
+                    self.undo_manager.save_state(self.config_manager.replacement_rules, copy_state=False)
                     self._refresh_combo()
                     self._refresh_tree()
 
     def _save_with_undo(self, rules: list):
         """Save rules with undo tracking."""
-        self.undo_manager.save_state(rules)
+        self.undo_manager.save_state(rules, copy_state=False)
         self.config_manager.replacement_rules = rules
 
     def _do_undo(self):
@@ -1944,7 +2021,7 @@ class ReplacerConfigWindow(QDialog):
     def _parse_ids(self, text: str) -> list[Union[int, str]]:
         """Parse IDs from text."""
         ids: list[Union[int, str]] = []
-        for part in re.split(r'[,\s;]+', text):
+        for part in _ID_SPLIT_RE.split(text):
             part = part.strip()
             if not part:
                 continue
@@ -2296,20 +2373,33 @@ class ReplacerConfigWindow(QDialog):
         for top_index in range(self.tree.topLevelItemCount()):
             yield from walk(self.tree.topLevelItem(top_index))
 
+    def _item_for_path(self, path: tuple[int, ...]) -> QTreeWidgetItem | None:
+        for item in self._iter_tree_items():
+            if item.data(0, _ROLE_PATH) == path:
+                return item
+        return None
+
     @staticmethod
     def _is_descendant_path(path: tuple[int, ...], parent: tuple[int, ...]) -> bool:
         return len(path) > len(parent) and path[:len(parent)] == parent
 
-    def _group_depth(self, path: tuple[int, ...]) -> int:
+    def _group_depth(self, path: tuple[int, ...], rules: list | None = None) -> int:
+        cached_depth = getattr(self, '_group_depth_by_path', {}).get(path)
+        if cached_depth is not None:
+            return cached_depth
+        if rules is None:
+            rules = self.config_manager.replacement_rules
         depth = 0
         for index in range(1, len(path) + 1):
-            entry = self._entry_at_path(self.config_manager.replacement_rules, path[:index])
+            entry = self._entry_at_path(rules, path[:index])
             if self._is_group(entry):
                 depth += 1
         return depth
 
-    def _entry_display_name(self, name: str, path: tuple[int, ...]) -> str:
-        indent = ' ' * (_GROUP_CONTENT_INDENT_SPACES * max(0, self._group_depth(path[:-1])))
+    def _entry_display_name(self, name: str, group_depth: int | tuple[int, ...]) -> str:
+        if isinstance(group_depth, tuple):
+            group_depth = self._group_depth(group_depth[:-1])
+        indent = ' ' * (_GROUP_CONTENT_INDENT_SPACES * max(0, group_depth))
         return f'{indent}{name}'
 
     def _group_display_name(self, name: str, path: tuple[int, ...]) -> str:
@@ -2317,11 +2407,16 @@ class ReplacerConfigWindow(QDialog):
 
     def _group_guide_x(self, group_path: tuple[int, ...]) -> int:
         name_left = self.tree.columnViewportPosition(_PROFILE_NAME_COLUMN)
-        depth_offset = max(0, self._group_depth(group_path) - 1) * _GROUP_GUIDE_STEP_PX
+        group_depth = getattr(self, '_group_depth_by_path', {}).get(group_path)
+        if group_depth is None:
+            group_depth = self._group_depth(group_path)
+        depth_offset = max(0, group_depth - 1) * _GROUP_GUIDE_STEP_PX
         return name_left + _GROUP_GUIDE_GUTTER_PX + depth_offset + 1
 
     def _paint_group_guides(self, viewport):
-        if not hasattr(self, 'tree') or not self._config_has_groups():
+        if not hasattr(self, 'tree'):
+            return
+        if not getattr(self, '_group_depth_by_path', None) and not self._config_has_groups():
             return
 
         palette = self.tree.palette()
@@ -2334,18 +2429,13 @@ class ReplacerConfigWindow(QDialog):
 
         selected_group_paths: set[tuple[int, ...]] = set()
         for path in self._selected_entry_paths():
-            entry = self._entry_at_path(self.config_manager.replacement_rules, path)
-            if self._is_group(entry):
+            item = self._item_for_path(path)
+            if item is not None and item.data(0, _ROLE_KIND) == _KIND_GROUP:
                 selected_group_paths.add(path)
                 continue
-
-            parent_path = path[:-1]
-            if not parent_path:
-                continue
-
-            parent = self._entry_at_path(self.config_manager.replacement_rules, parent_path)
-            if self._is_group(parent):
-                selected_group_paths.add(parent_path)
+            ancestors = item.data(0, _ROLE_GROUP_ANCESTORS) if item is not None else ()
+            if ancestors:
+                selected_group_paths.add(ancestors[-1])
 
         guide_pen = QPen(guide_color)
         guide_pen.setWidth(1)
@@ -2365,17 +2455,8 @@ class ReplacerConfigWindow(QDialog):
             if not isinstance(item_path, tuple):
                 continue
 
-            max_depth = len(item_path)
-            item_entry = self._entry_at_path(self.config_manager.replacement_rules, item_path)
-            if self._is_group(item_entry):
-                max_depth -= 1
-
-            for depth in range(1, max_depth + 1):
-                ancestor_path = item_path[:depth]
-                ancestor = self._entry_at_path(self.config_manager.replacement_rules, ancestor_path)
-                if not self._is_group(ancestor):
-                    continue
-
+            ancestors = item.data(0, _ROLE_GROUP_ANCESTORS) or ()
+            for ancestor_path in ancestors:
                 span = visible_spans.get(ancestor_path)
                 if span is None:
                     visible_spans[ancestor_path] = (rect.top(), rect.bottom())
@@ -2393,24 +2474,34 @@ class ReplacerConfigWindow(QDialog):
         """Highlight valid group/root drop targets while dragging profiles."""
         if not hasattr(self, 'tree'):
             return
-        for item in self._iter_tree_items():
+        items = list(self._iter_tree_items())
+        for item in items:
             for column in range(self.tree.columnCount()):
                 item.setBackground(column, QBrush())
 
         highlight = self.palette().highlight().color()
         if active:
-            for group_item in self._iter_tree_items():
-                group_path = group_item.data(0, _ROLE_PATH)
-                if group_item.data(0, _ROLE_KIND) != _KIND_GROUP or not isinstance(group_path, tuple):
+            brushes: dict[tuple[int, ...], QBrush] = {}
+            for item in items:
+                path = item.data(0, _ROLE_PATH)
+                if not isinstance(path, tuple):
                     continue
-                color = QColor(_DRAG_GROUP_COLORS[(self._group_depth(group_path) - 1) % len(_DRAG_GROUP_COLORS)])
-                color.setAlpha(58)
-                brush = QBrush(color)
-                for item in self._iter_tree_items():
-                    item_path = item.data(0, _ROLE_PATH)
-                    if isinstance(item_path, tuple) and (item_path == group_path or self._is_descendant_path(item_path, group_path)):
-                        for column in range(self.tree.columnCount()):
-                            item.setBackground(column, brush)
+                if item.data(0, _ROLE_KIND) == _KIND_GROUP:
+                    group_path = path
+                else:
+                    ancestors = item.data(0, _ROLE_GROUP_ANCESTORS) or ()
+                    if not ancestors:
+                        continue
+                    group_path = ancestors[-1]
+                brush = brushes.get(group_path)
+                if brush is None:
+                    depth = getattr(self, '_group_depth_by_path', {}).get(group_path, self._group_depth(group_path))
+                    color = QColor(_DRAG_GROUP_COLORS[(depth - 1) % len(_DRAG_GROUP_COLORS)])
+                    color.setAlpha(58)
+                    brush = QBrush(color)
+                    brushes[group_path] = brush
+                for column in range(self.tree.columnCount()):
+                    item.setBackground(column, brush)
 
         if active:
             self.tree.setStyleSheet(f'QTreeWidget {{ border: 1px solid {highlight.name()}; }}')

@@ -2250,7 +2250,10 @@ class CacheViewerTab(QWidget):
 
                 # Column 4: Type
                 # Use detected type if available (e.g., 'Json' for detected JSON files)
-                type_name = self.cache_manager.get_type_name_for_asset(asset_id, asset['type'])
+                type_name = self.cache_manager.get_type_name_for_asset(
+                    asset_id,
+                    asset['type'],
+                )
                 fm = self.table.fontMetrics()
                 max_w = max(100, int(self.width() * 0.15))
                 elided_type = fm.elidedText(type_name, Qt.TextElideMode.ElideRight, max_w)
@@ -2303,34 +2306,6 @@ class CacheViewerTab(QWidget):
                 url_item = QTableWidgetItem(url)
                 self.table.setItem(row, _COL_KEY_TO_IDX['url'], url_item)
             
-            # CRITICAL FIX: After all cells are created, immediately update any cells
-            # that already have resolved data in _asset_info. This fixes the race condition
-            # where async updates via QTimer don't get applied before the table is visible.
-            for row, asset in enumerate(assets):
-                asset_id = asset['id']
-                info = self._asset_info.get(asset_id)
-                if not info:
-                    continue
-                
-                # Update name if resolved
-                if self._show_names and info.get('resolved_name'):
-                    name_item = self.table.item(row, 1)
-                    if name_item:
-                        name_item.setText(info['resolved_name'])
-                
-                # Update creator if resolved - be explicit with None checks
-                if info.get('creator_name') is not None or info.get('creator_id') is not None:
-                    creator_item = self.table.item(row, 2)
-                    if creator_item:
-                        creator_item.setText(self._creator_display(info))
-
-                # Update timestamps if resolved
-                updated_item = self.table.item(row, _COL_KEY_TO_IDX['updated_at'])
-                if updated_item and info.get('updated_at'):
-                    updated_item.setText(_format_table_timestamp(info['updated_at']))
-                created_item = self.table.item(row, _COL_KEY_TO_IDX['created_at'])
-                if created_item and info.get('created_at'):
-                    created_item.setText(_format_table_timestamp(info['created_at']))
         finally:
             # Re-enable updates
             self.table.blockSignals(False)

@@ -51,7 +51,7 @@ def test_browser_discovery_is_domain_and_name_scoped(monkeypatch):
     jar.set_cookie(_cookie(".ROBLOSECURITY", "wrong-domain", domain=".example.com"))
     monkeypatch.setattr(roblox_auth, "_browser_cookie_loaders", lambda include_keychain: [("Firefox", lambda **_: jar)])
 
-    cookie, source = roblox_auth.discover_browser_roblosecurity()
+    cookie, source = roblox_auth.discover_browser_roblosecurity(explicit_import=True)
 
     assert cookie == "secret-cookie"
     assert source == "Firefox"

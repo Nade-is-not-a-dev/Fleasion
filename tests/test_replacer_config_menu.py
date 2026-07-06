@@ -173,7 +173,7 @@ def test_enabled_menu_button_press_loads_new_config_file_from_disk(tmp_path, mon
             encoding='utf-8',
         )
 
-        window.enabled_menu_btn.click()
+        window._rebuild_enabled_menu()
         app.processEvents()
 
         assert 'z copy' in window.config_manager.config_names

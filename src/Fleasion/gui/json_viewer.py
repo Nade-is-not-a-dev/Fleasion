@@ -583,17 +583,23 @@ class JsonTreeViewer(QDialog):
 
     def _populate_tree(self):
         """Populate the tree with data."""
-        self.tree.clear()
-        if isinstance(self.data, (dict, list)):
-            items = (
-                self.data.items() if isinstance(self.data, dict) else enumerate(self.data)
-            )
-            for k, v in items:
-                self._add_node(
-                    self.tree, f'[{k}]' if isinstance(self.data, list) else k, v
+        self.tree.blockSignals(True)
+        self.tree.setUpdatesEnabled(False)
+        try:
+            self.tree.clear()
+            if isinstance(self.data, (dict, list)):
+                items = (
+                    self.data.items() if isinstance(self.data, dict) else enumerate(self.data)
                 )
-        else:
-            self._add_node(self.tree, '', self.data)
+                for k, v in items:
+                    self._add_node(
+                        self.tree, f'[{k}]' if isinstance(self.data, list) else k, v
+                    )
+            else:
+                self._add_node(self.tree, '', self.data)
+        finally:
+            self.tree.setUpdatesEnabled(True)
+            self.tree.blockSignals(False)
 
     def _get_all_leaf_descendants(self, item: QTreeWidgetItem) -> list[QTreeWidgetItem]:
         """Get all leaf descendants of an item."""
@@ -1623,11 +1629,19 @@ class JsonTreeViewer(QDialog):
 
     def _expand_all(self):
         """Expand all items."""
-        self.tree.expandAll()
+        self.tree.setUpdatesEnabled(False)
+        try:
+            self.tree.expandAll()
+        finally:
+            self.tree.setUpdatesEnabled(True)
 
     def _collapse_all(self):
         """Collapse all items."""
-        self.tree.collapseAll()
+        self.tree.setUpdatesEnabled(False)
+        try:
+            self.tree.collapseAll()
+        finally:
+            self.tree.setUpdatesEnabled(True)
 
     def _show_replacer_notification(self, title: str, message: str):
         """Show the replacer success popup unless it is disabled in settings."""

@@ -383,7 +383,7 @@ class CacheManager:
         except Exception as e:
             log_buffer.log('Scraper', f'Failed to set detected type for {asset_id}: {e}')
 
-    def get_type_name_for_asset(self, asset_id: str, asset_type: int) -> str:
+    def get_type_name_for_asset(self, asset_id: str, asset_type: int, *, probe_payload: bool = True) -> str:
         """Get the type name for an asset, considering detected type."""
         asset_key = f'{asset_type}_{asset_id}'
         asset_info = self.index['assets'].get(asset_key, {})
@@ -395,7 +395,7 @@ class CacheManager:
         # Some Roblox batch responses report RenderMesh CDN payloads as Image.
         # Heal those persisted entries lazily so old cache indexes display
         # correctly after a restart without requiring a re-download.
-        if asset_type in (1, 13):
+        if probe_payload and asset_type in (1, 13):
             data = self.get_asset(asset_id, asset_type)
             if data:
                 detected_type = self._detect_payload_type(data, asset_type)
@@ -1040,10 +1040,8 @@ class CacheManager:
             if asset_type is None or asset_info['type'] == asset_type:
                 assets_to_delete.append((asset_info['id'], asset_info['type']))
 
-        for asset_id, atype in assets_to_delete:
-            if self.delete_asset(asset_id, atype):
-                count += 1
-
+        if assets_to_delete:
+            count, _failed = self.delete_assets_batch(assets_to_delete)
         return count
 
     def get_cache_stats(self) -> dict:
