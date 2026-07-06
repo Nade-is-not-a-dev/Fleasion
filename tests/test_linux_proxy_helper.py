@@ -338,6 +338,44 @@ def test_start_helper_continues_when_privileged_system_ca_install_is_unsupported
     assert '--require-system-ca' not in commands[0]
 
 
+def test_start_helper_continues_when_unsupported_system_ca_error_has_context(monkeypatch, tmp_path):
+    commands = []
+    ca = tmp_path / 'ca.crt'
+    ca.write_text('ca', encoding='utf-8')
+
+    class Process:
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_READY_FILE', tmp_path / 'ready.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_STOP_FILE', tmp_path / 'stop')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_HOSTS_FILE', tmp_path / 'hosts.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_LOG_FILE', tmp_path / 'helper.log')
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else f'/usr/sbin/{name}')
+    monkeypatch.setattr(linux_proxy_helper, '_helper_command', lambda: ['/opt/fleasion-helper'])
+    monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
+    monkeypatch.setattr(linux_proxy_helper, 'ensure_privileged_helper_installed', lambda **_kwargs: True)
+    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_store_supported', lambda: True)
+    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_is_current', lambda _path: False)
+    monkeypatch.setattr(
+        linux_proxy_helper,
+        '_install_ca_into_linux_system_store',
+        lambda _path: {'ok': False, 'error': 'helper stderr: no_supported_system_trust_store'},
+    )
+    monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda cmd, **_kwargs: commands.append(cmd) or Process())
+    monkeypatch.setattr(linux_proxy_helper, '_read_ready', lambda: {'ok': True})
+
+    assert linux_proxy_helper.start_helper(
+        {'apis.roblox.com'},
+        ca_cert_path=ca,
+        require_system_ca=True,
+        timeout=1.0,
+    ) is True
+
+    assert '--require-system-ca' not in commands[0]
+
+
 def test_start_helper_installs_persistent_helper_before_launch(monkeypatch, tmp_path):
     commands = []
     installed = {'ok': False}

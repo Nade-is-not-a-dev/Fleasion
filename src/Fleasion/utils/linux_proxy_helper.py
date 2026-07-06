@@ -791,8 +791,8 @@ def linux_system_ca_needs_install(ca_cert_path: Path) -> bool:
 
 def _system_ca_error_is_unsupported(error: object) -> bool:
     if isinstance(error, dict):
-        return error.get('error') == 'no_supported_system_trust_store'
-    return str(error or '') == 'no_supported_system_trust_store'
+        return _system_ca_error_is_unsupported(error.get('error'))
+    return 'no_supported_system_trust_store' in str(error or '')
 
 
 def _install_ca_into_linux_system_store(ca_cert_path: Path) -> dict:
