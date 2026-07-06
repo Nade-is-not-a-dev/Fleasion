@@ -434,12 +434,21 @@ def start_helper(
     if needs_system_ca_install and ca_cert_path is not None and not linux_system_ca_is_current(ca_cert_path):
         details = _install_ca_into_linux_system_store(ca_cert_path)
         if not details.get('ok'):
-            _set_last_start_error(details, error=f'system CA trust could not be installed: {details.get("error") or details}')
-            log_buffer.log(
-                'ProxyHelper',
-                f'Linux proxy helper failed: system CA trust could not be installed: {details.get("error") or details}',
-            )
-            return False
+            error = details.get('error') or details
+            if _system_ca_error_is_unsupported(error):
+                enforce_system_ca = False
+                log_buffer.log(
+                    'Certificate',
+                    'Linux system trust-store install is unsupported in the privileged environment; '
+                    'continuing without distro-wide CA trust',
+                )
+            else:
+                _set_last_start_error(details, error=f'system CA trust could not be installed: {error}')
+                log_buffer.log(
+                    'ProxyHelper',
+                    f'Linux proxy helper failed: system CA trust could not be installed: {error}',
+                )
+                return False
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
@@ -778,6 +787,12 @@ def linux_system_ca_needs_install(ca_cert_path: Path) -> bool:
     if linux_system_ca_is_current(ca_cert_path):
         return False
     return True
+
+
+def _system_ca_error_is_unsupported(error: object) -> bool:
+    if isinstance(error, dict):
+        return error.get('error') == 'no_supported_system_trust_store'
+    return str(error or '') == 'no_supported_system_trust_store'
 
 
 def _install_ca_into_linux_system_store(ca_cert_path: Path) -> dict:

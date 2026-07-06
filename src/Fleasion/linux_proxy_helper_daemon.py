@@ -221,7 +221,10 @@ def _install_privileged_helper(
             except Exception as exc:
                 system_ca = {'ok': False, 'error': str(exc)}
             details['system_ca'] = system_ca
-            if not system_ca.get('ok'):
+            if (
+                not system_ca.get('ok')
+                and system_ca.get('error') != 'no_supported_system_trust_store'
+            ):
                 details['ok'] = False
                 details['error'] = system_ca.get('error') or system_ca
         return details
