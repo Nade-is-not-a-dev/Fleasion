@@ -672,6 +672,13 @@ def _show_linux_hosts_read_only_dialog(details: dict):
     copy_button = msg.addButton('Copy Nix Snippet', QMessageBox.ButtonRole.ActionRole)
     msg.addButton(QMessageBox.StandardButton.Ok)
 
+    def _copy_nix_snippet():
+        QApplication.clipboard().setText(nix_snippet)
+        copy_button.setText('Copied')
+        log_buffer.log('Hosts', 'Copied Nix extraHosts snippet to clipboard')
+
+    copy_button.clicked.connect(_copy_nix_snippet)
+
     if icon_path := get_icon_path():
         from PyQt6.QtGui import QIcon
         msg.setWindowIcon(QIcon(str(icon_path)))
@@ -683,9 +690,6 @@ def _show_linux_hosts_read_only_dialog(details: dict):
         )
 
     msg.exec()
-    if msg.clickedButton() == copy_button:
-        QApplication.clipboard().setText(nix_snippet)
-        log_buffer.log('Hosts', 'Copied Nix extraHosts snippet to clipboard')
 
 
 def _show_macos_ca_patch_failed_dialog(details: dict):

@@ -117,6 +117,24 @@ def _error_text_is_read_only_filesystem(error: object) -> bool:
     )
 
 
+def _path_on_read_only_mount(path: Path) -> bool:
+    candidate = path
+    while not candidate.exists() and candidate != candidate.parent:
+        candidate = candidate.parent
+    try:
+        flags = os.statvfs(candidate).f_flag
+    except OSError:
+        return False
+    return bool(flags & getattr(os, 'ST_RDONLY', 1))
+
+
+def _persistent_helper_install_path_is_read_only() -> bool:
+    return (
+        _path_on_read_only_mount(INSTALLED_HELPER_PATH)
+        or _path_on_read_only_mount(INSTALLED_HELPER_PATH.parent)
+    )
+
+
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open('rb') as fh:
@@ -289,6 +307,14 @@ def ensure_privileged_helper_installed(*, enable_promptless: bool = True) -> boo
     current_metadata = _installed_helper_metadata_is_current()
     if trusted_helper and current_policy and current_metadata:
         _force_source_helper_for_session = False
+        return True
+
+    if _persistent_helper_install_path_is_read_only():
+        _force_source_helper_for_session = True
+        log_buffer.log(
+            'ProxyHelper',
+            'Persistent Linux helper install path is read-only; using the current helper directly for this session',
+        )
         return True
 
     if trusted_helper and current_policy and not current_metadata:
