@@ -411,6 +411,31 @@ def test_linux_helper_does_not_intercept_profile_api_when_spoofer_disabled(monke
     assert proxy._desired_intercept_hosts() == set(proxy_master.BASE_INTERCEPT_HOSTS)
 
 
+def test_linux_startup_treats_manual_profile_api_hosts_entry_as_active(monkeypatch, tmp_path):
+    hosts_file = tmp_path / "hosts"
+    hosts_file.write_text(
+        "127.0.0.1 localhost\n"
+        "127.0.0.1 apis.roblox.com\n",
+        encoding="utf-8",
+    )
+    logs = []
+
+    monkeypatch.setattr(proxy_master, "IS_LINUX", True)
+    monkeypatch.setattr(proxy_master, "HOSTS_FILE", hosts_file)
+    monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
+
+    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
+    proxy.config_manager = SimpleNamespace(settings={})
+    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: False)
+    proxy._roblox_player_running = True
+
+    assert proxy._startup_intercept_hosts() == (
+        set(proxy_master.BASE_INTERCEPT_HOSTS)
+        | set(proxy_master.USERNAME_SPOOFER_INTERCEPT_HOSTS)
+    )
+    assert any("existing Linux loopback hosts entries" in message for _category, message in logs)
+
+
 def test_linux_helper_intercepts_profile_api_when_spoofer_enabled(monkeypatch):
     monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
 

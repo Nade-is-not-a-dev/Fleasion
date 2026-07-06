@@ -1312,6 +1312,20 @@ def _hosts_line_has_target_loopback(raw_line: str, hosts: Set[str]) -> bool:
     return any(host.lower() in target_hosts for host in parts[1:])
 
 
+def _hosts_file_loopback_hosts(hosts: Set[str]) -> set[str]:
+    """Return requested hosts that already have active loopback mappings."""
+    try:
+        existing = HOSTS_FILE.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return set()
+    entries = _parse_active_hosts_entries(existing)
+    present: set[str] = set()
+    for host in sorted(hosts):
+        if any(_is_hosts_loopback_ip(entry.get('ip', '')) for entry in entries.get(host.lower(), [])):
+            present.add(host)
+    return present
+
+
 def _write_hosts_file(content: str) -> None:
     """Write *content* to the system hosts file, working around security
     software (e.g. Webroot SecureAnywhere / WRSVC) that intermittently or
@@ -2683,6 +2697,19 @@ class ProxyMaster:
             hosts.update(USERNAME_SPOOFER_INTERCEPT_HOSTS)
         return hosts
 
+    def _startup_intercept_hosts(self) -> set[str]:
+        hosts = self._desired_intercept_hosts()
+        if IS_LINUX:
+            manual_webui_hosts = _hosts_file_loopback_hosts(set(USERNAME_SPOOFER_INTERCEPT_HOSTS)) - hosts
+            if manual_webui_hosts:
+                hosts.update(manual_webui_hosts)
+                log_buffer.log(
+                    'Hosts',
+                    'Detected existing Linux loopback hosts entries; treating as active intercepts: '
+                    f'{", ".join(sorted(manual_webui_hosts))}',
+                )
+        return hosts
+
     def set_roblox_player_running(self, running: bool) -> None:
         with self._lock:
             if self._roblox_player_running == running:
@@ -2798,7 +2825,7 @@ class ProxyMaster:
     def _refresh_proxy_ips_for_cert_repair(self) -> None:
         if not self._hosts_installed:
             return
-        active_hosts = self._desired_intercept_hosts()
+        active_hosts = self._startup_intercept_hosts()
         if _use_linux_privileged_helper():
             log_buffer.log(
                 'Hosts',
@@ -3157,7 +3184,7 @@ class ProxyMaster:
         # ── Resolve real CDN IPs BEFORE writing new hosts file entries ────
         # CRITICAL: must happen after removing stale entries (above) and before
         # writing new ones. This guarantees getaddrinfo() returns real IPs.
-        active_hosts = self._desired_intercept_hosts()
+        active_hosts = self._startup_intercept_hosts()
         self._active_intercept_hosts = set(active_hosts)
         if self._proxy_debug_enabled():
             log_buffer.log(

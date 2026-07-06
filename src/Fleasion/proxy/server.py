@@ -546,6 +546,7 @@ class FleasionProxy:
         cdn_limit = max(1, int(vpn_compat_max_cdn_connections or 32))
         self._upstream_host_limits = {
             ASSET_DELIVERY_HOST: asyncio.Semaphore(asset_limit),
+            PROFILE_API_HOST: asyncio.Semaphore(asset_limit),
             'contentdelivery.roblox.com': asyncio.Semaphore(asset_limit),
             'fts.rbxcdn.com': asyncio.Semaphore(cdn_limit),
         }
