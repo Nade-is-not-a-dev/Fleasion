@@ -97,6 +97,18 @@ jobs:
         if: runner.os == 'Linux'
         run: uv run pyinstaller --clean --noconfirm Fleasion.spec
 
+      - name: Prepare Linux executable
+        if: runner.os == 'Linux'
+        run: |
+          linux_binary="$(find dist -maxdepth 1 -type f -name 'Fleasion-v*-Linux' -print -quit)"
+          if [ -z "$linux_binary" ]; then
+            echo "Could not find Linux executable in dist/." >&2
+            exit 1
+          fi
+          file "$linux_binary" | grep -q 'ELF'
+          chmod 755 "$linux_binary"
+          test -x "$linux_binary"
+
       - name: Verify Linux audio runtime
         if: runner.os == 'Linux'
         run: |
@@ -162,6 +174,7 @@ jobs:
           test -f "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}.exe"
           test -f "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux"
           test -f "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip"
+          test -x "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux"
           test "$(find release-files -maxdepth 1 -type f -name 'Fleasion-v*' | wc -l)" -eq 3
 
       - name: Create draft GitHub release

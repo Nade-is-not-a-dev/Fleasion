@@ -240,6 +240,20 @@ def test_github_workflow_uploads_windows_exe_without_artifact_rezipping():
     assert 'archive: false' in workflow
 
 
+def test_github_workflow_uploads_linux_elf_without_artifact_rezipping():
+    workflow = Path('.github/workflows/build.yml').read_text(encoding='utf-8')
+
+    assert 'Prepare Linux executable' in workflow
+    assert "file \"$linux_binary\" | grep -q 'ELF'" in workflow
+    assert 'chmod 755 "$linux_binary"' in workflow
+    assert 'test -x "$linux_binary"' in workflow
+    assert 'name: Fleasion-v${{ env.APP_VERSION }}-Linux' in workflow
+    assert 'artifact_path: dist/Fleasion-v*-Linux' in workflow
+    assert 'archive: false' in workflow
+    assert 'Package Linux release zip' not in workflow
+    assert 'zip -9' not in workflow
+
+
 def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
     workflow = Path('.github/workflows/draft-release.yml').read_text(encoding='utf-8')
 
@@ -271,6 +285,10 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.zip' in workflow
     assert 'Package Linux release zip' not in workflow
     assert 'zip -9' not in workflow
+    assert 'Prepare Linux executable' in workflow
+    assert "file \"$linux_binary\" | grep -q 'ELF'" in workflow
+    assert 'chmod 755 "$linux_binary"' in workflow
+    assert 'test -x "$linux_binary"' in workflow
     assert 'archive: false' in workflow
     assert 'uses: actions/download-artifact@v8' in workflow
     assert 'name: Fleasion-v${{ needs.prepare.outputs.app_version }}.exe' in workflow
@@ -280,6 +298,7 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
         in workflow
     )
     assert 'skip-decompress: true' in workflow
+    assert 'test -x "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux"' in workflow
     assert 'gh release create "$RELEASE_TAG" release-files/*' in workflow
     assert '--draft' in workflow
     assert '--target "$MAIN_SHA"' in workflow

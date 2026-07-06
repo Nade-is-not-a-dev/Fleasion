@@ -77,6 +77,18 @@ jobs:
         if: runner.os == 'Linux'
         run: uv run pyinstaller --clean --noconfirm Fleasion.spec
 
+      - name: Prepare Linux executable
+        if: runner.os == 'Linux'
+        run: |
+          linux_binary="$(find dist -maxdepth 1 -type f -name 'Fleasion-v*-Linux' -print -quit)"
+          if [ -z "$linux_binary" ]; then
+            echo "Could not find Linux executable in dist/." >&2
+            exit 1
+          fi
+          file "$linux_binary" | grep -q 'ELF'
+          chmod 755 "$linux_binary"
+          test -x "$linux_binary"
+
       - name: Verify Linux audio runtime
         if: runner.os == 'Linux'
         run: |
@@ -119,4 +131,5 @@ jobs:
         with:
           name: Fleasion-v${{ env.APP_VERSION }}-Linux
           path: ${{ matrix.artifact_path }}
+          archive: false
           if-no-files-found: error

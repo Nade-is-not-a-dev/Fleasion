@@ -1,5 +1,6 @@
 import asyncio
 import errno
+import json
 import subprocess
 from types import SimpleNamespace
 
@@ -117,6 +118,32 @@ def test_remove_boot_guard_disables_deletes_and_reloads(tmp_path, monkeypatch):
         ['/usr/bin/systemctl', 'disable', daemon.BOOT_GUARD_SERVICE],
         ['/usr/bin/systemctl', 'daemon-reload'],
     ]
+
+
+def test_install_privileged_helper_writes_current_metadata(tmp_path, monkeypatch):
+    source = tmp_path / 'linux_proxy_helper_daemon.py'
+    source.write_text('print("helper")\n', encoding='utf-8')
+    install_root = tmp_path / 'usr' / 'local' / 'libexec'
+    policy_root = tmp_path / 'polkit'
+    legacy_policy_root = tmp_path / 'legacy-polkit'
+
+    monkeypatch.setattr(daemon, 'INSTALLED_HELPER_PATH', install_root / 'fleasion-linux-proxy-helper')
+    monkeypatch.setattr(daemon, 'INSTALLED_HELPER_SCRIPT_PATH', install_root / 'fleasion-linux-proxy-helper.py')
+    monkeypatch.setattr(daemon, 'INSTALLED_HELPER_METADATA_PATH', install_root / 'fleasion-linux-proxy-helper.metadata.json')
+    monkeypatch.setattr(daemon, 'POLKIT_POLICY_PATH', policy_root / 'com.fleasion.proxy-helper.policy')
+    monkeypatch.setattr(daemon, 'LEGACY_POLKIT_POLICY_PATH', legacy_policy_root / 'com.fleasion.proxy-helper.policy')
+    monkeypatch.setattr(daemon.os, 'chown', lambda *_args, **_kwargs: None)
+
+    details = daemon._install_privileged_helper(str(source))
+
+    metadata = json.loads(daemon.INSTALLED_HELPER_METADATA_PATH.read_text(encoding='utf-8'))
+    assert details['ok'] is True
+    assert details['helper_metadata'] == metadata
+    assert metadata == {
+        'metadata_version': daemon.HELPER_METADATA_VERSION,
+        'source_sha256': daemon._file_sha256(source),
+        'source_helper_needs_dispatch_flag': False,
+    }
 
 
 def test_install_system_ca_skips_update_when_target_is_current(tmp_path, monkeypatch):

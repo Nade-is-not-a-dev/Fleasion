@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import contextlib
 import errno
+import hashlib
 import json
 import os
 import pwd
@@ -45,6 +46,8 @@ BOOT_GUARD_SERVICE = 'fleasion-hosts-restore.service'
 BOOT_GUARD_PATH = Path('/etc/systemd/system') / BOOT_GUARD_SERVICE
 INSTALLED_HELPER_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper')
 INSTALLED_HELPER_SCRIPT_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper.py')
+INSTALLED_HELPER_METADATA_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper.metadata.json')
+HELPER_METADATA_VERSION = 1
 POLKIT_ACTION_NAMESPACE = 'com.fleasion.proxy-helper'
 POLKIT_RUN_ACTION_ID = f'{POLKIT_ACTION_NAMESPACE}.run'
 POLKIT_INSTALL_CA_ACTION_ID = f'{POLKIT_ACTION_NAMESPACE}.install-system-ca'
@@ -147,6 +150,22 @@ def _copy_root_file(source: Path, target: Path, mode: int) -> None:
     target.chmod(mode)
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _helper_install_metadata(source: Path, *, source_helper_needs_dispatch_flag: bool) -> dict:
+    return {
+        'metadata_version': HELPER_METADATA_VERSION,
+        'source_sha256': _file_sha256(source),
+        'source_helper_needs_dispatch_flag': bool(source_helper_needs_dispatch_flag),
+    }
+
+
 def _install_privileged_helper(
     source_helper: str | None,
     *,
@@ -158,6 +177,10 @@ def _install_privileged_helper(
         return {'ok': False, 'error': f'helper source is not a real file: {source}'}
 
     try:
+        metadata = _helper_install_metadata(
+            source,
+            source_helper_needs_dispatch_flag=source_helper_needs_dispatch_flag,
+        )
         if source_helper_needs_dispatch_flag:
             _copy_root_file(source, INSTALLED_HELPER_SCRIPT_PATH, 0o755)
             wrapper = (
@@ -176,10 +199,16 @@ def _install_privileged_helper(
         policy_xml = _polkit_policy_xml()
         _write_root_file(POLKIT_POLICY_PATH, policy_xml, 0o644)
         _write_root_file(LEGACY_POLKIT_POLICY_PATH, policy_xml, 0o644)
+        _write_root_file(
+            INSTALLED_HELPER_METADATA_PATH,
+            json.dumps(metadata, sort_keys=True, separators=(',', ':')) + '\n',
+            0o644,
+        )
 
         return {
             'ok': True,
             'helper': str(INSTALLED_HELPER_PATH),
+            'helper_metadata': metadata,
             'policy': str(POLKIT_POLICY_PATH),
             'legacy_policy': str(LEGACY_POLKIT_POLICY_PATH),
             'promptless_rule': None,

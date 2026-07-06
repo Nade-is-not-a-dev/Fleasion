@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import shutil
@@ -24,6 +25,8 @@ NSS_CERT_NICKNAME = 'Fleasion Proxy CA'
 SYSTEM_CA_NAME = 'fleasion-proxy-ca.crt'
 HELPER_BUNDLED_EXECUTABLE_NAME = 'fleasion-linux-proxy-helper'
 INSTALLED_HELPER_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper')
+INSTALLED_HELPER_METADATA_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper.metadata.json')
+HELPER_METADATA_VERSION = 1
 POLKIT_ACTION_NAMESPACE = 'com.fleasion.proxy-helper'
 POLKIT_POLICY_PATH = Path('/usr/share/polkit-1/actions') / f'{POLKIT_ACTION_NAMESPACE}.policy'
 LEGACY_POLKIT_POLICY_PATH = Path('/usr/local/share/polkit-1/actions') / f'{POLKIT_ACTION_NAMESPACE}.policy'
@@ -102,6 +105,44 @@ def _is_trusted_installed_helper(path: Path = INSTALLED_HELPER_PATH) -> bool:
         and bool(stat_result.st_mode & 0o111)
         and not bool(stat_result.st_mode & 0o022)
     )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _current_helper_metadata() -> dict | None:
+    try:
+        source, needs_helper_flag = _installable_helper_source()
+        return {
+            'metadata_version': HELPER_METADATA_VERSION,
+            'source_sha256': _file_sha256(source),
+            'source_helper_needs_dispatch_flag': bool(needs_helper_flag),
+        }
+    except OSError as exc:
+        log_buffer.log('ProxyHelper', f'Could not inspect current Linux helper payload: {exc}')
+        return None
+
+
+def _installed_helper_metadata(path: Path = INSTALLED_HELPER_METADATA_PATH) -> dict | None:
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except OSError:
+        return None
+    except json.JSONDecodeError as exc:
+        log_buffer.log('ProxyHelper', f'Installed Linux helper metadata is invalid: {exc}')
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _installed_helper_metadata_is_current() -> bool:
+    expected = _current_helper_metadata()
+    installed = _installed_helper_metadata()
+    return expected is not None and installed == expected
 
 
 def _policy_file_is_current(path: Path) -> bool:
@@ -237,10 +278,16 @@ def install_privileged_helper(*, enable_promptless: bool = False, timeout: float
 
 def ensure_privileged_helper_installed(*, enable_promptless: bool = True) -> bool:
     """Ensure runtime launches use Fleasion's installed Polkit action."""
-    if _is_trusted_installed_helper() and _installed_policy_is_current():
+    trusted_helper = _is_trusted_installed_helper()
+    current_policy = _installed_policy_is_current()
+    current_metadata = _installed_helper_metadata_is_current()
+    if trusted_helper and current_policy and current_metadata:
         return True
 
-    log_buffer.log('ProxyHelper', 'Installing Fleasion Linux privileged helper for persistent proxy permissions')
+    if trusted_helper and current_policy and not current_metadata:
+        log_buffer.log('ProxyHelper', 'Updating Fleasion Linux privileged helper to match this app build')
+    else:
+        log_buffer.log('ProxyHelper', 'Installing Fleasion Linux privileged helper for persistent proxy permissions')
     details = install_privileged_helper(enable_promptless=enable_promptless)
     if not details.get('ok'):
         log_buffer.log(
@@ -255,9 +302,14 @@ def ensure_privileged_helper_installed(*, enable_promptless: bool = True) -> boo
     if not _installed_policy_is_current():
         log_buffer.log('ProxyHelper', 'Linux privileged helper install finished but Polkit policy was not current')
         return False
+    if not _installed_helper_metadata_is_current():
+        log_buffer.log('ProxyHelper', 'Linux privileged helper install finished but helper metadata was not current')
+        return False
 
     if details.get('promptless_rule'):
         log_buffer.log('ProxyHelper', 'Installed promptless Polkit rule for Fleasion proxy helper')
+    elif trusted_helper and current_policy and not current_metadata:
+        log_buffer.log('ProxyHelper', 'Updated Fleasion proxy helper for this app build')
     else:
         log_buffer.log('ProxyHelper', 'Installed Fleasion proxy helper Polkit action')
     return True

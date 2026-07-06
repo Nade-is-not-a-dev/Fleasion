@@ -172,6 +172,7 @@ def test_start_helper_installs_persistent_helper_before_launch(monkeypatch, tmp_
     monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else None)
     monkeypatch.setattr(linux_proxy_helper, '_is_trusted_installed_helper', lambda: installed['ok'])
     monkeypatch.setattr(linux_proxy_helper, '_installed_policy_is_current', lambda: installed['ok'])
+    monkeypatch.setattr(linux_proxy_helper, '_installed_helper_metadata_is_current', lambda: installed['ok'])
     monkeypatch.setattr(linux_proxy_helper, 'install_privileged_helper', fake_install)
     monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
     monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda cmd, **_kwargs: commands.append(cmd) or Process())
@@ -180,6 +181,39 @@ def test_start_helper_installs_persistent_helper_before_launch(monkeypatch, tmp_
     assert linux_proxy_helper.start_helper({'gamejoin.roblox.com'}, timeout=1.0) is True
 
     assert installed['kwargs'] == {'enable_promptless': True}
+    assert commands[0][1] == str(linux_proxy_helper.INSTALLED_HELPER_PATH)
+
+
+def test_start_helper_updates_stale_installed_helper_before_launch(monkeypatch, tmp_path):
+    commands = []
+    metadata_current = {'ok': False}
+
+    class Process:
+        def poll(self):
+            return None
+
+    def fake_install(**kwargs):
+        metadata_current['ok'] = True
+        metadata_current['kwargs'] = kwargs
+        return {'ok': True, 'helper': str(linux_proxy_helper.INSTALLED_HELPER_PATH), 'promptless_rule': None}
+
+    monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_READY_FILE', tmp_path / 'ready.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_STOP_FILE', tmp_path / 'stop')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_HOSTS_FILE', tmp_path / 'hosts.json')
+    monkeypatch.setattr(linux_proxy_helper, 'HELPER_LOG_FILE', tmp_path / 'helper.log')
+    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else None)
+    monkeypatch.setattr(linux_proxy_helper, '_is_trusted_installed_helper', lambda: True)
+    monkeypatch.setattr(linux_proxy_helper, '_installed_policy_is_current', lambda: True)
+    monkeypatch.setattr(linux_proxy_helper, '_installed_helper_metadata_is_current', lambda: metadata_current['ok'])
+    monkeypatch.setattr(linux_proxy_helper, 'install_privileged_helper', fake_install)
+    monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
+    monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda cmd, **_kwargs: commands.append(cmd) or Process())
+    monkeypatch.setattr(linux_proxy_helper, '_read_ready', lambda: {'ok': True})
+
+    assert linux_proxy_helper.start_helper({'gamejoin.roblox.com'}, timeout=1.0) is True
+
+    assert metadata_current['kwargs'] == {'enable_promptless': True}
     assert commands[0][1] == str(linux_proxy_helper.INSTALLED_HELPER_PATH)
 
 
