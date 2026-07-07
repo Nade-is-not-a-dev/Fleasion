@@ -547,6 +547,41 @@ def _log_system_proxy_info(info: WindowsProxyInfo, system_proxy: Optional[HttpPr
         )
 
 
+def _log_upstream_transport_settings(
+    configured_mode: str,
+    effective_mode: str,
+    system_proxy: Optional[HttpProxyConfig],
+    manual_http_proxy: Optional[HttpProxyConfig],
+    manual_socks5_proxy: Optional[Socks5ProxyConfig],
+    asset_limit: int,
+    cdn_limit: int,
+) -> None:
+    override = ''
+    if effective_mode != configured_mode:
+        override = f' effective={effective_mode}'
+    system_state = (
+        f'{system_proxy.host}:{system_proxy.port}'
+        if system_proxy is not None else 'not detected'
+    )
+    manual_http_state = (
+        f'{manual_http_proxy.host}:{manual_http_proxy.port}'
+        if manual_http_proxy is not None else 'not configured'
+    )
+    manual_socks5_state = (
+        f'{manual_socks5_proxy.host}:{manual_socks5_proxy.port}'
+        if manual_socks5_proxy is not None else 'not configured'
+    )
+    log_buffer.log(
+        'ProxyDiag',
+        'Upstream transport settings: '
+        f'configured={configured_mode}{override}; '
+        f'system_proxy={system_state}; '
+        f'manual_http_connect={manual_http_state}; '
+        f'manual_socks5={manual_socks5_state}; '
+        f'vpn_limits assetdelivery={asset_limit} cdn={cdn_limit}',
+    )
+
+
 def _manual_http_proxy_from_settings(config_manager) -> Optional[HttpProxyConfig]:
     host = str(getattr(config_manager, 'upstream_http_connect_host', '') or '').strip()
     port = int(getattr(config_manager, 'upstream_http_connect_port', 0) or 0)
@@ -3205,6 +3240,19 @@ class ProxyMaster:
         _log_system_proxy_info(windows_proxy_info, system_http_proxy)
         manual_http_proxy = _manual_http_proxy_from_settings(self.config_manager)
         manual_socks5_proxy = _manual_socks5_proxy_from_settings(self.config_manager)
+        configured_upstream_mode = self.config_manager.upstream_transport_mode
+        effective_upstream_mode = self._effective_upstream_mode()
+        asset_connection_limit = self.config_manager.vpn_compat_max_assetdelivery_connections
+        cdn_connection_limit = self.config_manager.vpn_compat_max_cdn_connections
+        _log_upstream_transport_settings(
+            configured_upstream_mode,
+            effective_upstream_mode,
+            system_http_proxy,
+            manual_http_proxy,
+            manual_socks5_proxy,
+            asset_connection_limit,
+            cdn_connection_limit,
+        )
 
         # ── Create addon instances ────────────────────────────────────────
         self._texture_stripper = TextureStripper(self.config_manager)
@@ -3239,13 +3287,13 @@ class ProxyMaster:
             upstream_endpoints=real_endpoints,
             default_cert=default_cert,
             port=listen_port,
-            upstream_mode=self._effective_upstream_mode(),
+            upstream_mode=effective_upstream_mode,
             system_http_proxy=system_http_proxy,
             manual_http_proxy=manual_http_proxy,
             manual_socks5_proxy=manual_socks5_proxy,
             wire_preserving_passthrough=self._effective_wire_preserving_passthrough(),
-            vpn_compat_max_assetdelivery_connections=self.config_manager.vpn_compat_max_assetdelivery_connections,
-            vpn_compat_max_cdn_connections=self.config_manager.vpn_compat_max_cdn_connections,
+            vpn_compat_max_assetdelivery_connections=asset_connection_limit,
+            vpn_compat_max_cdn_connections=cdn_connection_limit,
         )
         with self._lock:
             interceptors = list(self._module_interceptors)

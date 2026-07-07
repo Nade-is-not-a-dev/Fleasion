@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..gui.theme import ThemeManager
-from .modifications_tab import CollapsibleSection
+from .modifications_tab import CollapsibleSection, DropdownComboBox, NoWheelSpinBox
 from ..utils.autostart import sync_autostart
 from ..utils.desktop_integration import sync_desktop_integration
 from ..utils import CONFIG_DIR
@@ -192,7 +192,7 @@ class SettingsTab(QWidget):
         mode_row = QHBoxLayout()
         mode_row.setContentsMargins(0, 0, 0, 0)
         mode_row.addWidget(QLabel('Upstream Transport'))
-        self._upstream_mode_combo = QComboBox()
+        self._upstream_mode_combo = DropdownComboBox()
         self._upstream_mode_combo.addItem('Auto', 'auto')
         self._upstream_mode_combo.addItem('Direct IP', 'direct_ip')
         self._upstream_mode_combo.addItem('System Proxy', 'system_proxy')
@@ -277,11 +277,11 @@ class SettingsTab(QWidget):
         limits_row = QHBoxLayout()
         limits_row.setContentsMargins(0, 0, 0, 0)
         limits_row.addWidget(QLabel('VPN Connection Limits'))
-        self._asset_limit_spin = QSpinBox()
+        self._asset_limit_spin = NoWheelSpinBox()
         self._asset_limit_spin.setRange(1, 128)
         self._asset_limit_spin.setValue(self._config.vpn_compat_max_assetdelivery_connections)
         self._asset_limit_spin.setPrefix('Asset ')
-        self._cdn_limit_spin = QSpinBox()
+        self._cdn_limit_spin = NoWheelSpinBox()
         self._cdn_limit_spin.setRange(1, 256)
         self._cdn_limit_spin.setValue(self._config.vpn_compat_max_cdn_connections)
         self._cdn_limit_spin.setPrefix('CDN ')
