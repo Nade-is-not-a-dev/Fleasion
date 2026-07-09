@@ -6,7 +6,7 @@ if [ "$(uname -s)" != "Darwin" ]; then
     exit 1
 fi
 
-APP_VERSION="$(sed -n "s/^APP_VERSION = ['\"]\\([^'\"]*\\)['\"]$/\\1/p" src/Fleasion/utils/paths.py)"
+APP_VERSION="$(uv version --short)"
 EXEC_NAME="Fleasion-v${APP_VERSION}"
 APP_PATH="dist/Fleasion.app"
 VERSIONED_APP_PATH="dist/${EXEC_NAME}.app"

@@ -4,9 +4,10 @@ import sys
 import os
 from pathlib import Path
 
+from Fleasion import __version__ as APP_VERSION
+
 # Application metadata
 APP_NAME = 'Fleasion'
-APP_VERSION = '2.2.1'
 APP_AUTHOR = '@8ar__, @dis_spencer, @1_v'
 APP_LOGIC = '@blockce, @0100152000022000, @Yeha., @emk530'
 APP_CONCEPT = '@cro.p'

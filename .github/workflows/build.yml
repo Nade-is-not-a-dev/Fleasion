@@ -52,9 +52,7 @@ jobs:
 
       - name: Read version
         shell: bash
-        run: |
-          app_version="$(sed -n "s/^APP_VERSION = ['\"]\\([^'\"]*\\)['\"]$/\\1/p" src/Fleasion/utils/paths.py)"
-          echo "APP_VERSION=$app_version" >> "$GITHUB_ENV"
+        run: echo "APP_VERSION=$(uv version --short)" >> "$GITHUB_ENV"
 
       - name: Sync dependencies
         run: uv sync --locked --group dev

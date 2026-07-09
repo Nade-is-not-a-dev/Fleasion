@@ -1,4 +1,5 @@
 from Fleasion import app as app_module
+from Fleasion import __version__ as APP_VERSION
 from Fleasion.app import (
     _handle_single_instance_command,
     _linux_hosts_nix_snippet,
@@ -12,11 +13,11 @@ from PyQt6.QtCore import QSharedMemory
 
 def test_macos_fleasion_process_matching_accepts_real_launch_forms():
     assert _looks_like_macos_fleasion_command(
-        "/Applications/Fleasion.app/Contents/MacOS/Fleasion-v2.2.1 --no-dashboard"
+        f'/Applications/Fleasion.app/Contents/MacOS/Fleasion-v{APP_VERSION} --no-dashboard'
     )
-    assert _looks_like_macos_fleasion_command("/project/.venv/bin/Fleasion")
-    assert _looks_like_macos_fleasion_command("/usr/bin/python3 /project/launcher.py")
-    assert _looks_like_macos_fleasion_command("/usr/bin/python3 -m Fleasion")
+    assert _looks_like_macos_fleasion_command('/project/.venv/bin/Fleasion')
+    assert _looks_like_macos_fleasion_command('/usr/bin/python3 /project/launcher.py')
+    assert _looks_like_macos_fleasion_command('/usr/bin/python3 -m Fleasion')
 
 
 def test_macos_fleasion_process_matching_rejects_unrelated_commands():
@@ -24,20 +25,20 @@ def test_macos_fleasion_process_matching_rejects_unrelated_commands():
         "/bin/zsh -c tail '/Users/test/Library/Application Support/FleasionNT/logs/fleasion.log'"
     )
     assert not _looks_like_macos_fleasion_command(
-        "/bin/zsh -c ps -axo command | rg 'Fleasion-v2.2.1|launcher.py'"
+        f"/bin/zsh -c ps -axo command | rg 'Fleasion-v{APP_VERSION}|launcher.py'"
     )
-    assert not _looks_like_macos_fleasion_command("/usr/bin/python3 /tmp/not-fleasion.py")
+    assert not _looks_like_macos_fleasion_command('/usr/bin/python3 /tmp/not-fleasion.py')
 
 
 def test_fleasion_process_matching_rejects_linux_proxy_helper_commands():
     assert not _looks_like_macos_fleasion_command(
-        "/opt/Fleasion/Fleasion --linux-proxy-helper --backend-port 8443"
+        '/opt/Fleasion/Fleasion --linux-proxy-helper --backend-port 8443'
     )
     assert not _looks_like_macos_fleasion_command(
-        "/usr/bin/python3 /project/launcher.py --linux-proxy-helper --backend-port 8443"
+        '/usr/bin/python3 /project/launcher.py --linux-proxy-helper --backend-port 8443'
     )
     assert not _looks_like_macos_fleasion_command(
-        "/usr/bin/python3 /project/src/Fleasion/linux_proxy_helper_daemon.py --backend-port 8443"
+        '/usr/bin/python3 /project/src/Fleasion/linux_proxy_helper_daemon.py --backend-port 8443'
     )
 
 

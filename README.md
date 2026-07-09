@@ -51,6 +51,15 @@ softwareupdate --install-rosetta --agree-to-license
 
 For local single-architecture builds, set `MACOS_TARGET_ARCH=arm64` or `MACOS_TARGET_ARCH=x86_64`.
 
+To bump Fleasion for a release, update the project version once:
+
+```bash
+uv version --bump patch
+# or: uv version <new-version>
+```
+
+Runtime code, PyInstaller naming, and GitHub release workflows read that value from `pyproject.toml`.
+
 ## System Tray
 
 Fleasion runs in the background as a system tray application. Right-click the tray icon to access:

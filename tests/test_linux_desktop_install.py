@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from Fleasion import __version__ as APP_VERSION
 from Fleasion.utils import platform_linux
 
 
@@ -42,7 +43,7 @@ def test_install_desktop_entries_writes_user_launcher_and_removes_deprecated(tmp
 
 
 def test_copy_linux_app_payload_copies_frozen_binary_and_icon(tmp_path, monkeypatch):
-    source_binary = tmp_path / "Downloads" / "Fleasion-v2.2.1"
+    source_binary = tmp_path / 'Downloads' / f'Fleasion-v{APP_VERSION}'
     source_binary.parent.mkdir()
     source_binary.write_bytes(b"binary")
     source_icon = tmp_path / "Downloads" / "fleasionlogoHR.ico"

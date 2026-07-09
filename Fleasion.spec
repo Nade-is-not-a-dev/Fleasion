@@ -3,14 +3,19 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_data_files,
+    collect_submodules,
+    copy_metadata,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -164,11 +169,16 @@ def _run_pyinstaller_spec(spec_path: str, *, env: dict[str, str] | None = None) 
 
 
 def _read_app_version() -> str:
-    paths_src = Path('src/Fleasion/utils/paths.py').read_text()
-    match = re.search(r"APP_VERSION\s*=\s*['\"]([^'\"]+)['\"]", paths_src)
-    if match is None:
-        raise SystemExit('Could not find APP_VERSION in src/Fleasion/utils/paths.py.')
-    return match.group(1)
+    pyproject = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))
+    project = pyproject.get('project')
+    if not isinstance(project, dict):
+        raise SystemExit('Could not find [project] in pyproject.toml.')
+
+    project_version = project.get('version')
+    if not isinstance(project_version, str) or not project_version:
+        raise SystemExit('Could not find project.version in pyproject.toml.')
+
+    return project_version
 
 
 def _collect_package(package: str) -> None:
@@ -256,6 +266,7 @@ datas: list[CollectionEntry] = [
     ('src/Fleasion/modifications/bundled/empty.mesh', 'Fleasion/modifications/bundled'),
     ('src/Fleasion/modifications/bundled/empty.tex', 'Fleasion/modifications/bundled'),
 ]
+datas.extend(copy_metadata('Fleasion'))
 binaries: list[CollectionEntry] = []
 if sys.platform == 'win32':
     binaries.append(('src/Fleasion/cache/tools/ktx_to_png/ktx.dll', '.'))

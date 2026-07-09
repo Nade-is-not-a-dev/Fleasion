@@ -26,14 +26,13 @@ jobs:
         with:
           ref: main
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
       - name: Read version
         id: version
         run: |
-          app_version="$(sed -n "s/^APP_VERSION = ['\"]\\([^'\"]*\\)['\"]$/\\1/p" src/Fleasion/utils/paths.py)"
-          if [ -z "$app_version" ]; then
-            echo "Could not read APP_VERSION from src/Fleasion/utils/paths.py." >&2
-            exit 1
-          fi
+          app_version="$(uv version --short)"
           main_sha="$(git rev-parse HEAD)"
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"

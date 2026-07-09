@@ -1,11 +1,14 @@
 """Fleasion - Roblox asset interceptor and replacer."""
 
-__version__ = '2.2.1'
-__all__ = ['main']
+from .version import read_version
+
+__all__ = ['main']  # type: ignore[reportUnsupportedDunderAll]
+__version__ = read_version()
 
 
 def __getattr__(name: str):
     if name == 'main':
         from .app import main
+
         return main
     raise AttributeError(name)
