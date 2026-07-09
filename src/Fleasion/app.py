@@ -12,9 +12,19 @@ import sys
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer, QSharedMemory, QObject, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QSharedMemory, Qt, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
-from PyQt6.QtWidgets import QApplication, QMessageBox, QPushButton, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QCheckBox
+from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QDialog,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from . import __version__
 from .config import ConfigManager
@@ -22,12 +32,27 @@ from .modifications import ModificationManager
 from .prejsons import download_prejsons
 from .proxy import ProxyMaster, check_and_patch_running_roblox_ca
 from .tray import SystemTray
-from .utils import APP_DISCORD, APP_NAME, CONFIG_DIR, LOG_FILE, delete_cache, get_icon_path, get_roblox_player_exe_path, get_roblox_studio_exe_path, is_roblox_running, is_studio_running, launch_as_standard_user, log_buffer, open_folder, run_in_thread, start_update_check, time_tracker
-
+from .utils import (
+    APP_DISCORD,
+    APP_NAME,
+    CONFIG_DIR,
+    LOG_FILE,
+    delete_cache,
+    get_icon_path,
+    get_roblox_player_exe_path,
+    get_roblox_studio_exe_path,
+    is_roblox_running,
+    is_studio_running,
+    launch_as_standard_user,
+    log_buffer,
+    open_folder,
+    run_in_thread,
+    start_update_check,
+    time_tracker,
+)
 
 _SINGLE_INSTANCE_KEY = 'FleasionSingleInstance'
 _SINGLE_INSTANCE_CONTROL_SERVER = 'FleasionSingleInstanceControl'
-
 
 
 class _FirstTimeSetupMessageBox(QMessageBox):
@@ -918,7 +943,10 @@ def _choose_macos_auth_source_on_launch(config_manager, tray=None, *, force: boo
 
     def _manual_import() -> None:
         from .gui.rando_stuff_tab import AddAccountDialog
-        from .utils.roblox_auth import store_manual_roblosecurity, validate_roblosecurity_for_import
+        from .utils.roblox_auth import (
+            store_manual_roblosecurity,
+            validate_roblosecurity_for_import,
+        )
 
         dlg = AddAccountDialog(dialog, title='Import Roblox Token')
         dlg.set_ok_label('Import')
@@ -2091,7 +2119,11 @@ def main():
         _auth_prompt_shown = True
         if sys.platform == 'darwin':
             try:
-                from .utils.roblox_auth import get_auth_failure_details, get_roblosecurity, notify_auth_source_changed
+                from .utils.roblox_auth import (
+                    get_auth_failure_details,
+                    get_roblosecurity,
+                    notify_auth_source_changed,
+                )
 
                 if config_manager.macos_auth_source:
                     log_buffer.log(
