@@ -229,7 +229,9 @@ def _build_macos_helper(target_arch: str | None) -> None:
 
 _version = _read_app_version()
 _exe_name = f'Fleasion-v{_version}'
-if sys.platform.startswith('linux'):
+if sys.platform == 'win32':
+    _exe_name = f'{_exe_name}-Windows'
+elif sys.platform.startswith('linux'):
     _exe_name = f'{_exe_name}-Linux'
 _macos_target_arch = (
     os.environ.get('MACOS_TARGET_ARCH', 'universal2')

@@ -48,8 +48,8 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}.exe
-            artifact_path: dist/Fleasion-v*.exe
+            artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Windows.exe
+            artifact_path: dist/Fleasion-v*-Windows.exe
           - name: Linux
             os: ubuntu-latest
             artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux
@@ -142,50 +142,21 @@ jobs:
       - build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main for release
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.main_sha }}
-
-      - name: Download Windows release asset
+      - name: Download release assets
         uses: actions/download-artifact@v8
         with:
-          name: Fleasion-v${{ needs.prepare.outputs.app_version }}.exe
+          pattern: Fleasion-v${{ needs.prepare.outputs.app_version }}-*
           path: release-files
+          merge-multiple: true
           skip-decompress: true
-
-      - name: Download Linux release asset
-        uses: actions/download-artifact@v8
-        with:
-          name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux
-          path: release-files
-          skip-decompress: true
-
-      - name: Download macOS release asset
-        uses: actions/download-artifact@v8
-        with:
-          name: Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip
-          path: release-files
-          skip-decompress: true
-
-      - name: Verify release assets
-        run: |
-          find release-files -maxdepth 1 -type f -print | sort
-          test -f "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}.exe"
-          test -f "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux"
-          test -f "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip"
-          test -x "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux"
-          test "$(find release-files -maxdepth 1 -type f -name 'Fleasion-v*' | wc -l)" -eq 3
 
       - name: Create draft GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
-          MAIN_SHA: ${{ needs.prepare.outputs.main_sha }}
-        run: |
-          gh release create "$RELEASE_TAG" release-files/* \
-            --draft \
-            --target "$MAIN_SHA" \
-            --title "Fleasion v${APP_VERSION}" \
-            --notes "Draft release for Fleasion v${APP_VERSION}."
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.release_tag }}
+          target_commitish: ${{ needs.prepare.outputs.main_sha }}
+          name: Fleasion v${{ needs.prepare.outputs.app_version }}
+          draft: true
+          generate_release_notes: true
+          files: release-files/*
+          fail_on_unmatched_files: true
