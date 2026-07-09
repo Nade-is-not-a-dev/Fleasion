@@ -267,9 +267,15 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
         'uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0'
         in workflow
     )
-    assert 'ref: main' in workflow
-    assert 'ref: ${{ needs.prepare.outputs.main_sha }}' in workflow
-    assert 'release_tag: v${{ steps.version.outputs.app_version }}' in workflow
+    prepare_job = workflow.split('\n  build:', maxsplit=1)[0]
+    assert 'setup-uv' not in prepare_job
+    assert 'sed -n "s/^version =' in prepare_job
+    assert 'Could not read project.version from pyproject.toml.' in prepare_job
+    assert 'Checkout release ref' in workflow
+    assert 'ref: main' not in workflow
+    assert 'ref: ${{ github.sha }}' in workflow
+    assert 'release_sha' not in workflow
+    assert 'release_tag:' not in workflow
     assert (
         'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Windows.exe'
         in workflow
@@ -298,7 +304,8 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
     assert 'skip-decompress: true' in workflow
     assert 'uses: softprops/action-gh-release@v2' in workflow
     assert 'draft: true' in workflow
-    assert 'target_commitish: ${{ needs.prepare.outputs.main_sha }}' in workflow
+    assert 'tag_name: v${{ needs.prepare.outputs.app_version }}' in workflow
+    assert 'target_commitish: ${{ github.sha }}' in workflow
     assert 'files: release-files/*' in workflow
 
 

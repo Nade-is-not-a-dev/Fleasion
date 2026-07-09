@@ -14,28 +14,23 @@ env:
 
 jobs:
   prepare:
-    name: Prepare main release metadata
+    name: Prepare release metadata
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
-      main_sha: ${{ steps.version.outputs.main_sha }}
-      release_tag: v${{ steps.version.outputs.app_version }}
     steps:
-      - name: Checkout main
+      - name: Checkout release ref
         uses: actions/checkout@v7
-        with:
-          ref: main
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Read version
         id: version
         run: |
-          app_version="$(uv version --short)"
-          main_sha="$(git rev-parse HEAD)"
+          app_version="$(sed -n "s/^version = ['\"]\([^'\"]*\)['\"]$/\1/p" pyproject.toml)"
+          if [ -z "$app_version" ]; then
+            echo "Could not read project.version from pyproject.toml." >&2
+            exit 1
+          fi
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
-          echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.name }}
@@ -59,10 +54,10 @@ jobs:
             artifact_path: dist/Fleasion-v*-MacOS-Universal.zip
 
     steps:
-      - name: Checkout main
+      - name: Checkout release ref
         uses: actions/checkout@v7
         with:
-          ref: ${{ needs.prepare.outputs.main_sha }}
+          ref: ${{ github.sha }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -152,8 +147,8 @@ jobs:
       - name: Create draft GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.prepare.outputs.release_tag }}
-          target_commitish: ${{ needs.prepare.outputs.main_sha }}
+          tag_name: v${{ needs.prepare.outputs.app_version }}
+          target_commitish: ${{ github.sha }}
           name: Fleasion v${{ needs.prepare.outputs.app_version }}
           draft: true
           generate_release_notes: true
