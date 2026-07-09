@@ -1,6 +1,11 @@
 name: Build PyInstaller Packages
 
 on:
+  workflow_call:
+    outputs:
+      app_version:
+        description: Application version from pyproject.toml.
+        value: ${{ jobs.prepare.outputs.app_version }}
   workflow_dispatch:
   push:
     branches:
@@ -18,8 +23,30 @@ env:
   TZ: UTC
 
 jobs:
+  prepare:
+    name: Prepare package metadata
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+    steps:
+      - name: Checkout ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Read version
+        id: version
+        run: |
+          app_version="$(sed -n "s/^version = ['\"]\([^'\"]*\)['\"]$/\1/p" pyproject.toml)"
+          if [ -z "$app_version" ]; then
+            echo "Could not read project.version from pyproject.toml." >&2
+            exit 1
+          fi
+          echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.name }}
+    needs: prepare
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -27,20 +54,22 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            artifact_suffix: -Windows.exe
+            artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Windows.exe
             artifact_path: dist/Fleasion-v*-Windows.exe
           - name: Linux
             os: ubuntu-latest
-            artifact_suffix: -Linux
+            artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux
             artifact_path: dist/Fleasion-v*-Linux
           - name: macOS
             os: macos-latest
-            artifact_suffix: -MacOS-Universal.zip
+            artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip
             artifact_path: dist/Fleasion-v*-MacOS-Universal.zip
 
     steps:
-      - name: Checkout
+      - name: Checkout ref
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -49,10 +78,6 @@ jobs:
 
       - name: Set up Python
         run: uv python install
-
-      - name: Read version
-        shell: bash
-        run: echo "APP_VERSION=$(uv version --short)" >> "$GITHUB_ENV"
 
       - name: Sync dependencies
         run: uv sync --locked --group dev
@@ -111,7 +136,7 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v7
         with:
-          name: Fleasion-v${{ env.APP_VERSION }}${{ matrix.artifact_suffix }}
+          name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_path }}
           archive: false
           if-no-files-found: error
