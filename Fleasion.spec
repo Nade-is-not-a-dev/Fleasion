@@ -232,7 +232,7 @@ def _build_linux_helper() -> None:
 
 def _build_macos_helper(target_arch: str | None) -> None:
     helper_env = {'MACOS_TARGET_ARCH': target_arch} if target_arch else None
-    _run_pyinstaller_spec('FleasionProxyHelper.spec', env=helper_env)
+    _run_pyinstaller_spec('FleasionDarwinProxyHelper.spec', env=helper_env)
     if target_arch in _bundled_macos_helpers:
         shutil.copy2(_bundled_legacy_macos_helper, _bundled_macos_helpers[target_arch])
 

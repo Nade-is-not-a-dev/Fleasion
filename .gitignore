@@ -32,7 +32,7 @@ MANIFEST
 *.manifest
 *.spec
 !Fleasion.spec
-!FleasionProxyHelper.spec
+!FleasionDarwinProxyHelper.spec
 !FleasionLinuxProxyHelper.spec
 
 # Installer logs

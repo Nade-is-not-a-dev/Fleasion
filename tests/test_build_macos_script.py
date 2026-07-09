@@ -175,7 +175,7 @@ def test_macos_build_bundles_arch_specific_proxy_helpers():
         'x86_uv run --python "$x86_python_path" pyinstaller --clean --noconfirm Fleasion.spec'
         in script
     )
-    assert 'FleasionProxyHelper.spec' in spec
+    assert 'FleasionDarwinProxyHelper.spec' in spec
     assert (
         'shutil.copy2(_bundled_legacy_macos_helper, _bundled_macos_helpers[target_arch])'
         in spec
@@ -302,7 +302,7 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
     assert 'pattern: Fleasion-v${{ needs.prepare.outputs.app_version }}-*' in workflow
     assert 'merge-multiple: true' in workflow
     assert 'skip-decompress: true' in workflow
-    assert 'uses: softprops/action-gh-release@v2' in workflow
+    assert 'uses: softprops/action-gh-release@v3' in workflow
     assert 'draft: true' in workflow
     assert 'tag_name: v${{ needs.prepare.outputs.app_version }}' in workflow
     assert 'target_commitish: ${{ github.sha }}' in workflow
