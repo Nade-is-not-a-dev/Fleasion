@@ -34,11 +34,7 @@ cd fleasion
 # Run the application (auto-installs all dependencies)
 uv run Fleasion
 
-# (OPTIONAL) Compile as a standalone Windows executable
-uv run pyinstaller Fleasion.spec
-
-# Linux only: build the privileged proxy helper before packaging the app
-uv run pyinstaller FleasionLinuxProxyHelper.spec
+# (OPTIONAL) Compile as a standalone Windows executable or Linux binary
 uv run pyinstaller Fleasion.spec
 
 # (OPTIONAL) Build the native macOS application bundle
