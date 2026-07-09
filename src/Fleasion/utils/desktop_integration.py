@@ -15,7 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .paths import APP_NAME, APP_VERSION, USER_HOME, get_icon_path
+from .metadata import APP_NAME, APP_VERSION
+from .paths import USER_HOME, get_icon_path
 
 
 WINDOWS_START_MENU_SHORTCUT_PATH = (

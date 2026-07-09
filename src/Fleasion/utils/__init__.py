@@ -1,16 +1,18 @@
 """Utilities package."""
 
 from .logging import LogBuffer, log_buffer
+from .metadata import (
+    APP_AUTHOR,
+    APP_CONCEPT,
+    APP_DISCORD,
+    APP_LOGIC,
+    APP_NAME,
+    APP_REPO,
+    APP_VERSION,
+)
 from .plural import format_count, pluralize
 from .time_tracker import TimeTracker, time_tracker
 from .paths import (
-    APP_AUTHOR,
-    APP_LOGIC,
-    APP_CONCEPT,
-    APP_DISCORD,
-    APP_REPO,
-    APP_NAME,
-    APP_VERSION,
     APP_CACHE_DIR,
     CLOG_URL,
     CONFIG_DIR,

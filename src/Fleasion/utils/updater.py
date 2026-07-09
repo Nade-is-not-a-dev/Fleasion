@@ -9,7 +9,7 @@ from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import QDialog, QLabel, QHBoxLayout, QVBoxLayout, QPushButton
 from PyQt6.QtGui import QIcon
 
-from .paths import APP_VERSION
+from .metadata import APP_VERSION
 
 _RELEASES_API = 'https://api.github.com/repos/fleasion/Fleasion/releases/latest'
 _RELEASES_PAGE = 'https://github.com/fleasion/Fleasion/releases/latest'
