@@ -97,6 +97,7 @@ On Linux, Fleasion targets the Sober Flatpak client (`org.vinegarhq.Sober`). It 
 ## Features
 
 ### Asset Replacement
+
 - Configure replacement rules through the Dashboard GUI
 - Replace assets by ID, redirect to external URLs, or serve local files
 - Multiple configuration profiles &mdash; switch between different setups
@@ -158,6 +159,7 @@ Every asset type Roblox uses &mdash; images, decals, audio, meshes, animations, 
   - **CDN OBJ Support** &mdash; download and convert OBJ files from CDN links (Discord, Cloudflare, etc.)
 
 ### Cache Viewer
+
 - Browse all intercepted assets organized by type (80+ Roblox asset types)
 - Search and filter by ID, name, type, hash, or URL
 - **Live preview** for images, meshes (3D viewer), audio (playback), animations (3D rig), texture packs, and Jsons.
@@ -177,6 +179,7 @@ Every asset type Roblox uses &mdash; images, decals, audio, meshes, animations, 
 ### First Launch
 
 On first launch, Fleasion will:
+
 - Generate a local CA certificate and install it into Roblox's SSL trust bundle
 - On macOS, offer to install the root-owned proxy helper with one administrator approval. The helper owns local port 443, updates `/etc/hosts`, and patches Roblox `ssl/cacert.pem`.
 - On Linux, use the installed desktop launcher or startup prompt to relaunch through Polkit; the desktop installer intentionally creates only the proxy-capable launcher, not the deprecated non-admin/read-only entry.
@@ -196,117 +199,120 @@ Fleasion can be configured to launch automatically via **Settings -> Run on Boot
 
 ## Project Structure
 
-```
-├── Fleasion.spec                 # PyInstaller specification for the standalone build
-├── launcher.py                   # Thin launcher used to start the packaged app
-├── pyproject.toml                # Project metadata and dependency configuration
-├── README.md                     # Project overview, setup, and usage guide
+<details>
+<summary>See here</summary>
+
+```text
+├── Fleasion.spec   # PyInstaller specification for the standalone build
+├── launcher.py     # Thin launcher used to start the packaged app
+├── pyproject.toml  # Project metadata and dependency configuration
+├── README.md       # Project overview, setup, and usage guide
 ├── pyinstaller_hooks/
 │   └── rthook_harden_dll_search.py  # Runtime hook used by PyInstaller on Windows
 ├── scripts/
-│   └── build_macos.sh            # Helper script for building the macOS app bundle
+│   └── build_macos.sh  # Helper script for building the macOS app bundle
 ├── src/
 │   └── Fleasion/
-│       ├── __init__.py           # Package marker
-│       ├── app.py                # Application entrypoint, lifecycle, and startup wiring
+│       ├── __init__.py                   # Package marker
+│       ├── app.py                        # Application entrypoint, lifecycle, and startup wiring
 │       ├── macos_proxy_helper_daemon.py  # macOS helper daemon for the privileged proxy relay
-│       ├── tray.py               # System tray / menu bar icon and menu wiring
+│       ├── tray.py                       # System tray / menu bar icon and menu wiring
 │       ├── cache/
-│       │   ├── __init__.py       # Cache package marker
-│       │   ├── animation_viewer.py  # 3D animation preview with R15/R6 rigs
-│       │   ├── audio_player.py      # Audio playback widget
-│       │   ├── cache_json_viewer.py # JSON viewer for cached asset metadata
-│       │   ├── cache_manager.py     # Asset storage, indexing, and export logic
-│       │   ├── cache_viewer.py      # Cache browsing UI with search and preview
-│       │   ├── font_viewer.py       # Font file preview widget
-│       │   ├── mesh_processing.py   # Mesh format conversion helpers
-│       │   ├── obj_viewer.py        # OpenGL mesh viewer with orbit/FPS camera modes
-│       │   ├── rbxm_parser.py       # Roblox binary model file parser
-│       │   ├── rbxm_preview.py      # Roblox model preview helpers
-│       │   ├── roblox_class_names.py # Roblox class name lookup table
-│       │   ├── roblox_document.py   # Roblox document helpers for cached content
+│       │   ├── __init__.py            # Cache package marker
+│       │   ├── animation_viewer.py    # 3D animation preview with R15/R6 rigs
+│       │   ├── audio_player.py        # Audio playback widget
+│       │   ├── cache_json_viewer.py   # JSON viewer for cached asset metadata
+│       │   ├── cache_manager.py       # Asset storage, indexing, and export logic
+│       │   ├── cache_viewer.py        # Cache browsing UI with search and preview
+│       │   ├── font_viewer.py         # Font file preview widget
+│       │   ├── mesh_processing.py     # Mesh format conversion helpers
+│       │   ├── obj_viewer.py          # OpenGL mesh viewer with orbit/FPS camera modes
+│       │   ├── rbxm_parser.py         # Roblox binary model file parser
+│       │   ├── rbxm_preview.py        # Roblox model preview helpers
+│       │   ├── roblox_class_names.py  # Roblox class name lookup table
+│       │   ├── roblox_document.py     # Roblox document helpers for cached content
 │       │   └── tools/
 │       │       ├── animpreview/
 │       │       │   └── animpreview.py  # Animation preview assets and helpers
 │       │       ├── image_to_ktx2/
-│       │       │   └── converter.py    # Image to KTX2 converter
+│       │       │   └── converter.py  # Image to KTX2 converter
 │       │       ├── ktx_to_png/
-│       │       │   └── ktx_to_png.py   # KTX2 to PNG converter
-│       │       ├── orm_compositor.py   # ORM texture channel compositor
+│       │       │   └── ktx_to_png.py  # KTX2 to PNG converter
+│       │       ├── orm_compositor.py  # ORM texture channel compositor
 │       │       └── solidmodel_converter/
-│       │           ├── __init__.py     # Solid model converter package marker
-│       │           ├── converter.py    # Solid model conversion entrypoint
-│       │           ├── csg_mesh.py     # CSG mesh serialization helpers
+│       │           ├── __init__.py           # Solid model converter package marker
+│       │           ├── converter.py          # Solid model conversion entrypoint
+│       │           ├── csg_mesh.py           # CSG mesh serialization helpers
 │       │           ├── mesh_intermediary.py  # Intermediary conversion for .mesh and .bin data
-│       │           ├── obj_to_csg.py   # OBJ to Roblox CSG converter
-│       │           ├── obj_to_mesh.py   # OBJ to Roblox mesh converter
+│       │           ├── obj_to_csg.py         # OBJ to Roblox CSG converter
+│       │           ├── obj_to_mesh.py        # OBJ to Roblox mesh converter
 │       │           └── rbxm/
-│       │               ├── __init__.py     # RBXM subpackage marker
-│       │               ├── binary_reader.py # RBXM binary reader
-│       │               ├── binary_writer.py # RBXM binary writer
-│       │               ├── deserializer.py  # RBXM deserializer
-│       │               ├── serializer.py    # RBXM serializer
-│       │               ├── types.py         # RBXM type definitions
-│       │               └── xml_writer.py    # RBXM XML writer
+│       │               ├── __init__.py       # RBXM subpackage marker
+│       │               ├── binary_reader.py  # RBXM binary reader
+│       │               ├── binary_writer.py  # RBXM binary writer
+│       │               ├── deserializer.py   # RBXM deserializer
+│       │               ├── serializer.py     # RBXM serializer
+│       │               ├── types.py          # RBXM type definitions
+│       │               └── xml_writer.py     # RBXM XML writer
 │       ├── config/
-│       │   ├── __init__.py       # Config package marker
-│       │   └── manager.py        # Settings persistence and config management
+│       │   ├── __init__.py  # Config package marker
+│       │   └── manager.py   # Settings persistence and config management
 │       ├── gui/
-│       │   ├── __init__.py       # GUI package marker
-│       │   ├── about.py          # About dialog
-│       │   ├── delete_cache.py   # Cache deletion window
-│       │   ├── json_viewer.py    # JSON tree viewer with search and preview
-│       │   ├── logs.py           # Real-time log viewer
-│       │   ├── modifications_tab.py  # Client modifications tab
-│       │   ├── prejsons_dialog.py    # Community preset browser dialog
-│       │   ├── proxy_gate.py     # Proxy gate / connection flow UI
-│       │   ├── rando_stuff_tab.py     # Misc tab for extra tools and helpers
-│       │   ├── replacer_config.py     # Main Dashboard window with profile management
-│       │   ├── settings_tab.py        # Settings tab mirroring tray menu options
-│       │   ├── subplace_joiner_tab.py # Subplace browser and joiner tab
-│       │   └── theme.py          # Theme management (System / Light / Dark)
+│       │   ├── __init__.py             # GUI package marker
+│       │   ├── about.py                # About dialog
+│       │   ├── delete_cache.py         # Cache deletion window
+│       │   ├── json_viewer.py          # JSON tree viewer with search and preview
+│       │   ├── logs.py                 # Real-time log viewer
+│       │   ├── modifications_tab.py    # Client modifications tab
+│       │   ├── prejsons_dialog.py      # Community preset browser dialog
+│       │   ├── proxy_gate.py           # Proxy gate / connection flow UI
+│       │   ├── rando_stuff_tab.py      # Misc tab for extra tools and helpers
+│       │   ├── replacer_config.py      # Main Dashboard window with profile management
+│       │   ├── settings_tab.py         # Settings tab mirroring tray menu options
+│       │   ├── subplace_joiner_tab.py  # Subplace browser and joiner tab
+│       │   └── theme.py                # Theme management (System / Light / Dark)
 │       ├── modifications/
-│       │   ├── __init__.py       # Modifications package marker
-│       │   ├── dds_to_png.py     # DDS texture to PNG conversion
-│       │   ├── fflag_manager.py  # Fast flag read/write helpers
-│       │   ├── font_utils.py     # Custom font installation helpers
+│       │   ├── __init__.py                 # Modifications package marker
+│       │   ├── dds_to_png.py               # DDS texture to PNG conversion
+│       │   ├── fflag_manager.py            # Fast flag read/write helpers
+│       │   ├── font_utils.py               # Custom font installation helpers
 │       │   ├── global_settings_manager.py  # GlobalSettings.json management
-│       │   └── manager.py        # Modification orchestration (apply / revert)
+│       │   └── manager.py                  # Modification orchestration (apply / revert)
 │       ├── prejsons/
 │       │   ├── __init__.py       # PreJsons package marker
-│       │   └── downloader.py    # Community preset downloader
+│       │   └── downloader.py     # Community preset downloader
 │       ├── proxy/
 │       │   ├── __init__.py       # Proxy package marker
-│       │   ├── master.py        # Proxy orchestration, hosts file management, cert setup
-│       │   ├── server.py        # Asyncio TLS proxy server
-│       │   ├── upstream.py      # Upstream proxy and request forwarding helpers
-│       │   ├── windows_proxy.py # Windows-specific proxy integration
+│       │   ├── master.py         # Proxy orchestration, hosts file management, cert setup
+│       │   ├── server.py         # Asyncio TLS proxy server
+│       │   ├── upstream.py       # Upstream proxy and request forwarding helpers
+│       │   ├── windows_proxy.py  # Windows-specific proxy integration
 │       │   └── addons/
-│       │       ├── __init__.py   # Proxy addons package marker
-│       │       ├── cache_scraper.py   # Asset interception and caching addon
-│       │       ├── texture_stripper.py # Asset replacement and texture removal addon
-│       │       └── username_spoofer.py # Username spoofing addon
+│       │       ├── __init__.py          # Proxy addons package marker
+│       │       ├── cache_scraper.py     # Asset interception and caching addon
+│       │       ├── texture_stripper.py  # Asset replacement and texture removal addon
+│       │       └── username_spoofer.py  # Username spoofing addon
 │       └── utils/
-│           ├── __init__.py       # Utilities package marker
-│           ├── anim_converter.py # Animation format conversion helpers
-│           ├── autostart.py      # Windows Task Scheduler / macOS LaunchAgent run-on-boot helpers
-│           ├── certs.py          # Local CA and leaf certificate generation
-│           ├── clipboard.py      # Clipboard helper utilities
-│           ├── http.py           # HTTP helper utilities
-│           ├── logging.py        # Thread-safe log buffer
+│           ├── __init__.py            # Utilities package marker
+│           ├── anim_converter.py      # Animation format conversion helpers
+│           ├── autostart.py           # Windows Task Scheduler / macOS LaunchAgent run-on-boot helpers
+│           ├── certs.py               # Local CA and leaf certificate generation
+│           ├── clipboard.py           # Clipboard helper utilities
+│           ├── http.py                # HTTP helper utilities
+│           ├── logging.py             # Thread-safe log buffer
 │           ├── macos_proxy_helper.py  # macOS privileged helper management
-│           ├── paths.py          # Application paths and constants
-│           ├── platform_macos.py # macOS-specific operations
-│           ├── platform_windows.py # Windows-specific operations
-│           ├── plural.py         # Pluralization helpers
-│           ├── r15_to_r6.py      # R15 to R6 rig conversion helpers
-│           ├── rig_data.py       # Rig bone definitions and mappings
-│           ├── roblox_auth.py    # Roblox auth token helper for V1 APIs
-│           ├── roblox_dirs.py    # Roblox directory discovery helpers
-│           ├── threading.py      # Threading utilities
-│           ├── time_tracker.py   # Session time tracking
-│           ├── updater.py        # Update checker
-│           └── windows.py        # Windows compatibility wrapper
+│           ├── paths.py               # Application paths and constants
+│           ├── platform_macos.py      # macOS-specific operations
+│           ├── platform_windows.py    # Windows-specific operations
+│           ├── plural.py              # Pluralization helpers
+│           ├── r15_to_r6.py           # R15 to R6 rig conversion helpers
+│           ├── rig_data.py            # Rig bone definitions and mappings
+│           ├── roblox_auth.py         # Roblox auth token helper for V1 APIs
+│           ├── roblox_dirs.py         # Roblox directory discovery helpers
+│           ├── threading.py           # Threading utilities
+│           ├── time_tracker.py        # Session time tracking
+│           ├── updater.py             # Update checker
+│           └── windows.py             # Windows compatibility wrapper
 ├── tests/
 │   ├── test_account_cookie_storage.py  # Cookie storage tests
 │   ├── test_app_single_instance.py     # Single-instance app behavior tests
@@ -320,16 +326,22 @@ Fleasion can be configured to launch automatically via **Settings -> Run on Boot
 │   ├── test_roblox_document.py         # Roblox document tests
 │   ├── test_tray_dashboard.py          # Tray and dashboard integration tests
 │   ├── test_upstream.py                # Upstream proxy tests
-│   └── test_username_spoofer.py       # Username spoofer tests
+│   └── test_username_spoofer.py        # Username spoofer tests
 └── build/  # Generated PyInstaller output (not source)
 ```
 
+</details>
+
 ## Configuration
 
-Settings are stored in `%LocalAppData%\FleasionNT\` on Windows and `~/Library/Application Support/FleasionNT/` on macOS:
+Settings are stored in:
+
+- `%LocalAppData%\FleasionNT\` on Windows
+- `~/Library/Application Support/FleasionNT/` on macOS
+- `~/.config/Fleasion/` on Linux
 
 | File / Directory | Purpose |
-|---|---|
+| --- | --- |
 | `settings.json` | Application settings |
 | `configs/` | Replacement configuration profiles (JSON) |
 | `Cache/` | Cached asset files and index |
@@ -339,24 +351,6 @@ Settings are stored in `%LocalAppData%\FleasionNT\` on Windows and `~/Library/Ap
 | `logs/fleasion.log` | Persistent application and proxy log |
 | `Temp/ConvertedMeshes/` | Temporary directory for OBJ/mesh conversions |
 
-## Dependencies
-
-| Package | Purpose |
-|---|---|
-| cryptography | Local CA and TLS certificate generation |
-| PyQt6 | GUI framework |
-| PyOpenGL | 3D mesh and animation rendering |
-| DracoPy | Mesh decompression (Google Draco) |
-| Pillow | Image processing |
-| NumPy | Numerical operations |
-| pywin32 | Windows API access |
-| requests | HTTP client for API calls |
-| sounddevice + soundfile | Audio playback |
-| lz4 | Compression support |
-| orjson | Fast JSON parsing |
-| zstandard | CDN payload decompression |
-| python-dateutil | Date parsing |
-
 ## Community
 
 - **Discord**: [discord.gg/hXyhKehEZF](https://discord.gg/hXyhKehEZF)
@@ -365,7 +359,7 @@ Settings are stored in `%LocalAppData%\FleasionNT\` on Windows and `~/Library/Ap
 ## Credits
 
 - **@8ar__**, **@dis_spencer**, **@1_v** (Sky) &mdash; code
-- **@Blockce**, **@0100152000022000** (Sky 2), **@emk530**, **@Yeha.** &mdash; logic and contributions
+- **@Blockce**, **@0100152000022000** (Sky 2), **@emk530**, **@yeha.** (Leah) &mdash; logic and contributions
 - Donators &mdash; for keeping the passion going
 
 ## License
