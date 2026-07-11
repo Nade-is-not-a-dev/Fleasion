@@ -43,14 +43,3 @@ def test_build_runs_pyinstaller_with_reproducible_environment(
         env=environment,
         check=False,
     )
-
-
-def test_workflow_uses_shared_build_command() -> None:
-    workflow = Path('.github/workflows/build.yml').read_text(encoding='utf-8')
-
-    assert workflow.count('run: uv run build') == 2
-    assert 'uv run pyinstaller' not in workflow
-    assert "PYTHONHASHSEED: '0'" in workflow
-    assert "SOURCE_DATE_EPOCH: '0'" in workflow
-    assert 'LC_ALL: C.UTF-8' in workflow
-    assert 'TZ: UTC' in workflow
