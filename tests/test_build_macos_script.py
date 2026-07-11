@@ -3,8 +3,9 @@ import stat
 import subprocess
 from pathlib import Path
 
+from Fleasion import __version__ as APP_VERSION
 
-EXEC_NAME = 'Fleasion-v2.2.1'
+EXEC_NAME = f'Fleasion-v{APP_VERSION}'
 HELPER_EXEC_NAME = 'fleasion-proxy-helper'
 
 
@@ -174,7 +175,7 @@ def test_macos_build_bundles_arch_specific_proxy_helpers():
         'x86_uv run --python "$x86_python_path" pyinstaller --clean --noconfirm Fleasion.spec'
         in script
     )
-    assert 'FleasionProxyHelper.spec' in spec
+    assert 'FleasionDarwinProxyHelper.spec' in spec
     assert (
         'shutil.copy2(_bundled_legacy_macos_helper, _bundled_macos_helpers[target_arch])'
         in spec
@@ -226,7 +227,8 @@ def test_github_workflow_uploads_macos_zip_without_artifact_rezipping():
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.zip' in workflow
     assert 'uses: actions/upload-artifact@v7' in workflow
     assert 'uses: actions/upload-artifact@v6' not in workflow
-    assert 'name: Fleasion-v${{ env.APP_VERSION }}-MacOS-Universal.zip' in workflow
+    assert 'artifact_suffix: -MacOS-Universal.zip' in workflow
+    assert 'name: Fleasion-v${{ env.APP_VERSION }}${{ matrix.artifact_suffix }}' in workflow
     assert 'archive: false' in workflow
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.dmg' not in workflow
 
@@ -234,8 +236,8 @@ def test_github_workflow_uploads_macos_zip_without_artifact_rezipping():
 def test_github_workflow_uploads_windows_exe_without_artifact_rezipping():
     workflow = Path('.github/workflows/build.yml').read_text(encoding='utf-8')
 
-    assert 'name: Fleasion-v${{ env.APP_VERSION }}-Windows.exe' in workflow
-    assert "if: runner.os == 'Windows'" in workflow
+    assert 'artifact_suffix: -Windows.exe' in workflow
+    assert 'name: Fleasion-v${{ env.APP_VERSION }}${{ matrix.artifact_suffix }}' in workflow
     assert 'path: ${{ matrix.artifact_path }}' in workflow
     assert 'archive: false' in workflow
 
@@ -247,7 +249,8 @@ def test_github_workflow_uploads_linux_elf_without_artifact_rezipping():
     assert "file \"$linux_binary\" | grep -q 'ELF'" in workflow
     assert 'chmod 755 "$linux_binary"' in workflow
     assert 'test -x "$linux_binary"' in workflow
-    assert 'name: Fleasion-v${{ env.APP_VERSION }}-Linux' in workflow
+    assert 'artifact_suffix: -Linux' in workflow
+    assert 'name: Fleasion-v${{ env.APP_VERSION }}${{ matrix.artifact_suffix }}' in workflow
     assert 'artifact_path: dist/Fleasion-v*-Linux' in workflow
     assert 'archive: false' in workflow
     assert 'Package Linux release zip' not in workflow
@@ -264,12 +267,17 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
         'uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0'
         in workflow
     )
-    assert 'ref: main' in workflow
-    assert 'Checkout main for release' in workflow
-    assert 'ref: ${{ needs.prepare.outputs.main_sha }}' in workflow
-    assert 'release_tag: v${{ steps.version.outputs.app_version }}' in workflow
+    prepare_job = workflow.split('\n  build:', maxsplit=1)[0]
+    assert 'setup-uv' not in prepare_job
+    assert 'sed -n "s/^version =' in prepare_job
+    assert 'Could not read project.version from pyproject.toml.' in prepare_job
+    assert 'Checkout release ref' in workflow
+    assert 'ref: main' not in workflow
+    assert 'ref: ${{ github.sha }}' in workflow
+    assert 'release_sha' not in workflow
+    assert 'release_tag:' not in workflow
     assert (
-        'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}.exe'
+        'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Windows.exe'
         in workflow
     )
     assert (
@@ -280,7 +288,7 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
         'artifact_name: Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip'
         in workflow
     )
-    assert 'artifact_path: dist/Fleasion-v*.exe' in workflow
+    assert 'artifact_path: dist/Fleasion-v*-Windows.exe' in workflow
     assert 'artifact_path: dist/Fleasion-v*-Linux' in workflow
     assert 'artifact_path: dist/Fleasion-v*-MacOS-Universal.zip' in workflow
     assert 'Package Linux release zip' not in workflow
@@ -291,17 +299,14 @@ def test_draft_release_workflow_builds_main_and_uploads_versioned_assets():
     assert 'test -x "$linux_binary"' in workflow
     assert 'archive: false' in workflow
     assert 'uses: actions/download-artifact@v8' in workflow
-    assert 'name: Fleasion-v${{ needs.prepare.outputs.app_version }}.exe' in workflow
-    assert 'name: Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux' in workflow
-    assert (
-        'name: Fleasion-v${{ needs.prepare.outputs.app_version }}-MacOS-Universal.zip'
-        in workflow
-    )
+    assert 'pattern: Fleasion-v${{ needs.prepare.outputs.app_version }}-*' in workflow
+    assert 'merge-multiple: true' in workflow
     assert 'skip-decompress: true' in workflow
-    assert 'test -x "release-files/Fleasion-v${{ needs.prepare.outputs.app_version }}-Linux"' in workflow
-    assert 'gh release create "$RELEASE_TAG" release-files/*' in workflow
-    assert '--draft' in workflow
-    assert '--target "$MAIN_SHA"' in workflow
+    assert 'uses: softprops/action-gh-release@v3' in workflow
+    assert 'draft: true' in workflow
+    assert 'tag_name: v${{ needs.prepare.outputs.app_version }}' in workflow
+    assert 'target_commitish: ${{ github.sha }}' in workflow
+    assert 'files: release-files/*' in workflow
 
 
 def test_github_workflow_verifies_linux_gui_audio_runtime():
@@ -360,6 +365,4 @@ def test_verify_app_bundle_rejects_plist_executable_mismatch(tmp_path):
     result = _run_verify_app_bundle(tmp_path, app_path)
 
     assert result.returncode != 0
-    assert (
-        "CFBundleExecutable is 'Fleasion' instead of 'Fleasion-v2.2.1'" in result.stderr
-    )
+    assert f"CFBundleExecutable is 'Fleasion' instead of '{EXEC_NAME}'" in result.stderr

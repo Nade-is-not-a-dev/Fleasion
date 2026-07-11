@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Optional
 
 from .logging import log_buffer
-from .paths import APP_CACHE_DIR, APP_NAME, STORAGE_DB, USER_HOME, get_icon_path
+from .metadata import APP_NAME
+from .paths import APP_CACHE_DIR, STORAGE_DB, USER_HOME, get_icon_path
 
 SOBER_APP_ID = 'org.vinegarhq.Sober'
 SOBER_FLATPAK_ROOT = USER_HOME / '.var' / 'app' / SOBER_APP_ID

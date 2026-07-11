@@ -10,18 +10,6 @@ from unittest.mock import patch
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _MANAGER_PATH = _REPO_ROOT / 'src' / 'Fleasion' / 'config' / 'manager.py'
 
-_DEFAULT_SETTINGS = {
-    'strip_textures': False,
-    'enabled_configs': [],
-    'last_config': 'Default',
-    'theme': 'System',
-    'wire_preserving_passthrough': False,
-    'run_on_boot': True,
-    'desktop_integration': True,
-    'export_naming': ['name', 'id'],
-}
-
-
 class ConfigManagerEncodingTests(unittest.TestCase):
     def _load_manager_for(self, root: Path):
         config_dir = root / 'FleasionNT'
@@ -36,7 +24,6 @@ class ConfigManagerEncodingTests(unittest.TestCase):
         paths_module.CONFIG_DIR = config_dir
         paths_module.CONFIG_FILE = config_dir / 'settings.json'
         paths_module.CONFIGS_FOLDER = config_dir / 'configs'
-        paths_module.DEFAULT_SETTINGS = _DEFAULT_SETTINGS
 
         module_name = 'Fleasion.config.manager'
         spec = importlib.util.spec_from_file_location(module_name, _MANAGER_PATH)
