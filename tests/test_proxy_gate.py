@@ -4,7 +4,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from Fleasion.gui.proxy_gate import ProxyGate
+from fleasion.gui.proxy_gate import ProxyGate
 
 
 def _qapp():

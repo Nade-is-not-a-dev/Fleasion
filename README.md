@@ -212,7 +212,7 @@ Fleasion can be configured to launch automatically via **Settings -> Run on Boot
 ├── scripts/
 │   └── build_macos.sh  # Helper script for building the macOS app bundle
 ├── src/
-│   └── Fleasion/
+│   └── fleasion/
 │       ├── __init__.py                   # Package marker
 │       ├── app.py                        # Application entrypoint, lifecycle, and startup wiring
 │       ├── macos_proxy_helper_daemon.py  # macOS helper daemon for the privileged proxy relay

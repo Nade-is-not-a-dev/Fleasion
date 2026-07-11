@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_PATHS_PATH = _REPO_ROOT / "src" / "Fleasion" / "utils" / "paths.py"
+_PATHS_PATH = _REPO_ROOT / "src" / "fleasion" / "utils" / "paths.py"
 
 
 def _load_paths_module(monkeypatch, tmp_path, *, xdg_config_home: Path | None):

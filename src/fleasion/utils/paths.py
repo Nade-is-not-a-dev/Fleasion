@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from Fleasion.utils.metadata import APP_NAME
+from fleasion.utils.metadata import APP_NAME
 
 # Process and proxy configuration
 if sys.platform == 'darwin':

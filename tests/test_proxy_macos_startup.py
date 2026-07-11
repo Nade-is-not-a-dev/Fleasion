@@ -11,8 +11,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-import Fleasion.proxy.master as proxy_master
-from Fleasion.utils import linux_proxy_helper, macos_proxy_helper
+import fleasion.proxy.master as proxy_master
+from fleasion.utils import linux_proxy_helper, macos_proxy_helper
 
 
 def test_proxy_ca_dir_falls_back_when_configured_dir_is_not_writable(tmp_path, monkeypatch):
@@ -518,7 +518,7 @@ def test_linux_helper_refresh_requests_helper_update_without_direct_hosts_write(
     monkeypatch.setattr(proxy_master, "_ensure_linux_system_trust_for_hosts", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
 
-    import Fleasion.utils.linux_proxy_helper as linux_proxy_helper
+    import fleasion.utils.linux_proxy_helper as linux_proxy_helper
 
     monkeypatch.setattr(linux_proxy_helper, "update_helper_hosts", lambda hosts: helper_updates.append(set(hosts)) or True)
 
@@ -550,7 +550,7 @@ def test_linux_helper_refresh_skips_profile_api_when_webview_trust_fails(monkeyp
     monkeypatch.setattr(proxy_master, "_ensure_linux_system_trust_for_hosts", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
 
-    import Fleasion.utils.linux_proxy_helper as linux_proxy_helper
+    import fleasion.utils.linux_proxy_helper as linux_proxy_helper
 
     monkeypatch.setattr(linux_proxy_helper, "update_helper_hosts", lambda hosts: helper_updates.append(set(hosts)) or True)
 
@@ -584,7 +584,7 @@ def test_macos_roblox_dir_discovery_excludes_studio_saved_dirs(tmp_path, monkeyp
 
     monkeypatch.setattr(proxy_master, "IS_MACOS", True)
     monkeypatch.setattr(proxy_master, "IS_LINUX", False)
-    monkeypatch.setattr("Fleasion.utils.platform_macos.find_roblox_resource_dirs", fake_find_roblox_resource_dirs)
+    monkeypatch.setattr("fleasion.utils.platform_macos.find_roblox_resource_dirs", fake_find_roblox_resource_dirs)
     monkeypatch.setattr(proxy_master, "load_saved_roblox_dirs", lambda: [studio])
     monkeypatch.setattr(proxy_master, "save_saved_roblox_dirs", lambda dirs: persisted.extend(dirs))
 
@@ -660,7 +660,7 @@ def test_macos_running_player_ca_repair_uses_privileged_helper(tmp_path, monkeyp
     monkeypatch.setattr(proxy_master, "_is_admin", lambda: False)
     monkeypatch.setattr(proxy_master, "_current_proxy_ca_dir", lambda: ca_dir)
     monkeypatch.setattr(proxy_master, "get_ca_pem", lambda _path: "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----\n")
-    monkeypatch.setattr("Fleasion.utils.platform_macos._resource_root_from_executable", lambda _path: resources)
+    monkeypatch.setattr("fleasion.utils.platform_macos._resource_root_from_executable", lambda _path: resources)
     monkeypatch.setattr(macos_proxy_helper, "helper_patch_ca", fake_helper_patch)
     monkeypatch.setattr(proxy_master, "_log_cacert_state", lambda *_args, **_kwargs: states.pop(0))
     monkeypatch.setattr(proxy_master, "_upsert_fleasion_ca_in_cacert", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("should use helper")))
@@ -703,7 +703,7 @@ def test_macos_running_player_ca_repair_requests_full_strip_when_pre_read_fails(
     monkeypatch.setattr(proxy_master, "_is_admin", lambda: False)
     monkeypatch.setattr(proxy_master, "_current_proxy_ca_dir", lambda: ca_dir)
     monkeypatch.setattr(proxy_master, "get_ca_pem", lambda _path: "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----\n")
-    monkeypatch.setattr("Fleasion.utils.platform_macos._resource_root_from_executable", lambda _path: resources)
+    monkeypatch.setattr("fleasion.utils.platform_macos._resource_root_from_executable", lambda _path: resources)
     monkeypatch.setattr(proxy_master.Path, "read_text", fake_read_text)
     monkeypatch.setattr(macos_proxy_helper, "helper_patch_ca", fake_helper_patch)
 

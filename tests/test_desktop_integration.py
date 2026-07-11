@@ -1,7 +1,7 @@
 import plistlib
 from pathlib import Path
 
-from Fleasion.utils import desktop_integration
+from fleasion.utils import desktop_integration
 
 
 def test_sync_desktop_integration_dispatches_windows_create_and_remove(monkeypatch):
@@ -27,7 +27,7 @@ def test_sync_desktop_integration_delegates_linux_install_and_remove(tmp_path, m
 
     monkeypatch.setattr(desktop_integration.sys, "platform", "linux")
 
-    from Fleasion.utils import platform_linux
+    from fleasion.utils import platform_linux
 
     monkeypatch.setattr(platform_linux, "LINUX_DESKTOP_ENTRY_PATH", desktop_entry)
     monkeypatch.setattr(platform_linux, "LINUX_LAUNCHER_PATH", launcher)

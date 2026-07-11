@@ -8,7 +8,7 @@ _macos_target_arch = (
 _use_upx = sys.platform == 'win32'
 
 a = Analysis(
-    ['src/Fleasion/macos_proxy_helper_daemon.py'],
+    ['src/fleasion/macos_proxy_helper_daemon.py'],
     pathex=['src'],
     binaries=[],
     datas=[],

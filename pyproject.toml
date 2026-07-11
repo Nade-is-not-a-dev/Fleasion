@@ -40,16 +40,13 @@ dependencies = [
 #   else goes DIRECT. Compatible with VPNs (loopback is never VPN-routed).
 
 [project.scripts]
-Fleasion = 'Fleasion:main'
+Fleasion = 'fleasion:main'
 
 [dependency-groups]
 dev = [
     "pyinstaller>=6.19.0",
     "pytest>=9.0.0",
 ]
-
-[tool.uv.build-backend]
-module-name = "Fleasion"
 
 [tool.pyright]
 typeCheckingMode = "basic"

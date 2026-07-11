@@ -1,7 +1,7 @@
 import math
 import struct
 
-from Fleasion.cache.tools.solidmodel_converter.csg_mesh import (
+from fleasion.cache.tools.solidmodel_converter.csg_mesh import (
     CSGVertex,
     parse_csg_mesh_full,
     serialize_csg_mesh,

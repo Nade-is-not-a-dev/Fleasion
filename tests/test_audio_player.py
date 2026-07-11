@@ -7,8 +7,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np
 from PyQt6.QtWidgets import QApplication
 
-from Fleasion.cache import audio_player
-from Fleasion.cache.audio_player import AudioPlayerWidget
+from fleasion.cache import audio_player
+from fleasion.cache.audio_player import AudioPlayerWidget
 
 
 _APP = None
@@ -73,7 +73,7 @@ def test_playback_worker_closes_stream_after_stop(monkeypatch):
     monkeypatch.setattr(AudioPlayerWidget, "_load_audio", _stub_loaded_audio)
     stream = RecordingStream()
     monkeypatch.setattr(
-        "Fleasion.cache.audio_player.sd.OutputStream",
+        "fleasion.cache.audio_player.sd.OutputStream",
         lambda **kwargs: stream,
     )
     player = AudioPlayerWidget("unused")
@@ -107,7 +107,7 @@ def test_playback_callback_outputs_nonzero_float32_audio(monkeypatch):
             captured["outdata"] = outdata
 
     monkeypatch.setattr(
-        "Fleasion.cache.audio_player.sd.OutputStream",
+        "fleasion.cache.audio_player.sd.OutputStream",
         lambda **kwargs: CallbackStream(**kwargs),
     )
     player = AudioPlayerWidget("unused")

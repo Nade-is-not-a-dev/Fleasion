@@ -1,6 +1,6 @@
 from PyQt6.QtGui import QColor, QPalette
 
-from Fleasion.gui.theme import ThemeManager
+from fleasion.gui.theme import ThemeManager
 
 
 def test_panel_colors_keep_forced_dark_palette_independent_colors(monkeypatch):

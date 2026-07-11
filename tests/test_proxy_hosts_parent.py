@@ -1,4 +1,4 @@
-from Fleasion.proxy import master as proxy_master
+from fleasion.proxy import master as proxy_master
 
 
 def test_windows_hosts_writer_creates_missing_immediate_parent(tmp_path, monkeypatch):

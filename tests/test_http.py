@@ -9,7 +9,7 @@ import pytest
 
 
 def _load_http_module():
-    path = Path(__file__).resolve().parents[1] / 'src' / 'Fleasion' / 'utils' / 'http.py'
+    path = Path(__file__).resolve().parents[1] / 'src' / 'fleasion' / 'utils' / 'http.py'
     spec = importlib.util.spec_from_file_location('fleasion_http_test', path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

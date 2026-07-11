@@ -1,6 +1,6 @@
 import unittest
 
-from Fleasion.cache.roblox_document import (
+from fleasion.cache.roblox_document import (
     RBXM_MAGIC,
     classify_roblox_document,
     export_roblox_document,

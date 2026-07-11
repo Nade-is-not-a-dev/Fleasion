@@ -317,7 +317,7 @@ def _bundled_path(name: str) -> Path:
         if meipass is None:
             base = Path(__file__).parent / 'bundled'
         else:
-            base = Path(meipass) / 'Fleasion' / 'modifications' / 'bundled'
+            base = Path(meipass) / 'fleasion' / 'modifications' / 'bundled'
     else:
         base = Path(__file__).parent / 'bundled'
     return base / name

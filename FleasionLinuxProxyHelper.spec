@@ -4,7 +4,7 @@ import sys
 _use_upx = sys.platform == 'win32'
 
 a = Analysis(
-    ['src/Fleasion/linux_proxy_helper_daemon.py'],
+    ['src/fleasion/linux_proxy_helper_daemon.py'],
     pathex=['src'],
     binaries=[],
     datas=[],

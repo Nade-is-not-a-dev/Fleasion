@@ -1,7 +1,7 @@
 import json
 import threading
 
-from Fleasion.gui import subplace_joiner_tab
+from fleasion.gui import subplace_joiner_tab
 
 
 class _FakeResponse:

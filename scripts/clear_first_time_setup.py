@@ -15,7 +15,7 @@ def _default_settings_path() -> Path:
     if str(src_dir) not in sys.path:
         sys.path.insert(0, str(src_dir))
 
-    from Fleasion.utils.paths import CONFIG_FILE
+    from fleasion.utils.paths import CONFIG_FILE
 
     return Path(CONFIG_FILE)
 

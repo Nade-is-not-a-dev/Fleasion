@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from Fleasion import linux_proxy_helper_daemon as daemon
+from fleasion import linux_proxy_helper_daemon as daemon
 
 
 def _make_ca_pem(common_name='Fleasion Proxy CA', organization='Fleasion', *, is_ca=True, can_sign=True) -> bytes:

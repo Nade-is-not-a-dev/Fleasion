@@ -1,4 +1,4 @@
-from Fleasion.cache.cache_viewer import _asset_metadata_needs_resolution
+from fleasion.cache.cache_viewer import _asset_metadata_needs_resolution
 
 
 def test_numeric_creator_remains_pending_after_asset_metadata_resolves():

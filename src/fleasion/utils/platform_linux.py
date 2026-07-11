@@ -469,7 +469,7 @@ def _linux_app_launch_command(
     if project is not None:
         return [sys.executable, str(project / 'launcher.py')], project
 
-    return [sys.executable, '-c', 'from Fleasion import main; main()'], None
+    return [sys.executable, '-c', 'from fleasion import main; main()'], None
 
 
 def _write_executable_script(path: Path, content: str) -> None:

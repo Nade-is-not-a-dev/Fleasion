@@ -1,4 +1,4 @@
-from Fleasion.cache import cache_manager as cache_manager_module
+from fleasion.cache import cache_manager as cache_manager_module
 
 
 MODEL_XML = b"""<roblox version="4">

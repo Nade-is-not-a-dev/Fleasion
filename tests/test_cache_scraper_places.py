@@ -1,6 +1,6 @@
 import json
 
-from Fleasion.proxy.addons.cache_scraper import CacheScraper
+from fleasion.proxy.addons.cache_scraper import CacheScraper
 
 
 class _CacheManager:

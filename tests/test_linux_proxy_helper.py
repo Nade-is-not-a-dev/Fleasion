@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from Fleasion.utils import linux_proxy_helper
+from fleasion.utils import linux_proxy_helper
 
 
 def test_host_subprocess_env_restores_pyinstaller_original_library_path(monkeypatch, tmp_path):

@@ -9,8 +9,8 @@ from PyQt6.QtCore import QEvent, QPointF, QRect, Qt
 from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtWidgets import QApplication, QTreeWidget
 
-from Fleasion.config import manager as manager_module
-from Fleasion.gui.replacer_config import (
+from fleasion.config import manager as manager_module
+from fleasion.gui.replacer_config import (
     _GROUP_GUIDE_STEP_PX,
     ReplacerConfigWindow,
     ReplacerTreeItem,
@@ -187,7 +187,7 @@ def test_enabled_menu_button_press_loads_new_config_file_from_disk(tmp_path, mon
 
 
 def test_window_titles_do_not_embed_application_name():
-    source_root = Path(__file__).resolve().parents[1] / 'src' / 'Fleasion'
+    source_root = Path(__file__).resolve().parents[1] / 'src' / 'fleasion'
     repeated_title_setters = []
     pattern = re.compile(r'setWindowTitle\([^\n]*(APP_NAME|Fleasion)')
 

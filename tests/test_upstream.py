@@ -3,11 +3,11 @@ import threading
 import time
 import unittest
 
-from Fleasion.proxy.upstream import (
+from fleasion.proxy.upstream import (
     _blocking_http_connect_socket,
     _blocking_socks5_connect_socket,
 )
-from Fleasion.proxy.windows_proxy import _parse_scutil_proxy_output, parse_static_http_proxy
+from fleasion.proxy.windows_proxy import _parse_scutil_proxy_output, parse_static_http_proxy
 
 
 class _OneShotServer:

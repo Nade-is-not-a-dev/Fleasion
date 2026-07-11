@@ -95,7 +95,7 @@ def mesh_file_to_cached_obj(mesh_path: Path) -> Path:
         If ``mesh_processing.convert`` fails to produce OBJ content.
     """
     # Lazy import to avoid loading DracoPy etc. at module load time
-    # mesh_processing lives at Fleasion/cache/mesh_processing.py — three levels
+    # mesh_processing lives at fleasion/cache/mesh_processing.py — three levels
     # up from solidmodel_converter/mesh_intermediary.py
     from ...mesh_processing import convert as mesh_to_obj_str
 

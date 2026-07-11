@@ -3,9 +3,9 @@ import struct
 
 from PIL import Image
 
-from Fleasion.cache.tools.ktx_to_png import convert
-from Fleasion.cache.tools.ktx_to_png.ktx_to_png import _extend_sign
-from Fleasion.cache.tools.rgba_ktx2 import (
+from fleasion.cache.tools.ktx_to_png import convert
+from fleasion.cache.tools.ktx_to_png.ktx_to_png import _extend_sign
+from fleasion.cache.tools.rgba_ktx2 import (
     KTX2_MAGIC,
     VK_FORMAT_R8G8B8A8_UNORM,
     read_rgba8_ktx2,

@@ -1,4 +1,4 @@
-import Fleasion.utils.logging as fleasion_logging
+import fleasion.utils.logging as fleasion_logging
 
 
 def test_log_file_rotates_at_one_mib_before_append(tmp_path, monkeypatch):

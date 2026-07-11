@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from Fleasion.utils import platform_linux
-from Fleasion.utils.roblox_dirs import _normalise_roblox_dir
+from fleasion.utils import platform_linux
+from fleasion.utils.roblox_dirs import _normalise_roblox_dir
 
 
 def _detached_kwargs_with_env(env: dict[str, str] | None = None) -> dict:
@@ -28,7 +28,7 @@ def test_normalise_linux_sober_resource_dir(tmp_path, monkeypatch):
     overlay = tmp_path / "asset_overlay"
     overlay.mkdir()
 
-    monkeypatch.setattr("Fleasion.utils.roblox_dirs.sys.platform", "linux")
+    monkeypatch.setattr("fleasion.utils.roblox_dirs.sys.platform", "linux")
     monkeypatch.setattr(platform_linux, "SOBER_ASSET_OVERLAY_DIR", overlay)
     monkeypatch.setattr(platform_linux, "SOBER_LEGACY_EXE_DIR", tmp_path / "exe")
 

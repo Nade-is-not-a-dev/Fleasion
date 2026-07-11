@@ -9,8 +9,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from Fleasion import macos_proxy_helper_daemon as daemon
-from Fleasion.utils import macos_proxy_helper
+from fleasion import macos_proxy_helper_daemon as daemon
+from fleasion.utils import macos_proxy_helper
 
 
 def _reset_daemon_state(tmp_path, monkeypatch):

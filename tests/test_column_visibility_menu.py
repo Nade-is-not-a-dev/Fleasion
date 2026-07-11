@@ -6,7 +6,7 @@ from PyQt6.QtCore import QEvent, QPointF, Qt
 from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtWidgets import QApplication
 
-from Fleasion.cache.cache_viewer import ColumnVisibilityMenu, SCRAPER_COLUMNS
+from fleasion.cache.cache_viewer import ColumnVisibilityMenu, SCRAPER_COLUMNS
 
 
 def _qapp():

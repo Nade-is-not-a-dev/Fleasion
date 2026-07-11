@@ -1,7 +1,7 @@
 from PyQt6.QtCore import QDir, QMimeData, QUrl
 
-from Fleasion.gui.file_drop import local_file_path_from_mime_data
-from Fleasion.gui.modifications_tab import _relative_target_path_for_resource_file
+from fleasion.gui.file_drop import local_file_path_from_mime_data
+from fleasion.gui.modifications_tab import _relative_target_path_for_resource_file
 
 
 def test_local_file_path_from_mime_data_uses_native_path(tmp_path):

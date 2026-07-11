@@ -2,7 +2,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from Fleasion.cache import obj_viewer
+from fleasion.cache import obj_viewer
 
 
 def test_discard_mesh_display_list_clears_cached_id_and_deletes_in_context(monkeypatch):

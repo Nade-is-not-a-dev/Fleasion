@@ -3,7 +3,7 @@ import stat
 import subprocess
 from pathlib import Path
 
-from Fleasion import __version__ as APP_VERSION
+from fleasion import __version__ as APP_VERSION
 
 EXEC_NAME = f'Fleasion-v{APP_VERSION}'
 HELPER_EXEC_NAME = 'fleasion-proxy-helper'

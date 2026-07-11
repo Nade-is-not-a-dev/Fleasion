@@ -72,7 +72,7 @@ def _launch_command() -> tuple[list[str], Path | None, dict[str, str]]:
             {'PYTHONPATH': str(project / 'src')},
         )
 
-    return [sys.executable, '-m', 'Fleasion'], None, {}
+    return [sys.executable, '-c', 'from fleasion import main; main()'], None, {}
 
 
 def _remove_windows_shortcut() -> bool:

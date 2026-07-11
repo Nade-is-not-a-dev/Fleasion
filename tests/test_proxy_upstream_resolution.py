@@ -1,7 +1,7 @@
 import socket
 from types import SimpleNamespace
 
-from Fleasion.proxy import master as proxy_master
+from fleasion.proxy import master as proxy_master
 
 
 def test_resolve_real_endpoints_prefers_ipv4_when_os_returns_ipv6_first(monkeypatch):

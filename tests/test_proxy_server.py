@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from Fleasion.proxy.server import (
+from fleasion.proxy.server import (
     PROFILE_API_HOST,
     FleasionProxy,
     _build_modified_request,
@@ -185,8 +185,8 @@ def test_profile_api_has_upstream_connection_limit(monkeypatch, tmp_path):
         def set_servername_callback(self, *_args, **_kwargs):
             pass
 
-    monkeypatch.setattr("Fleasion.proxy.server.ssl.SSLContext", FakeSSLContext)
-    monkeypatch.setattr("Fleasion.proxy.server.ssl.create_default_context", lambda: FakeSSLContext())
+    monkeypatch.setattr("fleasion.proxy.server.ssl.SSLContext", FakeSSLContext)
+    monkeypatch.setattr("fleasion.proxy.server.ssl.create_default_context", lambda: FakeSSLContext())
 
     proxy = FleasionProxy(
         texture_stripper=SimpleNamespace(),
