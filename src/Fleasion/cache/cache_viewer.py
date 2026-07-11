@@ -46,6 +46,23 @@ def _format_table_timestamp(value) -> str:
     return text
 
 
+def _asset_metadata_needs_resolution(info: dict) -> bool:
+    """Return whether an asset still has display metadata to resolve.
+
+    Creator lookup can fail independently of the asset metadata request.  A
+    numeric creator ID is therefore not a completed creator resolution: keep
+    the asset eligible for a later retry until the display name is stored.
+    """
+    if (
+        info.get('resolved_name') is None
+        or info.get('created_at') is None
+        or info.get('updated_at') is None
+    ):
+        return True
+
+    return info.get('creator_id') is not None and info.get('creator_name') is None
+
+
 class NumericSortItem(QTableWidgetItem):
     """Custom table item that sorts based on a numeric value rather than text."""
     def __init__(self, numeric_val, text):
@@ -2946,11 +2963,7 @@ class CacheViewerTab(QWidget):
             visible = []
             hidden = []
             for asset_id, info in self._asset_info.items():
-                if (
-                    info.get('resolved_name') is not None
-                    and info.get('created_at') is not None
-                    and info.get('updated_at') is not None
-                ):
+                if not _asset_metadata_needs_resolution(info):
                     continue
                 row = info.get('row')
                 if row is not None and row < _row_count:
