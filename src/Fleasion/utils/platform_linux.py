@@ -308,7 +308,8 @@ def _host_subprocess_env() -> dict[str, str]:
     if bundle_root and library_path:
         bundle_path = Path(bundle_root).resolve()
         entries = [
-            entry for entry in library_path.split(os.pathsep)
+            entry
+            for entry in library_path.split(os.pathsep)
             if entry and Path(entry).resolve() != bundle_path
         ]
         if entries:
@@ -332,12 +333,14 @@ def _standard_user_popen(args: list[str]) -> subprocess.Popen:
     except Exception:
         return subprocess.Popen(args, env=env, **_DETACHED_POPEN_KWARGS)
 
-    env.update({
-        'HOME': str(user_home),
-        'USER': pw_entry.pw_name,
-        'LOGNAME': pw_entry.pw_name,
-        'XDG_RUNTIME_DIR': f'/run/user/{uid}',
-    })
+    env.update(
+        {
+            'HOME': str(user_home),
+            'USER': pw_entry.pw_name,
+            'LOGNAME': pw_entry.pw_name,
+            'XDG_RUNTIME_DIR': f'/run/user/{uid}',
+        }
+    )
 
     def _demote() -> None:
         os.setgid(gid)
@@ -452,7 +455,9 @@ def _copy_linux_app_payload() -> tuple[Path | None, Path | None]:
     return installed_app, installed_icon
 
 
-def _linux_app_launch_command(installed_app: Path | None = None) -> tuple[list[str], Path | None]:
+def _linux_app_launch_command(
+    installed_app: Path | None = None,
+) -> tuple[list[str], Path | None]:
     """Return the normal-user command that a privileged wrapper should run."""
     if installed_app is not None:
         return [str(installed_app)], installed_app.parent
@@ -525,7 +530,11 @@ exec {command_literal} "$@"
 
     update_desktop = shutil.which('update-desktop-database')
     if update_desktop:
-        subprocess.run([update_desktop, str(LINUX_APPLICATIONS_DIR)], capture_output=True, timeout=10)
+        subprocess.run(
+            [update_desktop, str(LINUX_APPLICATIONS_DIR)],
+            capture_output=True,
+            timeout=10,
+        )
 
     return {
         'desktop_entry': str(LINUX_DESKTOP_ENTRY_PATH),
@@ -534,6 +543,7 @@ exec {command_literal} "$@"
         'installed_icon': str(installed_icon) if installed_icon is not None else None,
         'removed_deprecated_entries': removed,
     }
+
 
 def open_folder(path: Path):
     """Open a folder in the user's file manager."""

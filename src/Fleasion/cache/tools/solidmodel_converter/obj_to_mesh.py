@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 import struct
-from pathlib import Path
 from hashlib import md5
+from pathlib import Path
 
 from ....utils import LOCAL_APPDATA
 
@@ -19,7 +19,9 @@ log = logging.getLogger(__name__)
 CONVERTED_MESHES_DIR = LOCAL_APPDATA / 'FleasionNT' / 'Temp' / 'ConvertedMeshes'
 
 
-def parse_obj_for_mesh(obj_content: str) -> tuple[list[tuple[float, ...]], list[tuple[int, int, int, int]], list[tuple[int, int, int]]]:
+def parse_obj_for_mesh(
+    obj_content: str,
+) -> tuple[list[tuple[float, ...]], list[tuple[int, int, int, int]], list[tuple[int, int, int]]]:
     """Parse OBJ text to extract interleaved vertices, colors, and faces.
 
     Returns:
@@ -34,7 +36,7 @@ def parse_obj_for_mesh(obj_content: str) -> tuple[list[tuple[float, ...]], list[
     raw_vc: list[tuple[int, int, int]] = []
 
     unique_verts: dict[tuple[int, int, int], int] = {}
-    
+
     vertices_out: list[tuple[float, ...]] = []
     colors_out: list[tuple[int, int, int, int]] = []
     indices_out: list[tuple[int, int, int]] = []
@@ -57,7 +59,13 @@ def parse_obj_for_mesh(obj_content: str) -> tuple[list[tuple[float, ...]], list[
                 if r <= 1.0 and g <= 1.0 and b <= 1.0:
                     raw_vc.append((int(r * 255.0), int(g * 255.0), int(b * 255.0)))
                 else:
-                    raw_vc.append((min(255, max(0, int(r))), min(255, max(0, int(g))), min(255, max(0, int(b)))))
+                    raw_vc.append(
+                        (
+                            min(255, max(0, int(r))),
+                            min(255, max(0, int(g))),
+                            min(255, max(0, int(b))),
+                        )
+                    )
             else:
                 raw_vc.append((255, 255, 255))
         elif parts[0] == 'vn':
@@ -89,43 +97,47 @@ def parse_obj_for_mesh(obj_content: str) -> tuple[list[tuple[float, ...]], list[
                     if key not in unique_verts:
                         vx, vy, vz = raw_v[tv_idx]
                         cr, cg, cb = raw_vc[tv_idx]
-                        
+
                         nx, ny, nz = 0.0, 1.0, 0.0
                         if tvn_idx != -1 and 0 <= tvn_idx < len(raw_vn):
                             nx, ny, nz = raw_vn[tvn_idx]
-                            
+
                         tu, tv = 0.0, 0.0
                         if tvt_idx != -1 and 0 <= tvt_idx < len(raw_vt):
                             tu, tv = raw_vt[tvt_idx]
-                            
+
                         # Roblox Version 2.00 flips V coordinate: (1.0f - tv)
                         tv = 1.0 - tv
 
                         # vertex: 9 floats (px, py, pz, nx, ny, nz, tu, tv, tw)
                         # tw is standard padding/tangent W -> 0.0
                         vert_data = (vx, vy, vz, nx, ny, nz, tu, tv, 0.0)
-                        vert_color = (cr, cg, cb, 255) # Alpha opaque
-                        
+                        vert_color = (cr, cg, cb, 255)  # Alpha opaque
+
                         vert_idx = len(vertices_out)
                         vertices_out.append(vert_data)
                         colors_out.append(vert_color)
                         unique_verts[key] = vert_idx
 
                     tri_indices.append(unique_verts[key])
-                
+
                 if len(tri_indices) == 3:
                     indices_out.append(tuple(tri_indices))
 
     return vertices_out, colors_out, indices_out
 
 
-def export_v2_mesh(vertices: list[tuple[float, ...]], colors: list[tuple[int, int, int, int]], indices: list[tuple[int, int, int]]) -> bytes:
+def export_v2_mesh(
+    vertices: list[tuple[float, ...]],
+    colors: list[tuple[int, int, int, int]],
+    indices: list[tuple[int, int, int]],
+) -> bytes:
     """Export to Roblox V2.00 Mesh binary format."""
     has_colors = len(colors) == len(vertices) and any(c != (255, 255, 255, 255) for c in colors)
     # Actually, the user wants Vertex Color support "same as it currently does in C++ source"
     # In C++, it was: rbxMesh.hasColors = obj.HasVertexColors && (ver == "2.00")
     # For safety natively enabled if we have them. Let's just always enable them or check if ANY vertex color is non-white
-    # Or just always export them if they're present since Version 2.00 supports it. 
+    # Or just always export them if they're present since Version 2.00 supports it.
     # Let's unconditionally use them to match "with Vertex Color support"
     has_colors = True
 
@@ -142,7 +154,9 @@ def export_v2_mesh(vertices: list[tuple[float, ...]], colors: list[tuple[int, in
     #     uint32_t vertexCount; // 4
     #     uint32_t faceCount; // 4
     # }
-    header_data = struct.pack('<HBBII', header_size, vertex_size, face_size, vertex_count, face_count)
+    header_data = struct.pack(
+        '<HBBII', header_size, vertex_size, face_size, vertex_count, face_count
+    )
 
     buf = bytearray()
     buf.extend(b'version 2.00\n')
@@ -172,19 +186,19 @@ def convert_obj_to_mesh(obj_path: Path, output_mesh_path: Path) -> None:
 
 def get_or_create_mesh_from_obj(obj_path: str | Path) -> Path:
     """Convert an OBJ to a mesh, caching it dynamically.
-    
+
     Returns the Path to the converted .mesh file.
     """
     obj_p = Path(obj_path).resolve()
-    
+
     if not obj_p.exists():
-        raise FileNotFoundError(f"OBJ file not found: {obj_path}")
+        raise FileNotFoundError(f'OBJ file not found: {obj_path}')
 
     CONVERTED_MESHES_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     # Hash the original path so we get a consistent temp cache name
     path_hash = md5(str(obj_p).encode('utf-8')).hexdigest()
-    mesh_filename = f"{obj_p.stem}_{path_hash}.mesh"
+    mesh_filename = f'{obj_p.stem}_{path_hash}.mesh'
     cached_mesh_p = CONVERTED_MESHES_DIR / mesh_filename
 
     generate = False

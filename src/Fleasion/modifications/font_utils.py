@@ -17,7 +17,7 @@ from ..utils import log_buffer
 # Recognised font magic bytes (first 4 bytes of the file).
 FONT_HEADERS: dict[str, bytes] = {
     'ttf': b'\x00\x01\x00\x00',
-    'otf': b'\x4F\x54\x54\x4F',  # "OTTO"
+    'otf': b'\x4f\x54\x54\x4f',  # "OTTO"
     'ttc': b'\x74\x74\x63\x66',  # "ttcf"
 }
 
@@ -90,7 +90,7 @@ def apply_custom_font(
             try:
                 with json_path.open('r', encoding='utf-8') as fp:
                     family = json.load(fp)
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 continue
 
             changed = False

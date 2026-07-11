@@ -42,27 +42,30 @@ class GlobalSettingsManager:
             if sober_local.exists():
                 roblox_dirs.append(sober_local)
             else:
-                log_buffer.log('GlobalSettings', '~/.var/app/org.vinegarhq.Sober/data/sober directory not found')
+                log_buffer.log(
+                    'GlobalSettings',
+                    '~/.var/app/org.vinegarhq.Sober/data/sober directory not found',
+                )
             return roblox_dirs
 
         users_dir = Path('C:/Users')
-        
+
         if not users_dir.exists():
             log_buffer.log('GlobalSettings', 'C:\\Users directory not found')
             return roblox_dirs
-        
+
         try:
             for user_folder in os.listdir(users_dir):
                 user_path = users_dir / user_folder
                 if not user_path.is_dir():
                     continue
-                
+
                 roblox_local = user_path / 'AppData' / 'Local' / 'Roblox'
                 if roblox_local.exists():
                     roblox_dirs.append(roblox_local)
         except OSError as e:
             log_buffer.log('GlobalSettings', f'Error scanning users: {e}')
-        
+
         return roblox_dirs
 
     @staticmethod
@@ -104,11 +107,11 @@ class GlobalSettingsManager:
         """Read the current FramerateCap value from GlobalBasicSettings_13.xml."""
         if not xml_path.exists():
             return None
-        
+
         try:
             tree = ET.parse(str(xml_path))
             root = tree.getroot()
-            
+
             # Navigate through the XML structure to find FramerateCap
             # Structure: <roblox><Item class="UserGameSettings"><Properties>
             #            <int name="FramerateCap">240</int>
@@ -119,7 +122,7 @@ class GlobalSettingsManager:
                             if int_elem.get('name') == 'FramerateCap':
                                 try:
                                     return int(int_elem.text or 0)
-                                except (ValueError, TypeError):
+                                except ValueError, TypeError:
                                     return None
             return None
         except Exception as e:
@@ -131,18 +134,18 @@ class GlobalSettingsManager:
         if not xml_path.exists():
             log_buffer.log('GlobalSettings', f'XML file not found: {xml_path}')
             return
-        
+
         # Check and store read-only state
         was_read_only = self._get_read_only_state(xml_path)
-        
+
         try:
             # Remove read-only temporarily if needed
             if was_read_only:
                 self._remove_read_only(xml_path)
-            
+
             tree = ET.parse(str(xml_path))
             root = tree.getroot()
-            
+
             found = False
             # Navigate to FramerateCap and update it
             for item in root.findall('Item'):
@@ -153,17 +156,20 @@ class GlobalSettingsManager:
                                 int_elem.text = str(framerate)
                                 found = True
                                 break
-            
+
             if found:
                 tree.write(str(xml_path), encoding='utf-8', xml_declaration=True)
-                log_buffer.log('GlobalSettings', f'Updated FramerateCap to {framerate} in {xml_path.name}')
+                log_buffer.log(
+                    'GlobalSettings',
+                    f'Updated FramerateCap to {framerate} in {xml_path.name}',
+                )
             else:
                 log_buffer.log('GlobalSettings', 'FramerateCap element not found in XML')
-            
+
             # Restore read-only state if it was set
             if was_read_only:
                 self._set_read_only(xml_path, True)
-        
+
         except Exception as e:
             log_buffer.log('GlobalSettings', f'Error writing framerate cap: {e}')
             # Try to restore read-only state on error
@@ -179,11 +185,11 @@ class GlobalSettingsManager:
             # Clear the value by restoring originals
             self.restore()
             return
-        
+
         for roblox_dir in self._user_roblox_dirs:
             dst = roblox_dir / GLOBAL_SETTINGS_REL
             stash = self._stash_dir / roblox_dir.parent.name / GLOBAL_SETTINGS_REL
-            
+
             # Stash original once
             if dst.exists() and not stash.exists():
                 stash.parent.mkdir(parents=True, exist_ok=True)
@@ -193,28 +199,31 @@ class GlobalSettingsManager:
                     with open(stash, 'a'):
                         pass  # Touch file
                     self._set_read_only(stash, True)
-            
+
             # Write the framerate cap
             if dst.exists():
                 self._write_framerate_cap(dst, framerate)
-        
-        log_buffer.log('GlobalSettings', f'Wrote FramerateCap={framerate} to {format_count(self._user_roblox_dirs, "Roblox dir")}')
+
+        log_buffer.log(
+            'GlobalSettings',
+            f'Wrote FramerateCap={framerate} to {format_count(self._user_roblox_dirs, "Roblox dir")}',
+        )
 
     def restore(self) -> None:
         """Restore GlobalBasicSettings_13.xml in all user Roblox dirs from stash."""
         for roblox_dir in self._user_roblox_dirs:
             dst = roblox_dir / GLOBAL_SETTINGS_REL
             stash = self._stash_dir / roblox_dir.parent.name / GLOBAL_SETTINGS_REL
-            
+
             if stash.exists():
                 # Make sure destination is writable before restoring
                 self._remove_read_only(dst)
                 shutil.copy2(stash, dst)
-                
+
                 # Restore the read-only state
                 if self._get_read_only_state(stash):
                     self._set_read_only(dst, True)
-                
+
                 stash.unlink()
-        
+
         log_buffer.log('GlobalSettings', 'Restored GlobalBasicSettings_13.xml')

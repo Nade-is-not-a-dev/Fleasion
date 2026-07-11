@@ -31,9 +31,10 @@ NOT_VALID_BEFORE_SKEW_MINUTES = 5
 def _crypto():
     """Lazy import of cryptography modules."""
     from cryptography import x509
-    from cryptography.x509.oid import NameOID
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
     return x509, NameOID, hashes, serialization, rsa
 
 
@@ -190,7 +191,9 @@ def generate_ca(ca_dir: Path) -> Tuple[Path, Path]:
     if ca_cert_path.exists() and ca_key_path.exists():
         try:
             x509, _, _, serialization, _ = _crypto()
-            from cryptography.hazmat.primitives.serialization import load_pem_private_key
+            from cryptography.hazmat.primitives.serialization import (
+                load_pem_private_key,
+            )
 
             existing_ca = x509.load_pem_x509_certificate(ca_cert_path.read_bytes())
             existing_key = load_pem_private_key(ca_key_path.read_bytes(), password=None)
@@ -208,10 +211,12 @@ def generate_ca(ca_dir: Path) -> Tuple[Path, Path]:
     x509, NameOID, hashes, serialization, rsa = _crypto()
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    name = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, 'Fleasion Proxy CA'),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, 'Fleasion'),
-    ])
+    name = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, 'Fleasion Proxy CA'),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, 'Fleasion'),
+        ]
+    )
     now = datetime.datetime.now(datetime.timezone.utc)
     not_valid_before = now - datetime.timedelta(minutes=NOT_VALID_BEFORE_SKEW_MINUTES)
     cert = (
@@ -253,7 +258,9 @@ def generate_ca(ca_dir: Path) -> Tuple[Path, Path]:
     return ca_cert_path, ca_key_path
 
 
-def generate_host_cert(host: str, ca_cert_path: Path, ca_key_path: Path, ca_dir: Path) -> Tuple[Path, Path]:
+def generate_host_cert(
+    host: str, ca_cert_path: Path, ca_key_path: Path, ca_dir: Path
+) -> Tuple[Path, Path]:
     """Generate a leaf certificate for *host* signed by our CA.
 
     Returns (cert_path, key_path).  Uses cached files if they already exist.
@@ -278,7 +285,9 @@ def generate_host_cert(host: str, ca_cert_path: Path, ca_key_path: Path, ca_dir:
             cn_ok = bool(cn_values and cn_values[0].value == host)
 
             try:
-                san = cached_leaf.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+                san = cached_leaf.extensions.get_extension_for_class(
+                    x509.SubjectAlternativeName
+                ).value
                 san_dns = set(san.get_values_for_type(x509.DNSName))
                 san_ips = {str(ip) for ip in san.get_values_for_type(x509.IPAddress)}
             except x509.ExtensionNotFound:
@@ -297,12 +306,25 @@ def generate_host_cert(host: str, ca_cert_path: Path, ca_key_path: Path, ca_dir:
             except Exception:
                 signature_ok = False
 
-            if cn_ok and san_ok and issuer_ok and time_ok and key_ok and ski_ok and aki_ok and signature_ok:
+            if (
+                cn_ok
+                and san_ok
+                and issuer_ok
+                and time_ok
+                and key_ok
+                and ski_ok
+                and aki_ok
+                and signature_ok
+            ):
                 return cert_path, key_path
 
             logger.warning('Cached leaf cert for %s is stale or mismatched; regenerating', host)
         except Exception as exc:
-            logger.warning('Failed to validate cached leaf cert for %s; regenerating (%s)', host, exc)
+            logger.warning(
+                'Failed to validate cached leaf cert for %s; regenerating (%s)',
+                host,
+                exc,
+            )
 
     # Load CA
     ca_key = load_pem_private_key(ca_key_path.read_bytes(), password=None)
@@ -327,8 +349,14 @@ def generate_host_cert(host: str, ca_cert_path: Path, ca_key_path: Path, ca_dir:
         .not_valid_after(now + datetime.timedelta(days=LEAF_CERT_VALIDITY_DAYS))
         .add_extension(x509.SubjectAlternativeName(san_entries), critical=False)
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
-        .add_extension(x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key()), critical=False)
-        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False)
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key()),
+            critical=False,
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
         .add_extension(
             x509.KeyUsage(
                 digital_signature=True,
@@ -401,12 +429,29 @@ def generate_multi_host_cert(
             except Exception:
                 signature_ok = False
 
-            if cn_ok and issuer_ok and time_ok and key_ok and san_ok and eku_ok and ski_ok and aki_ok and signature_ok:
+            if (
+                cn_ok
+                and issuer_ok
+                and time_ok
+                and key_ok
+                and san_ok
+                and eku_ok
+                and ski_ok
+                and aki_ok
+                and signature_ok
+            ):
                 return cert_path, key_path
 
-            logger.warning('Cached multi-host cert %s is stale or mismatched; regenerating', cert_name)
+            logger.warning(
+                'Cached multi-host cert %s is stale or mismatched; regenerating',
+                cert_name,
+            )
         except Exception as exc:
-            logger.warning('Failed to validate cached multi-host cert %s; regenerating (%s)', cert_name, exc)
+            logger.warning(
+                'Failed to validate cached multi-host cert %s; regenerating (%s)',
+                cert_name,
+                exc,
+            )
 
     ca_key = load_pem_private_key(ca_key_path.read_bytes(), password=None)
     if not _cert_matches_private_key(ca_cert, ca_key, serialization):
@@ -424,10 +469,19 @@ def generate_multi_host_cert(
         .serial_number(x509.random_serial_number())
         .not_valid_before(not_valid_before)
         .not_valid_after(now + datetime.timedelta(days=LEAF_CERT_VALIDITY_DAYS))
-        .add_extension(x509.SubjectAlternativeName(_san_entries_for_hosts(normalized_hosts)), critical=False)
+        .add_extension(
+            x509.SubjectAlternativeName(_san_entries_for_hosts(normalized_hosts)),
+            critical=False,
+        )
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
-        .add_extension(x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key()), critical=False)
-        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False)
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key()),
+            critical=False,
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
         .add_extension(
             x509.KeyUsage(
                 digital_signature=True,

@@ -6,27 +6,30 @@ running as a compiled executable or from a development checkout and updates the
 launch method when it changes.
 """
 
-import os
-import sys
 import base64
 import json
 import logging
+import os
 import plistlib
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from .paths import USER_HOME
 
 logger = logging.getLogger(__name__)
 
+
 # Use Fleasion's log_buffer when available, fall back to Python logger
 def _log(msg: str) -> None:
     try:
         from ..utils.logging import log_buffer
+
         log_buffer.log('Autostart', msg)
     except Exception:
         logger.info(msg)
+
 
 TASK_NAME = 'Fleasion_Autostart'
 LAUNCH_AGENT_ID = 'com.fleasion.autostart'
@@ -75,7 +78,11 @@ def _get_launch_info() -> dict:
     if sys.platform.startswith('linux'):
         installed_launcher = _linux_installed_launcher()
         if installed_launcher is not None:
-            return {'mode': 'linux-launcher', 'path': str(installed_launcher), '_fmt': _TASK_FORMAT_VERSION}
+            return {
+                'mode': 'linux-launcher',
+                'path': str(installed_launcher),
+                '_fmt': _TASK_FORMAT_VERSION,
+            }
 
     if getattr(sys, 'frozen', False):
         return {'mode': 'exe', 'path': sys.executable, '_fmt': _TASK_FORMAT_VERSION}
@@ -86,10 +93,16 @@ def _get_launch_info() -> dict:
             if (check / 'pyproject.toml').exists():
                 break
             check = check.parent
-        return {'mode': 'python', 'path': sys.executable, 'project': str(check), '_fmt': _TASK_FORMAT_VERSION}
+        return {
+            'mode': 'python',
+            'path': sys.executable,
+            'project': str(check),
+            '_fmt': _TASK_FORMAT_VERSION,
+        }
 
     # Dev / uv run
     import shutil
+
     found_uv = shutil.which('uv') or shutil.which('uv.exe')
     uv = str(Path(found_uv).resolve()) if found_uv else 'uv'
     # Find project root (dir containing pyproject.toml)
@@ -98,7 +111,12 @@ def _get_launch_info() -> dict:
         if (check / 'pyproject.toml').exists():
             break
         check = check.parent
-    return {'mode': 'uv', 'path': uv, 'project': str(check), '_fmt': _TASK_FORMAT_VERSION}
+    return {
+        'mode': 'uv',
+        'path': uv,
+        'project': str(check),
+        '_fmt': _TASK_FORMAT_VERSION,
+    }
 
 
 def _task_exists() -> bool:
@@ -109,7 +127,9 @@ def _task_exists() -> bool:
     try:
         r = subprocess.run(
             ['schtasks', '/Query', '/TN', TASK_NAME],
-            capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=10,
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=10,
         )
         return r.returncode == 0
     except Exception:
@@ -119,7 +139,11 @@ def _task_exists() -> bool:
 def _delete_task() -> None:
     if sys.platform == 'darwin':
         try:
-            subprocess.run(['launchctl', 'unload', str(LAUNCH_AGENT_PATH)], capture_output=True, timeout=10)
+            subprocess.run(
+                ['launchctl', 'unload', str(LAUNCH_AGENT_PATH)],
+                capture_output=True,
+                timeout=10,
+            )
         except Exception:
             pass
         try:
@@ -136,7 +160,9 @@ def _delete_task() -> None:
     try:
         subprocess.run(
             ['schtasks', '/Delete', '/TN', TASK_NAME, '/F'],
-            capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=10,
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=10,
         )
     except Exception:
         pass
@@ -152,7 +178,11 @@ def _create_task(launch_info: dict) -> bool:
                 env = {}
             else:
                 project = Path(launch_info['project'])
-                args = [launch_info['path'], str(project / 'launcher.py'), '--no-dashboard']
+                args = [
+                    launch_info['path'],
+                    str(project / 'launcher.py'),
+                    '--no-dashboard',
+                ]
                 working_dir = str(project)
                 env = {'PYTHONPATH': str(project / 'src')}
 
@@ -161,8 +191,12 @@ def _create_task(launch_info: dict) -> bool:
                 'ProgramArguments': args,
                 'RunAtLoad': True,
                 'WorkingDirectory': working_dir,
-                'StandardOutPath': str(USER_HOME / 'Library' / 'Logs' / 'Fleasion.autostart.out.log'),
-                'StandardErrorPath': str(USER_HOME / 'Library' / 'Logs' / 'Fleasion.autostart.err.log'),
+                'StandardOutPath': str(
+                    USER_HOME / 'Library' / 'Logs' / 'Fleasion.autostart.out.log'
+                ),
+                'StandardErrorPath': str(
+                    USER_HOME / 'Library' / 'Logs' / 'Fleasion.autostart.err.log'
+                ),
             }
             if env:
                 plist['EnvironmentVariables'] = env
@@ -191,7 +225,13 @@ def _create_task(launch_info: dict) -> bool:
                 working_dir = str(Path(launch_info['path']).parent)
             else:
                 project = Path(launch_info['project'])
-                command = _desktop_exec_join([launch_info['path'], str(project / 'launcher.py'), '--no-dashboard'])
+                command = _desktop_exec_join(
+                    [
+                        launch_info['path'],
+                        str(project / 'launcher.py'),
+                        '--no-dashboard',
+                    ]
+                )
                 working_dir = str(project)
 
             content = (
@@ -211,13 +251,15 @@ def _create_task(launch_info: dict) -> bool:
             _log(f'Failed to create XDG autostart entry: {e}')
             return False
 
-    import tempfile, textwrap, html as _html
+    import html as _html
+    import tempfile
+    import textwrap
 
     # Resolve the current user so the task is scoped to them specifically.
     # Without an explicit <UserId> in the XML, Windows may not associate the
     # task with the correct user and can silently discard it after a restart.
     _username = os.environ.get('USERNAME', '')
-    _domain   = os.environ.get('USERDOMAIN', os.environ.get('COMPUTERNAME', ''))
+    _domain = os.environ.get('USERDOMAIN', os.environ.get('COMPUTERNAME', ''))
     user_id = _html.escape(f'{_domain}\\{_username}' if _domain else _username)
 
     if launch_info['mode'] == 'exe':
@@ -226,28 +268,30 @@ def _create_task(launch_info: dict) -> bool:
     else:
         # For uv, wrap in PowerShell with -WindowStyle Hidden to suppress the
         # console window that uv.exe would otherwise show at logon.
-        uv_path   = launch_info['path']
+        uv_path = launch_info['path']
         proj_path = launch_info['project']
-        uv_args = subprocess.list2cmdline(['--project', proj_path, 'run', 'fleasion', '--no-dashboard'])
+        uv_args = subprocess.list2cmdline(
+            ['--project', proj_path, 'run', 'fleasion', '--no-dashboard']
+        )
         log_path = launch_info.get('log')
         ps_script = (
-            "try{"
-            f"Start-Process -FilePath {_ps_single_quote(uv_path)} "
-            f"-ArgumentList {_ps_single_quote(uv_args)} "
-            "-WindowStyle Hidden -ErrorAction Stop"
-            "}catch{"
+            'try{'
+            f'Start-Process -FilePath {_ps_single_quote(uv_path)} '
+            f'-ArgumentList {_ps_single_quote(uv_args)} '
+            '-WindowStyle Hidden -ErrorAction Stop'
+            '}catch{'
         )
         if log_path:
             ps_script += (
-                f"New-Item -ItemType Directory -Force -Path {_ps_single_quote(str(Path(log_path).parent))}|Out-Null;"
-                f"Add-Content -LiteralPath {_ps_single_quote(log_path)} "
+                f'New-Item -ItemType Directory -Force -Path {_ps_single_quote(str(Path(log_path).parent))}|Out-Null;'
+                f'Add-Content -LiteralPath {_ps_single_quote(log_path)} '
                 "-Value ((Get-Date -Format o)+' '+($_|Out-String));"
             )
-        ps_script += "exit 1}"
+        ps_script += 'exit 1}'
         ps_encoded = base64.b64encode(ps_script.encode('utf-16-le')).decode('ascii')
         ps_cmd = (
-            f"-WindowStyle Hidden -NoProfile -NonInteractive "
-            f"-ExecutionPolicy Bypass -EncodedCommand {ps_encoded}"
+            f'-WindowStyle Hidden -NoProfile -NonInteractive '
+            f'-ExecutionPolicy Bypass -EncodedCommand {ps_encoded}'
         )
         command = 'powershell.exe'
         args = _html.escape(ps_cmd)
@@ -289,20 +333,23 @@ def _create_task(launch_info: dict) -> bool:
         </Task>
     """).strip()
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.xml',
-                                     encoding='utf-16', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', encoding='utf-16', delete=False) as f:
         f.write(xml)
         tmp = f.name
 
     try:
         r = subprocess.run(
             ['schtasks', '/Create', '/TN', TASK_NAME, '/XML', tmp, '/F'],
-            capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=15,
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=15,
         )
         if r.returncode != 0:
-            _log(f'schtasks failed (rc={r.returncode}): '
-                 f'{r.stdout.decode(errors="replace").strip()} '
-                 f'{r.stderr.decode(errors="replace").strip()}')
+            _log(
+                f'schtasks failed (rc={r.returncode}): '
+                f'{r.stdout.decode(errors="replace").strip()} '
+                f'{r.stderr.decode(errors="replace").strip()}'
+            )
         return r.returncode == 0
     except Exception as e:
         _log(f'Failed to create scheduled task: {e}')

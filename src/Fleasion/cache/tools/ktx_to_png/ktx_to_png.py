@@ -40,6 +40,7 @@ KTX1_MAGIC = b'\xabKTX 11\xbb\r\n\x1a\n'
 KTX2_MAGIC = b'\xabKTX 20\xbb\r\n\x1a\n'
 _KTX_MAGIC_SCAN_LIMIT = 64
 
+
 # -------------------------------------------------------------------------------
 # Public API
 # -------------------------------------------------------------------------------
@@ -90,17 +91,17 @@ def strip_prefixed_ktx(data: bytes) -> bytes | None:
 # KTX1 -- header parsing + ETC/EAC dispatch
 # -------------------------------------------------------------------------------
 # GL internal format constants (from KTX1/Main.cs KtxTextureFormat enum)
-_GL_RGB8_ETC1                        = 0x8D64
-_GL_R11_EAC                          = 0x9270
-_GL_SIGNED_R11_EAC                   = 0x9271
-_GL_RG11_EAC                         = 0x9272
-_GL_SIGNED_RG11_EAC                  = 0x9273
-_GL_RGB8_ETC2                        = 0x9274
-_GL_SRGB8_ETC2                       = 0x9275
-_GL_RGB8_PUNCHTHROUGH_ALPHA1_ETC2    = 0x9276
-_GL_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2  = 0x9277
-_GL_RGBA8_ETC2_EAC                   = 0x9278
-_GL_SRGB8_ALPHA8_ETC2_EAC           = 0x9279
+_GL_RGB8_ETC1 = 0x8D64
+_GL_R11_EAC = 0x9270
+_GL_SIGNED_R11_EAC = 0x9271
+_GL_RG11_EAC = 0x9272
+_GL_SIGNED_RG11_EAC = 0x9273
+_GL_RGB8_ETC2 = 0x9274
+_GL_SRGB8_ETC2 = 0x9275
+_GL_RGB8_PUNCHTHROUGH_ALPHA1_ETC2 = 0x9276
+_GL_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2 = 0x9277
+_GL_RGBA8_ETC2_EAC = 0x9278
+_GL_SRGB8_ALPHA8_ETC2_EAC = 0x9279
 
 
 def _ceil_mul(value: int, multiplier: int) -> int:
@@ -142,12 +143,12 @@ def _convert_ktx1(data: bytes) -> bytes | None:
     if len(data) < image_data_offset + 4:
         return None
     (image_size,) = struct.unpack_from('<I', data, image_data_offset)
-    image_data = data[image_data_offset + 4: image_data_offset + 4 + image_size]
+    image_data = data[image_data_offset + 4 : image_data_offset + 4 + image_size]
 
     if real_width == 0 or real_height == 0:
         return None
 
-    width  = _ceil_mul(real_width, 4)
+    width = _ceil_mul(real_width, 4)
     height = _ceil_mul(real_height, 4)
 
     rgba = _decode_ktx1(internal_fmt, image_data, width, height)
@@ -161,13 +162,16 @@ def _convert_ktx1(data: bytes) -> bytes | None:
     return buf.getvalue()
 
 
-def _decode_ktx1(internal_fmt: int, image_data: bytes,
-                 width: int, height: int) -> np.ndarray | None:
+def _decode_ktx1(
+    internal_fmt: int, image_data: bytes, width: int, height: int
+) -> np.ndarray | None:
     if internal_fmt in (_GL_RGB8_ETC1, _GL_RGB8_ETC2, _GL_SRGB8_ETC2):
         return _decode_etc_rgb(image_data, width, height, punchthrough=False)
 
-    if internal_fmt in (_GL_RGB8_PUNCHTHROUGH_ALPHA1_ETC2,
-                        _GL_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2):
+    if internal_fmt in (
+        _GL_RGB8_PUNCHTHROUGH_ALPHA1_ETC2,
+        _GL_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2,
+    ):
         return _decode_etc_rgb(image_data, width, height, punchthrough=True)
 
     if internal_fmt in (_GL_RGBA8_ETC2_EAC, _GL_SRGB8_ALPHA8_ETC2_EAC):
@@ -204,24 +208,24 @@ def _clamp255(x) -> int:
 
 # Modifier tables used by Legacy/Individual ETC mode
 _REMAP_TABLE_OPAQUE = [
-    [  2,   8,  -2,   -8],
-    [  5,  17,  -5,  -17],
-    [  9,  29,  -9,  -29],
-    [ 13,  42, -13,  -42],
-    [ 18,  60, -18,  -60],
-    [ 24,  80, -24,  -80],
-    [ 33, 106, -33, -106],
-    [ 47, 183, -47, -183],
+    [2, 8, -2, -8],
+    [5, 17, -5, -17],
+    [9, 29, -9, -29],
+    [13, 42, -13, -42],
+    [18, 60, -18, -60],
+    [24, 80, -24, -80],
+    [33, 106, -33, -106],
+    [47, 183, -47, -183],
 ]
 _REMAP_TABLE_TRANSPARENT = [
-    [ 0,   8, 0,   -8],
-    [ 0,  17, 0,  -17],
-    [ 0,  29, 0,  -29],
-    [ 0,  42, 0,  -42],
-    [ 0,  60, 0,  -60],
-    [ 0,  80, 0,  -80],
-    [ 0, 106, 0, -106],
-    [ 0, 183, 0, -183],
+    [0, 8, 0, -8],
+    [0, 17, 0, -17],
+    [0, 29, 0, -29],
+    [0, 42, 0, -42],
+    [0, 60, 0, -60],
+    [0, 80, 0, -80],
+    [0, 106, 0, -106],
+    [0, 183, 0, -183],
 ]
 
 # Distance table used by T/H mode
@@ -229,31 +233,41 @@ _DISTANCE_TABLE = [3, 6, 11, 16, 23, 31, 41, 64]
 
 # EAC modifier table
 _EAC_MODIFIER_TABLE = [
-    [ -3,  -6,  -9, -15, 2, 5, 8, 14],
-    [ -3,  -7, -10, -13, 2, 6, 9, 12],
-    [ -2,  -5,  -8, -13, 1, 4, 7, 12],
-    [ -2,  -4,  -6, -13, 1, 3, 5, 12],
-    [ -3,  -6,  -8, -12, 2, 5, 7, 11],
-    [ -3,  -7,  -9, -11, 2, 6, 8, 10],
-    [ -4,  -7,  -8, -11, 3, 6, 7, 10],
-    [ -3,  -5,  -8, -11, 2, 4, 7, 10],
-    [ -2,  -6,  -8, -10, 1, 5, 7,  9],
-    [ -2,  -5,  -8, -10, 1, 4, 7,  9],
-    [ -2,  -4,  -8, -10, 1, 3, 7,  9],
-    [ -2,  -5,  -7, -10, 1, 4, 6,  9],
-    [ -3,  -4,  -7, -10, 2, 3, 6,  9],
-    [ -1,  -2,  -3, -10, 0, 1, 2,  9],
-    [ -4,  -6,  -8,  -9, 3, 5, 7,  8],
-    [ -3,  -5,  -7,  -9, 2, 4, 6,  8],
+    [-3, -6, -9, -15, 2, 5, 8, 14],
+    [-3, -7, -10, -13, 2, 6, 9, 12],
+    [-2, -5, -8, -13, 1, 4, 7, 12],
+    [-2, -4, -6, -13, 1, 3, 5, 12],
+    [-3, -6, -8, -12, 2, 5, 7, 11],
+    [-3, -7, -9, -11, 2, 6, 8, 10],
+    [-4, -7, -8, -11, 3, 6, 7, 10],
+    [-3, -5, -8, -11, 2, 4, 7, 10],
+    [-2, -6, -8, -10, 1, 5, 7, 9],
+    [-2, -5, -8, -10, 1, 4, 7, 9],
+    [-2, -4, -8, -10, 1, 3, 7, 9],
+    [-2, -5, -7, -10, 1, 4, 6, 9],
+    [-3, -4, -7, -10, 2, 3, 6, 9],
+    [-1, -2, -3, -10, 0, 1, 2, 9],
+    [-4, -6, -8, -9, 3, 5, 7, 8],
+    [-3, -5, -7, -9, 2, 4, 6, 8],
 ]
 
 
-def _legacy_etc(block: int, r0: int, g0: int, b0: int,
-                r1: int, g1: int, b1: int,
-                dest: bytearray, base_offset: int, pitch: int, opaque: bool) -> None:
+def _legacy_etc(
+    block: int,
+    r0: int,
+    g0: int,
+    b0: int,
+    r1: int,
+    g1: int,
+    b1: int,
+    dest: bytearray,
+    base_offset: int,
+    pitch: int,
+    opaque: bool,
+) -> None:
     """Decompress one 4x4 ETC block in Individual or Differential mode."""
     remap = _REMAP_TABLE_OPAQUE if opaque else _REMAP_TABLE_TRANSPARENT
-    flip_bit   = bool(block & 0x100000000)
+    flip_bit = bool(block & 0x100000000)
     code_word0 = (block >> 37) & 0x7
     code_word1 = (block >> 34) & 0x7
 
@@ -297,8 +311,9 @@ def _legacy_etc(block: int, r0: int, g0: int, b0: int,
                 dest[off + 3] = 0
 
 
-def _etc_t_h(block: int, mode: int, dest: bytearray,
-             base_offset: int, pitch: int, opaque: bool) -> None:
+def _etc_t_h(
+    block: int, mode: int, dest: bytearray, base_offset: int, pitch: int, opaque: bool
+) -> None:
     """Decompress one 4x4 ETC block in T or H mode."""
     if mode == 1:  # T mode
         ra = (block >> 59) & 0x3
@@ -311,7 +326,7 @@ def _etc_t_h(block: int, mode: int, dest: bytearray,
         da = (block >> 34) & 0x3
         db = (block >> 32) & 0x1
         r0 = (ra << 2) | rb
-    else:           # H mode
+    else:  # H mode
         r0 = (block >> 59) & 0xF
         ga = (block >> 56) & 0x7
         gb = (block >> 52) & 0x1
@@ -341,10 +356,10 @@ def _etc_t_h(block: int, mode: int, dest: bytearray,
             (r1, g1, b1, 0xFF),
             (_clamp255(r1 - dist), _clamp255(g1 - dist), _clamp255(b1 - dist), 0xFF),
         ]
-    else:           # H
+    else:  # H
         compare_a = (r0 << 16) | (g0 << 8) | b0
         compare_b = (r1 << 16) | (g1 << 8) | b1
-        dist_idx  = (1 if compare_a >= compare_b else 0) | (da << 2) | (db << 1)
+        dist_idx = (1 if compare_a >= compare_b else 0) | (da << 2) | (db << 1)
         dist = _DISTANCE_TABLE[dist_idx]
         paint = [
             (_clamp255(r0 + dist), _clamp255(g0 + dist), _clamp255(b0 + dist), 0xFF),
@@ -356,7 +371,7 @@ def _etc_t_h(block: int, mode: int, dest: bytearray,
     for i in range(4):
         row_off = base_offset + i * pitch
         for j in range(4):
-            k   = i + j * 4
+            k = i + j * 4
             idx = (((block >> (k + 16)) & 1) << 1) | ((block >> k) & 1)
             off = row_off + j * 4
             if opaque or idx != 2:
@@ -373,7 +388,7 @@ def _etc_t_h(block: int, mode: int, dest: bytearray,
 
 def _etc_planar(block: int, dest: bytearray, base_offset: int, pitch: int) -> None:
     """Decompress one 4x4 ETC block in Planar mode."""
-    ro  = (block >> 57) & 0x3F
+    ro = (block >> 57) & 0x3F
     go1 = (block >> 56) & 0x01
     go2 = (block >> 49) & 0x3F
     bo1 = (block >> 48) & 0x01
@@ -381,11 +396,11 @@ def _etc_planar(block: int, dest: bytearray, base_offset: int, pitch: int) -> No
     bo3 = (block >> 39) & 0x07
     rh1 = (block >> 34) & 0x1F
     rh2 = (block >> 32) & 0x01
-    gh  = (block >> 25) & 0x7F
-    bh  = (block >> 19) & 0x3F
-    rv  = (block >> 13) & 0x3F
-    gv  = (block >>  6) & 0x7F
-    bv  = (block >>  0) & 0x3F
+    gh = (block >> 25) & 0x7F
+    bh = (block >> 19) & 0x3F
+    rv = (block >> 13) & 0x3F
+    gv = (block >> 6) & 0x7F
+    bv = (block >> 0) & 0x3F
 
     go = (go1 << 6) | go2
     bo = (bo1 << 5) | (bo2 << 3) | bo3
@@ -414,8 +429,13 @@ def _etc_planar(block: int, dest: bytearray, base_offset: int, pitch: int) -> No
             dest[off + 3] = 0xFF
 
 
-def _decompress_etc_block(compressed: bytes, dest: bytearray, dest_offset: int,
-                          pitch: int, punchthrough: bool = False) -> None:
+def _decompress_etc_block(
+    compressed: bytes,
+    dest: bytearray,
+    dest_offset: int,
+    pitch: int,
+    punchthrough: bool = False,
+) -> None:
     """Main ETC block decompressor -- port of DecompressETCBlock in Internal.cs."""
     block = _bswap64(compressed)
     diff_bit = bool(block & 0x200000000)
@@ -445,11 +465,11 @@ def _decompress_etc_block(compressed: bytes, dest: bytearray, dest_offset: int,
         b1 = b0 + _extend_sign((block >> 40) & 0x7, 3)
 
         if r1 < 0 or r1 > 31:
-            mode = 1   # T
+            mode = 1  # T
         elif g1 < 0 or g1 > 31:
-            mode = 2   # H
+            mode = 2  # H
         elif b1 < 0 or b1 > 31:
-            mode = 3   # Planar
+            mode = 3  # Planar
         else:
             # Differential -- expand to 8-bit
             r0 = (r0 << 3) | (r0 >> 2)
@@ -469,37 +489,44 @@ def _decompress_etc_block(compressed: bytes, dest: bytearray, dest_offset: int,
         _etc_planar(block, dest, dest_offset, pitch)
 
 
-def _decompress_eac_block(compressed: bytes, dest: bytearray, dest_offset: int,
-                          pitch: int, pixel_size: int = 4) -> None:
+def _decompress_eac_block(
+    compressed: bytes,
+    dest: bytearray,
+    dest_offset: int,
+    pitch: int,
+    pixel_size: int = 4,
+) -> None:
     """Decompress one EAC alpha block -- port of DecompressEACBlock in Internal.cs."""
-    block     = _bswap64(compressed)
+    block = _bswap64(compressed)
     base_code = (block >> 56) & 0xFF
-    mult      = (block >> 52) & 0xF
+    mult = (block >> 52) & 0xF
     modifiers = _EAC_MODIFIER_TABLE[(block >> 48) & 0xF]
 
     r_idx = dest_offset
     for y in range(4):
         for x in range(4):
-            idx      = (block >> ((15 - (x * 4 + y)) * 3)) & 0x7
+            idx = (block >> ((15 - (x * 4 + y)) * 3)) & 0x7
             modifier = modifiers[idx]
-            d_value  = int(base_code) + modifier * int(mult)
-            alpha    = _clamp255(d_value)
+            d_value = int(base_code) + modifier * int(mult)
+            alpha = _clamp255(d_value)
             dest[r_idx + x * pixel_size] = alpha
         r_idx += pitch
 
 
-def _decode_etc_rgb(image_data: bytes, width: int, height: int,
-                    punchthrough: bool = False) -> np.ndarray:
+def _decode_etc_rgb(
+    image_data: bytes, width: int, height: int, punchthrough: bool = False
+) -> np.ndarray:
     """Decode a full ETC RGB (or punchthrough) image -- 8 bytes per block."""
-    dest  = bytearray(width * height * 4)
+    dest = bytearray(width * height * 4)
     pitch = width * 4
     src_off = 0
 
     for block_y in range(0, height, 4):
         for block_x in range(0, width, 4):
             dst_off = (block_y * width + block_x) * 4
-            _decompress_etc_block(image_data[src_off:src_off + 8],
-                                  dest, dst_off, pitch, punchthrough)
+            _decompress_etc_block(
+                image_data[src_off : src_off + 8], dest, dst_off, pitch, punchthrough
+            )
             src_off += 8
 
     arr = np.frombuffer(dest, dtype=np.uint8).reshape(height, width, 4)
@@ -513,14 +540,14 @@ def _decode_etc_rgba(image_data: bytes, width: int, height: int) -> np.ndarray:
       DecompressETCBlock(source[8:], dest)       -- color from bytes 8-15
       DecompressEACBlock(source[0:8], dest[3:])  -- alpha from bytes 0-7
     """
-    dest  = bytearray(width * height * 4)
+    dest = bytearray(width * height * 4)
     pitch = width * 4
     src_off = 0
 
     for block_y in range(0, height, 4):
         for block_x in range(0, width, 4):
             dst_off = (block_y * width + block_x) * 4
-            block_bytes = image_data[src_off:src_off + 16]
+            block_bytes = image_data[src_off : src_off + 16]
             # Color (bytes 8-15)
             _decompress_etc_block(block_bytes[8:], dest, dst_off, pitch, False)
             # Alpha (bytes 0-7), written to the alpha channel (offset +3)
@@ -535,9 +562,9 @@ def _decode_etc_rgba(image_data: bytes, width: int, height: int) -> np.ndarray:
 # KTX2 -- local RGBA8 path plus optional native libktx path
 # -------------------------------------------------------------------------------
 # libktx constants (from Ktx.Enums.cs / libktx transcode_flags.h)
-_KTX_CREATE_LOAD_IMAGE_DATA = 0x01   # KtxTextureCreateFlagBits.LoadImageDataBit
-_KTX_TTF_RGBA32             = 13     # TranscodeFormat.Rgba32
-_KTX_SUCCESS                = 0      # KtxErrorCode.KtxSuccess
+_KTX_CREATE_LOAD_IMAGE_DATA = 0x01  # KtxTextureCreateFlagBits.LoadImageDataBit
+_KTX_TTF_RGBA32 = 13  # TranscodeFormat.Rgba32
+_KTX_SUCCESS = 0  # KtxErrorCode.KtxSuccess
 
 # ktxTexture struct field offsets on 64-bit Windows/macOS libktx 4.x builds.
 # Layout derived from DECLARE_KTXTEXTURE_PUBLIC expansion in ktx.h:
@@ -549,10 +576,10 @@ _KTX_SUCCESS                = 0      # KtxErrorCode.KtxSuccess
 #   padding(4) to align 8-byte pointer                           -- 76-79
 #   kvDataHead(8) + kvDataLen(4) + pad(4) + kvData(8)           -- 80-103
 #   dataSize(size_t=8) + pData(ptr=8)                           -- 104, 112
-_OFFSET_BASE_WIDTH  = 36
+_OFFSET_BASE_WIDTH = 36
 _OFFSET_BASE_HEIGHT = 40
-_OFFSET_DATA_SIZE   = 104
-_OFFSET_PDATA       = 112
+_OFFSET_DATA_SIZE = 104
+_OFFSET_PDATA = 112
 
 _ktx_dll = None
 _ktx_dll_loaded = False
@@ -603,21 +630,25 @@ def _get_ktx_dll():
 
     try:
         # ktxTexture2_CreateFromMemory(data, size, flags, **texture) -- int
-        dll.ktxTexture2_CreateFromMemory.restype  = ctypes.c_int
+        dll.ktxTexture2_CreateFromMemory.restype = ctypes.c_int
         dll.ktxTexture2_CreateFromMemory.argtypes = [
-            ctypes.c_char_p, ctypes.c_size_t, ctypes.c_uint,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+            ctypes.c_uint,
             ctypes.POINTER(ctypes.c_void_p),
         ]
         # ktxTexture2_NeedsTranscoding(texture) -- int (1 = yes)
-        dll.ktxTexture2_NeedsTranscoding.restype  = ctypes.c_int
+        dll.ktxTexture2_NeedsTranscoding.restype = ctypes.c_int
         dll.ktxTexture2_NeedsTranscoding.argtypes = [ctypes.c_void_p]
         # ktxTexture2_TranscodeBasis(texture, transcodeFormat, flags) -- int
-        dll.ktxTexture2_TranscodeBasis.restype  = ctypes.c_int
+        dll.ktxTexture2_TranscodeBasis.restype = ctypes.c_int
         dll.ktxTexture2_TranscodeBasis.argtypes = [
-            ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint,
+            ctypes.c_void_p,
+            ctypes.c_uint,
+            ctypes.c_uint,
         ]
         # ktxTexture2_Destroy(texture) -- void
-        dll.ktxTexture2_Destroy.restype  = None
+        dll.ktxTexture2_Destroy.restype = None
         dll.ktxTexture2_Destroy.argtypes = [ctypes.c_void_p]
     except Exception as exc:
         logger.debug('ktx_to_png: native libktx symbol setup failed: %s', exc)
@@ -655,7 +686,9 @@ def _convert_ktx2(data: bytes) -> bytes | None:
 
     texture = ctypes.c_void_p(0)
     err = dll.ktxTexture2_CreateFromMemory(
-        data, len(data), _KTX_CREATE_LOAD_IMAGE_DATA,
+        data,
+        len(data),
+        _KTX_CREATE_LOAD_IMAGE_DATA,
         ctypes.byref(texture),
     )
     if err != _KTX_SUCCESS or not texture.value:
@@ -676,7 +709,7 @@ def _convert_ktx2(data: bytes) -> bytes | None:
             return None
 
         # Read width and height from the struct
-        width  = _read_u32(tex_ptr, _OFFSET_BASE_WIDTH)
+        width = _read_u32(tex_ptr, _OFFSET_BASE_WIDTH)
         height = _read_u32(tex_ptr, _OFFSET_BASE_HEIGHT)
         if width == 0 or height == 0:
             logger.debug('ktx_to_png: KTX2 zero dimensions after transcode')

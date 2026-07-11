@@ -5,25 +5,33 @@ interpolation, matching the Reference pyvista/vtk implementation.
 """
 
 import math
-import re
-import time
 import os
+import re
 import sys
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from OpenGL.GL import *
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QAction, QGuiApplication
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QLabel, QMessageBox, QMenu, QWidgetAction
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+    QWidgetAction,
 )
-from PyQt6.QtGui import QAction, QGuiApplication
 
-
+from ..utils import log_buffer
 from .fps_controls import (
     KEY_BACKWARD,
     KEY_DOWN,
@@ -39,9 +47,9 @@ from .fps_controls import (
     movement_key_from_event,
 )
 from .gl_format import legacy_gl_format, set_perspective
-from ..utils import log_buffer
 
 # Math helpers
+
 
 def lerp(a: float, b: float, t: float) -> float:
     """Linear interpolation."""
@@ -95,7 +103,7 @@ def rot3_from_quat(q: Tuple[float, float, float, float]) -> List[List[float]]:
 def quat_slerp(
     q0: Tuple[float, float, float, float],
     q1: Tuple[float, float, float, float],
-    t: float
+    t: float,
 ) -> Tuple[float, float, float, float]:
     """Spherical linear interpolation between quaternions."""
     w0, x0, y0, z0 = q0
@@ -120,6 +128,7 @@ def quat_slerp(
 
 
 # Matrix operations using numpy
+
 
 def mat_identity() -> np.ndarray:
     """Create identity 4x4 matrix."""
@@ -195,9 +204,11 @@ def matrix_trs_lerp(m0: np.ndarray, m1: np.ndarray, t: float) -> np.ndarray:
 
 # Data structures
 
+
 @dataclass
 class Part:
     """Rig part."""
+
     referent: str
     name: str
     size: Tuple[float, float, float]
@@ -208,6 +219,7 @@ class Part:
 @dataclass
 class Motor6D:
     """Motor joint connecting two parts."""
+
     name: str
     part0_ref: str
     part1_ref: str
@@ -224,11 +236,13 @@ class Motor6D:
 @dataclass
 class Keyframe:
     """Animation keyframe."""
+
     time: float
     pose_by_part_name: Dict[str, np.ndarray]
 
 
 # XML parsing helpers
+
 
 def _text(elem: Optional[ET.Element], default: str = '') -> str:
     """Get text from XML element."""
@@ -276,6 +290,7 @@ def parse_cframe(elem: ET.Element) -> Tuple[Tuple[float, float, float], List[flo
 
 # Rig and animation loading
 
+
 def load_rig(rig_path: str) -> Tuple[Dict[str, Part], List[Motor6D]]:
     """Load rig from XML file."""
     tree = ET.parse(rig_path)
@@ -292,7 +307,9 @@ def load_rig(rig_path: str) -> Tuple[Dict[str, Part], List[Motor6D]]:
             continue
 
         size_elem = find_prop(props, 'Vector3', ['size', 'Size', 'InitialSize'])
-        cf_elem = find_prop(props, 'CoordinateFrame', ['CFrame']) or find_prop(props, 'CFrame', ['CFrame'])
+        cf_elem = find_prop(props, 'CoordinateFrame', ['CFrame']) or find_prop(
+            props, 'CFrame', ['CFrame']
+        )
 
         if size_elem is not None and cf_elem is not None:
             name = _text(find_prop(props, 'string', ['Name']), cls)
@@ -312,13 +329,15 @@ def load_rig(rig_path: str) -> Tuple[Dict[str, Part], List[Motor6D]]:
             pos0, r0 = parse_cframe(c0e)
             pos1, r1 = parse_cframe(c1e)
 
-            motors.append(Motor6D(
-                name=name,
-                part0_ref=_text(p0),
-                part1_ref=_text(p1),
-                c0=mat_from_cframe(pos0, r0),
-                c1=mat_from_cframe(pos1, r1),
-            ))
+            motors.append(
+                Motor6D(
+                    name=name,
+                    part0_ref=_text(p0),
+                    part1_ref=_text(p1),
+                    c0=mat_from_cframe(pos0, r0),
+                    c1=mat_from_cframe(pos1, r1),
+                )
+            )
 
     return parts, motors
 
@@ -354,7 +373,9 @@ def load_animation_from_xml(anim_data: bytes) -> List[Keyframe]:
                 continue
 
             pname = _text(find_prop(pprops, 'string', ['Name']))
-            cf = find_prop(pprops, 'CoordinateFrame', ['CFrame']) or find_prop(pprops, 'CFrame', ['CFrame'])
+            cf = find_prop(pprops, 'CoordinateFrame', ['CFrame']) or find_prop(
+                pprops, 'CFrame', ['CFrame']
+            )
             if not pname or cf is None:
                 continue
 
@@ -370,7 +391,7 @@ def load_animation_from_xml(anim_data: bytes) -> List[Keyframe]:
 def load_animation_from_rbxm(anim_data: bytes) -> List[Keyframe]:
     """Load animation from binary RBXM format."""
     try:
-        from .rbxm_parser import parse_rbxm, find_by_class
+        from .rbxm_parser import find_by_class, parse_rbxm
     except ImportError:
         log_buffer.log('AnimationViewer', 'RBXM parser not available')
         return []
@@ -408,6 +429,7 @@ def load_animation_from_rbxm(anim_data: bytes) -> List[Keyframe]:
     except Exception as e:
         log_buffer.log('AnimationViewer', f'Error parsing RBXM animation: {e}')
         import traceback
+
         log_buffer.log('AnimationViewer', traceback.format_exc())
         return []
 
@@ -431,7 +453,8 @@ def _collect_poses(instance, poses: Dict[str, np.ndarray]):
 
 def load_curve_animation_data(anim_data: bytes) -> List[Keyframe]:
     """Load animation keyframes from a CurveAnimation (binary RBXM or XML)."""
-    import struct, base64 as _b64
+    import base64 as _b64
+    import struct
 
     TICKS = 14400.0
 
@@ -472,9 +495,17 @@ def load_curve_animation_data(anim_data: bytes) -> List[Keyframe]:
         cx, sx = math.cos(rx), math.sin(rx)
         cy, sy = math.cos(ry), math.sin(ry)
         cz, sz = math.cos(rz), math.sin(rz)
-        return [cy*cz, -cy*sz, sy,
-                cx*sz+sx*sy*cz, cx*cz-sx*sy*sz, -sx*cy,
-                sx*sz-cx*sy*cz, sx*cz+cx*sy*sz,  cx*cy]
+        return [
+            cy * cz,
+            -cy * sz,
+            sy,
+            cx * sz + sx * sy * cz,
+            cx * cz - sx * sy * sz,
+            -sx * cy,
+            sx * sz - cx * sy * cz,
+            sx * cz + cx * sy * sz,
+            cx * cy,
+        ]
 
     bone_curves: Dict[str, dict] = {}
 
@@ -485,6 +516,7 @@ def load_curve_animation_data(anim_data: bytes) -> List[Keyframe]:
     if anim_data.startswith(b'<roblox!'):
         try:
             from .tools.solidmodel_converter.rbxm.deserializer import RbxmDeserializer
+
             tree = RbxmDeserializer().deserialize(anim_data)
         except Exception as e:
             log_buffer.log('AnimationViewer', f'CurveAnimation RBXM deserialize error: {e}')
@@ -521,18 +553,24 @@ def load_curve_animation_data(anim_data: bytes) -> List[Keyframe]:
                                     continue
                                 axis = (_prop(fc, 'Name') or '').upper()
                                 tv = _vat_rbxm(fc)
-                                if axis == 'X': bc['px'] = tv
-                                elif axis == 'Y': bc['py'] = tv
-                                elif axis == 'Z': bc['pz'] = tv
+                                if axis == 'X':
+                                    bc['px'] = tv
+                                elif axis == 'Y':
+                                    bc['py'] = tv
+                                elif axis == 'Z':
+                                    bc['pz'] = tv
                         elif ccls == 'EulerRotationCurve':
                             for fc in child.children:
                                 if fc.class_name != 'FloatCurve':
                                     continue
                                 axis = (_prop(fc, 'Name') or '').upper()
                                 tv = _vat_rbxm(fc)
-                                if axis == 'X': bc['rx'] = tv
-                                elif axis == 'Y': bc['ry'] = tv
-                                elif axis == 'Z': bc['rz'] = tv
+                                if axis == 'X':
+                                    bc['rx'] = tv
+                                elif axis == 'Y':
+                                    bc['ry'] = tv
+                                elif axis == 'Z':
+                                    bc['rz'] = tv
                         elif ccls == 'Folder':
                             _walk_rbxm(child)
                     if any(bc[k] for k in bc):
@@ -591,9 +629,12 @@ def load_curve_animation_data(anim_data: bytes) -> List[Keyframe]:
                                 ae = fcp.find("string[@name='Name']")
                                 axis = (ae.text or '').upper() if ae is not None else ''
                                 tv = _vat_xml(fc)
-                                if axis == 'X': bc['px'] = tv
-                                elif axis == 'Y': bc['py'] = tv
-                                elif axis == 'Z': bc['pz'] = tv
+                                if axis == 'X':
+                                    bc['px'] = tv
+                                elif axis == 'Y':
+                                    bc['py'] = tv
+                                elif axis == 'Z':
+                                    bc['pz'] = tv
                         elif ccls == 'EulerRotationCurve':
                             for fc in child:
                                 if fc.get('class') != 'FloatCurve':
@@ -604,9 +645,12 @@ def load_curve_animation_data(anim_data: bytes) -> List[Keyframe]:
                                 ae = fcp.find("string[@name='Name']")
                                 axis = (ae.text or '').upper() if ae is not None else ''
                                 tv = _vat_xml(fc)
-                                if axis == 'X': bc['rx'] = tv
-                                elif axis == 'Y': bc['ry'] = tv
-                                elif axis == 'Z': bc['rz'] = tv
+                                if axis == 'X':
+                                    bc['rx'] = tv
+                                elif axis == 'Y':
+                                    bc['ry'] = tv
+                                elif axis == 'Z':
+                                    bc['rz'] = tv
                         elif ccls == 'Folder':
                             _walk_xml(child)
                     if any(bc[k] for k in bc):
@@ -639,12 +683,19 @@ def load_curve_animation_data(anim_data: bytes) -> List[Keyframe]:
     for t in all_times:
         poses: Dict[str, np.ndarray] = {}
         for name, bc in bone_curves.items():
-            px = _lerp(bc['px'], t); py = _lerp(bc['py'], t); pz = _lerp(bc['pz'], t)
-            rx = _lerp(bc['rx'], t); ry = _lerp(bc['ry'], t); rz = _lerp(bc['rz'], t)
+            px = _lerp(bc['px'], t)
+            py = _lerp(bc['py'], t)
+            pz = _lerp(bc['pz'], t)
+            rx = _lerp(bc['rx'], t)
+            ry = _lerp(bc['ry'], t)
+            rz = _lerp(bc['rz'], t)
             poses[name] = mat_from_cframe((px, py, pz), _rot(rx, ry, rz))
         keyframes.append(Keyframe(t, poses))
 
-    log_buffer.log('AnimationViewer', f'CurveAnimation: {len(bone_curves)} bones, {len(keyframes)} keyframes')
+    log_buffer.log(
+        'AnimationViewer',
+        f'CurveAnimation: {len(bone_curves)} bones, {len(keyframes)} keyframes',
+    )
     return keyframes
 
 
@@ -697,7 +748,9 @@ def load_animation_from_file(anim_path: str) -> List[Keyframe]:
                 continue
 
             pname = _text(find_prop(pprops, 'string', ['Name']))
-            cf = find_prop(pprops, 'CoordinateFrame', ['CFrame']) or find_prop(pprops, 'CFrame', ['CFrame'])
+            cf = find_prop(pprops, 'CoordinateFrame', ['CFrame']) or find_prop(
+                pprops, 'CFrame', ['CFrame']
+            )
             if not pname or cf is None:
                 continue
 
@@ -746,6 +799,7 @@ def detect_rig_type(parts: Dict[str, Part]) -> str:
 
 # Mesh loading
 
+
 def load_obj_mesh(mesh_path: str) -> Optional[Dict]:
     """Load OBJ mesh file."""
     if not os.path.exists(mesh_path):
@@ -781,7 +835,7 @@ def load_obj_mesh(mesh_path: str) -> Optional[Dict]:
         return {
             'vertices': np.array(vertices, dtype=np.float32),
             'normals': np.array(normals, dtype=np.float32) if normals else None,
-            'faces': faces
+            'faces': faces,
         }
     except Exception as e:
         log_buffer.log('AnimationViewer', f'Error loading mesh {mesh_path}: {e}')
@@ -791,15 +845,25 @@ def load_obj_mesh(mesh_path: str) -> Optional[Dict]:
 def create_cube_mesh(sx: float, sy: float, sz: float) -> Dict:
     """Create a simple cube mesh."""
     hx, hy, hz = sx / 2, sy / 2, sz / 2
-    vertices = np.array([
-        [-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz],
-        [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]
-    ], dtype=np.float32)
+    vertices = np.array(
+        [
+            [-hx, -hy, -hz],
+            [hx, -hy, -hz],
+            [hx, hy, -hz],
+            [-hx, hy, -hz],
+            [-hx, -hy, hz],
+            [hx, -hy, hz],
+            [hx, hy, hz],
+            [-hx, hy, hz],
+        ],
+        dtype=np.float32,
+    )
 
     # Face normals
-    normals = np.array([
-        [0, 0, -1], [0, 0, 1], [0, -1, 0], [0, 1, 0], [-1, 0, 0], [1, 0, 0]
-    ], dtype=np.float32)
+    normals = np.array(
+        [[0, 0, -1], [0, 0, 1], [0, -1, 0], [0, 1, 0], [-1, 0, 0], [1, 0, 0]],
+        dtype=np.float32,
+    )
 
     faces = [
         {'v': [0, 1, 2, 3], 'n': [0, 0, 0, 0]},  # Front
@@ -829,6 +893,7 @@ def get_rig_path(rig_type: str) -> Path:
 
 
 # OpenGL viewer widget
+
 
 class AnimationGLWidget(QOpenGLWidget):
     """OpenGL widget for displaying animated rigs."""
@@ -862,24 +927,24 @@ class AnimationGLWidget(QOpenGLWidget):
         # Display lists for mesh caching (major performance boost)
         self.display_lists: Dict[str, int] = {}
         self.grid_display_list: int = 0
-        
+
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         # Slightly larger minimum so viewers are usable on small panels
         self.setMinimumSize(120, 120)
         self.setFormat(legacy_gl_format())
-        
+
         # Camera state
         self.camera_mode = 'orbit'
         self.cam_pos = np.array([0.0, 0.0, 0.0], dtype=float)
         self.cam_yaw = 0.0
         self.cam_pitch = 0.0
         self.base_speed = 0.1
-        
+
         self.auto_rotate = False
         self.keys_pressed: set[MovementKey] = set()
         self.last_tick_time = time.time()
         self.show_grid = True
-        
+
         # Main update tick: use monitor refresh rate where possible
         self.timer = QTimer()
         self.timer.timeout.connect(self._update_tick)
@@ -904,7 +969,9 @@ class AnimationGLWidget(QOpenGLWidget):
             refresh = 60.0
         return max(1, int(round(1000.0 / refresh)))
 
-    def _create_placeholder_rig(self, pose_names: set) -> Tuple[Dict[int, 'Part'], Dict[str, 'Motor']]:
+    def _create_placeholder_rig(
+        self, pose_names: set
+    ) -> Tuple[Dict[int, 'Part'], Dict[str, 'Motor']]:
         """Create placeholder rig with simple cubes for unsupported animation types."""
         parts = {}
         motors = {}
@@ -916,7 +983,7 @@ class AnimationGLWidget(QOpenGLWidget):
                 referent=str(idx),
                 name=part_name,
                 size=(0.5, 0.5, 0.5),
-                cframe=np.eye(4, dtype=np.float32)
+                cframe=np.eye(4, dtype=np.float32),
             )
             # Create a simple cube mesh
             part.mesh_data = create_cube_mesh(0.5, 0.5, 0.5)
@@ -960,13 +1027,18 @@ class AnimationGLWidget(QOpenGLWidget):
                 self.rig_type = 'R15'
             else:
                 # Unsupported rig type - use placeholder blocks
-                log_buffer.log('AnimationViewer', 'Unsupported animation rig type, using placeholder blocks')
+                log_buffer.log(
+                    'AnimationViewer',
+                    'Unsupported animation rig type, using placeholder blocks',
+                )
                 self.rig_type = 'PLACEHOLDER'
                 self.parts, self.motors = self._create_placeholder_rig(all_pose_names)
                 self.duration = max(kf.time for kf in self.keyframes) if self.keyframes else 0
                 self.root_ref = list(self.parts.keys())[0] if self.parts else 0
                 self.root_name = self.parts[self.root_ref].name if self.parts else 'Root'
-                self.base_root_world = self.parts[self.root_ref].cframe.copy() if self.parts else np.eye(4)
+                self.base_root_world = (
+                    self.parts[self.root_ref].cframe.copy() if self.parts else np.eye(4)
+                )
                 self.current_time = 0
                 self.update()
                 return True
@@ -1015,6 +1087,7 @@ class AnimationGLWidget(QOpenGLWidget):
         except Exception as e:
             log_buffer.log('AnimationViewer', f'Error loading animation: {e}')
             import traceback
+
             log_buffer.log('AnimationViewer', traceback.format_exc())
             return False
 
@@ -1056,7 +1129,7 @@ class AnimationGLWidget(QOpenGLWidget):
 
         # Camera Transform setup
         if self.camera_mode == 'orbit':
-            glTranslatef(0.0, 0.0, -self.zoom) # Invert zoom to match obj_viewer math
+            glTranslatef(0.0, 0.0, -self.zoom)  # Invert zoom to match obj_viewer math
             glRotatef(self.rotation_x, 1.0, 0.0, 0.0)
             glRotatef(self.rotation_y, 0.0, 1.0, 0.0)
             glTranslatef(-self.camera_target[0], -self.camera_target[1], -self.camera_target[2])
@@ -1185,8 +1258,7 @@ class AnimationGLWidget(QOpenGLWidget):
                 # Calculate world transform: parent_world * C0 * pose * inv(C1)
                 # Use cached c1_inv for performance
                 part1_world = mat_mul(
-                    mat_mul(mat_mul(world[motor.part0_ref], motor.c0), T),
-                    motor.c1_inv
+                    mat_mul(mat_mul(world[motor.part0_ref], motor.c0), T), motor.c1_inv
                 )
 
                 world[motor.part1_ref] = part1_world
@@ -1237,35 +1309,35 @@ class AnimationGLWidget(QOpenGLWidget):
         glDisable(GL_LIGHTING)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        
-        glColor4f(1.0, 1.0, 1.0, 0.08) # Very subtle white lines
+
+        glColor4f(1.0, 1.0, 1.0, 0.08)  # Very subtle white lines
         glLineWidth(1.0)
-        
+
         grid_size = 10.0
         grid_step = 0.5
-        
+
         bottom_y = 0.0
-        
+
         glBegin(GL_LINES)
         val = -grid_size
         while val <= grid_size + 0.001:
             if abs(val) < 0.01:
-                glColor4f(1.0, 0.2, 0.2, 0.15) # X axis highlight
+                glColor4f(1.0, 0.2, 0.2, 0.15)  # X axis highlight
             else:
                 glColor4f(1.0, 1.0, 1.0, 0.08)
             glVertex3f(val, bottom_y, -grid_size)
             glVertex3f(val, bottom_y, grid_size)
-            
+
             if abs(val) < 0.01:
-                glColor4f(0.2, 0.4, 1.0, 0.15) # Z axis highlight
+                glColor4f(0.2, 0.4, 1.0, 0.15)  # Z axis highlight
             else:
                 glColor4f(1.0, 1.0, 1.0, 0.08)
             glVertex3f(-grid_size, bottom_y, val)
             glVertex3f(grid_size, bottom_y, val)
-            
+
             val += grid_step
         glEnd()
-        
+
         glPopAttrib()
 
     def _draw_axis_indicator(self):
@@ -1367,21 +1439,22 @@ class AnimationGLWidget(QOpenGLWidget):
             speed = self.base_speed * 5.0 * (delta / 120.0)
             yaw = math.radians(self.cam_yaw)
             pitch = math.radians(self.cam_pitch)
-            
-            forward = np.array([
-                math.cos(pitch) * math.sin(yaw), 
-                -math.sin(pitch), 
-                -math.cos(pitch) * math.cos(yaw)
-            ])
+
+            forward = np.array(
+                [
+                    math.cos(pitch) * math.sin(yaw),
+                    -math.sin(pitch),
+                    -math.cos(pitch) * math.cos(yaw),
+                ]
+            )
             self.cam_pos += forward * speed
-            
+
         self.update()
 
     def set_time(self, time: float):
         """Set animation time."""
         self.current_time = max(0, min(time, self.duration))
         self.update()
-
 
     def _is_movement_pressed(self, movement_key: MovementKey) -> bool:
         return movement_key in self.keys_pressed
@@ -1402,7 +1475,7 @@ class AnimationGLWidget(QOpenGLWidget):
         if movement_key is not None:
             self.keys_pressed.discard(movement_key)
         super().keyReleaseEvent(event)
-        
+
     def focusOutEvent(self, event):
         self.keys_pressed.clear()
         super().focusOutEvent(event)
@@ -1413,14 +1486,17 @@ class AnimationGLWidget(QOpenGLWidget):
             self.reset_view()
 
     def _transition_to_fps(self):
-        if self.camera_mode == 'fps': return
+        if self.camera_mode == 'fps':
+            return
         self.camera_mode = 'fps'
         self.auto_rotate = False
-        
+
         pitch = self.rotation_x % 360.0
-        if pitch > 180.0: pitch -= 360.0
+        if pitch > 180.0:
+            pitch -= 360.0
         yaw = self.rotation_y % 360.0
-        if yaw > 180.0: yaw -= 360.0
+        if yaw > 180.0:
+            yaw -= 360.0
 
         self.cam_pitch = pitch
         self.cam_yaw = yaw
@@ -1439,41 +1515,69 @@ class AnimationGLWidget(QOpenGLWidget):
         current_time = time.time()
         dt = current_time - self.last_tick_time
         self.last_tick_time = current_time
-        if dt > 0.1: dt = 0.016
+        if dt > 0.1:
+            dt = 0.016
 
         if self.camera_mode == 'orbit':
             if self.auto_rotate:
                 self.rotation_y += 62.5 * dt
                 needs_update = True
-                
+
         elif self.camera_mode == 'fps':
             speed = self.base_speed * (dt * 62.5)
-            
-            if self._is_movement_pressed(KEY_FAST): speed *= 3.0
-            if self._is_movement_pressed(KEY_SLOW): speed *= 0.33
+
+            if self._is_movement_pressed(KEY_FAST):
+                speed *= 3.0
+            if self._is_movement_pressed(KEY_SLOW):
+                speed *= 0.33
 
             moved = False
             yaw = math.radians(self.cam_yaw)
             pitch = math.radians(self.cam_pitch)
 
-            forward = np.array([math.cos(pitch) * math.sin(yaw), -math.sin(pitch), -math.cos(pitch) * math.cos(yaw)])
+            forward = np.array(
+                [
+                    math.cos(pitch) * math.sin(yaw),
+                    -math.sin(pitch),
+                    -math.cos(pitch) * math.cos(yaw),
+                ]
+            )
             right = np.array([math.cos(yaw), 0.0, math.sin(yaw)])
             up = np.array([0.0, 1.0, 0.0])
 
-            if self._is_movement_pressed(KEY_FORWARD): self.cam_pos += forward * speed; moved = True
-            if self._is_movement_pressed(KEY_BACKWARD): self.cam_pos -= forward * speed; moved = True
-            if self._is_movement_pressed(KEY_LEFT): self.cam_pos -= right * speed; moved = True
-            if self._is_movement_pressed(KEY_RIGHT): self.cam_pos += right * speed; moved = True
-            if self._is_movement_pressed(KEY_UP): self.cam_pos += up * speed; moved = True
+            if self._is_movement_pressed(KEY_FORWARD):
+                self.cam_pos += forward * speed
+                moved = True
+            if self._is_movement_pressed(KEY_BACKWARD):
+                self.cam_pos -= forward * speed
+                moved = True
+            if self._is_movement_pressed(KEY_LEFT):
+                self.cam_pos -= right * speed
+                moved = True
+            if self._is_movement_pressed(KEY_RIGHT):
+                self.cam_pos += right * speed
+                moved = True
+            if self._is_movement_pressed(KEY_UP):
+                self.cam_pos += up * speed
+                moved = True
             if self._is_movement_pressed(KEY_DOWN):
                 mods = QGuiApplication.keyboardModifiers()
-                if not (mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier)):
+                if not (
+                    mods
+                    & (
+                        Qt.KeyboardModifier.ControlModifier
+                        | Qt.KeyboardModifier.AltModifier
+                        | Qt.KeyboardModifier.MetaModifier
+                    )
+                ):
                     self.cam_pos -= up * speed
                     moved = True
 
-            if moved: needs_update = True
+            if moved:
+                needs_update = True
 
-        if needs_update: self.update()
+        if needs_update:
+            self.update()
 
     def reset_view(self):
         self.camera_mode = 'orbit'
@@ -1486,7 +1590,9 @@ class AnimationGLWidget(QOpenGLWidget):
         self.show_grid = enabled
         self.update()
 
+
 # Full animation viewer widget with controls
+
 
 class AnimationViewerPanel(QWidget):
     """Animation viewer with playback controls."""
@@ -1495,7 +1601,7 @@ class AnimationViewerPanel(QWidget):
         super().__init__(parent)
         self.config_manager = config_manager
         self.gl_widget = AnimationGLWidget()
-        
+
         if self.config_manager:
             updated = False
             if 'obj_show_grid' not in self.config_manager.settings:
@@ -1535,9 +1641,9 @@ class AnimationViewerPanel(QWidget):
 
         self.time_label = QLabel('0.00s / 0.00s')
         controls_layout.addWidget(self.time_label)
-        
+
         controls_layout.addStretch()
-        
+
         self.options_btn = QPushButton('Options')
         self.options_menu = QMenu(self)
 
@@ -1552,23 +1658,23 @@ class AnimationViewerPanel(QWidget):
 
         # Timescale Slider in Menu
         self.options_menu.addSeparator()
-        
+
         ts_container = QWidget()
         ts_layout = QVBoxLayout(ts_container)
         ts_layout.setContentsMargins(10, 2, 10, 2)
-        ts_layout.setSpacing(0) # Tighten gap
+        ts_layout.setSpacing(0)  # Tighten gap
 
-        self.ts_label = QLabel("Timescale: 1.0x")
-        self.ts_label.setStyleSheet("color: palette(window-text); font-weight: normal;")
+        self.ts_label = QLabel('Timescale: 1.0x')
+        self.ts_label.setStyleSheet('color: palette(window-text); font-weight: normal;')
         ts_layout.addWidget(self.ts_label)
 
         ts_slider = QSlider(Qt.Orientation.Horizontal)
-        ts_slider.setRange(1, 80) # 0.1 to 8.0
+        ts_slider.setRange(1, 80)  # 0.1 to 8.0
         ts_slider.setValue(10)
         ts_slider.setFixedWidth(120)
         ts_slider.valueChanged.connect(self._on_timescale_changed)
         ts_layout.addWidget(ts_slider)
-        
+
         ts_action = QWidgetAction(self)
         ts_action.setDefaultWidget(ts_container)
         self.options_menu.addAction(ts_action)
@@ -1578,7 +1684,7 @@ class AnimationViewerPanel(QWidget):
 
         self.help_btn = QPushButton('?')
         self.help_btn.setMaximumWidth(30)
-        self.help_btn.setToolTip("View Camera Controls")
+        self.help_btn.setToolTip('View Camera Controls')
         self.help_btn.clicked.connect(self.show_help)
         controls_layout.addWidget(self.help_btn)
 
@@ -1591,6 +1697,7 @@ class AnimationViewerPanel(QWidget):
         self.timer.timeout.connect(self._update_playback)
         self.slider_pressed = False
         self.last_tick_time: Optional[float] = None
+
     def _toggle_grid_and_save(self, enabled: bool):
         self.gl_widget.toggle_grid(enabled)
         if self.config_manager:
@@ -1599,21 +1706,21 @@ class AnimationViewerPanel(QWidget):
 
     def show_help(self):
         msg = QMessageBox(self)
-        msg.setWindowTitle("Camera Controls")
+        msg.setWindowTitle('Camera Controls')
         msg.setText(
-            "<h3>Orbit Mode (Default)</h3>"
-            "<ul>"
-            "<li><b>Click + Drag:</b> Rotate model</li>"
-            "<li><b>Scroll Wheel:</b> Zoom in/out</li>"
-            "</ul>"
-            "<h3>FPS Mode</h3>"
-            "<p><i>Pressing WASD at any time smoothly transitions you into FPS Mode.</i></p>"
-            "<ul>"
-            "<li><b>W/A/S/D:</b> Move forward/left/back/right</li>"
-            "<li><b>Space / Shift:</b> Move Up / Down</li>"
-            "<li><b>Click + Drag:</b> Look around freely</li>"
-            "<li><b>Scroll Wheel:</b> Move in/out</li>"
-            "</ul>"
+            '<h3>Orbit Mode (Default)</h3>'
+            '<ul>'
+            '<li><b>Click + Drag:</b> Rotate model</li>'
+            '<li><b>Scroll Wheel:</b> Zoom in/out</li>'
+            '</ul>'
+            '<h3>FPS Mode</h3>'
+            '<p><i>Pressing WASD at any time smoothly transitions you into FPS Mode.</i></p>'
+            '<ul>'
+            '<li><b>W/A/S/D:</b> Move forward/left/back/right</li>'
+            '<li><b>Space / Shift:</b> Move Up / Down</li>'
+            '<li><b>Click + Drag:</b> Look around freely</li>'
+            '<li><b>Scroll Wheel:</b> Move in/out</li>'
+            '</ul>'
         )
         msg.exec()
 
@@ -1712,7 +1819,7 @@ class AnimationViewerPanel(QWidget):
     def _on_timescale_changed(self, value: int):
         self.timescale = value / 10.0
         if hasattr(self, 'ts_label'):
-            self.ts_label.setText(f"Timescale: {self.timescale:.1f}x")
+            self.ts_label.setText(f'Timescale: {self.timescale:.1f}x')
 
     def clear(self):
         """Clear animation data."""

@@ -12,8 +12,10 @@ __all__ = ['CacheManager', 'CacheViewerTab']
 def __getattr__(name):
     if name == 'CacheManager':
         from .cache_manager import CacheManager
+
         return CacheManager
     if name == 'CacheViewerTab':
         from .cache_viewer import CacheViewerTab
+
         return CacheViewerTab
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

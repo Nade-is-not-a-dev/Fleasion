@@ -148,10 +148,7 @@ def deinterleave_u64(data: bytes, offset: int, count: int) -> list[int]:
 def deinterleave_bytes(data: bytes, offset: int, count: int, width: int) -> list[bytes]:
     """Read `count` byte-interleaved fixed-width records."""
     block = data[offset : offset + count * width]
-    return [
-        bytes(block[byte_idx * count + i] for byte_idx in range(width))
-        for i in range(count)
-    ]
+    return [bytes(block[byte_idx * count + i] for byte_idx in range(width)) for i in range(count)]
 
 
 def decode_ids(data: bytes, offset: int, count: int) -> tuple[list[int], int]:

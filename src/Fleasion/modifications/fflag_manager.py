@@ -19,30 +19,30 @@ from ..utils import format_count, log_buffer
 # ---------------------------------------------------------------------------
 
 PRESET_FLAGS: dict[str, str] = {
-    'Rendering.ManualFullscreen':              'FFlagHandleAltEnterFullscreenManually',
-    'Rendering.DisableScaling':                'DFFlagDisableDPIScale',
-    'Rendering.MSAA':                          'FIntDebugForceMSAASamples',
-    'Rendering.FRMQualityOverride':            'DFIntDebugFRMQualityLevelOverride',
-    'Rendering.Mode.DisableD3D11':             'FFlagDebugGraphicsDisableDirect3D11',
-    'Rendering.Mode.D3D11':                    'FFlagDebugGraphicsPreferD3D11',
-    'Rendering.Mode.Vulkan':                   'FFlagDebugGraphicsPreferVulkan',
-    'Rendering.Mode.OpenGL':                   'FFlagDebugGraphicsPreferOpenGL',
-    'Geometry.MeshLOD.Static':                 'DFIntCSGLevelOfDetailSwitchingDistanceStatic',
-    'Geometry.MeshLOD.L0':                     'DFIntCSGLevelOfDetailSwitchingDistance',
-    'Geometry.MeshLOD.L12':                    'DFIntCSGLevelOfDetailSwitchingDistanceL12',
-    'Geometry.MeshLOD.L23':                    'DFIntCSGLevelOfDetailSwitchingDistanceL23',
-    'Geometry.MeshLOD.L34':                    'DFIntCSGLevelOfDetailSwitchingDistanceL34',
+    'Rendering.ManualFullscreen': 'FFlagHandleAltEnterFullscreenManually',
+    'Rendering.DisableScaling': 'DFFlagDisableDPIScale',
+    'Rendering.MSAA': 'FIntDebugForceMSAASamples',
+    'Rendering.FRMQualityOverride': 'DFIntDebugFRMQualityLevelOverride',
+    'Rendering.Mode.DisableD3D11': 'FFlagDebugGraphicsDisableDirect3D11',
+    'Rendering.Mode.D3D11': 'FFlagDebugGraphicsPreferD3D11',
+    'Rendering.Mode.Vulkan': 'FFlagDebugGraphicsPreferVulkan',
+    'Rendering.Mode.OpenGL': 'FFlagDebugGraphicsPreferOpenGL',
+    'Geometry.MeshLOD.Static': 'DFIntCSGLevelOfDetailSwitchingDistanceStatic',
+    'Geometry.MeshLOD.L0': 'DFIntCSGLevelOfDetailSwitchingDistance',
+    'Geometry.MeshLOD.L12': 'DFIntCSGLevelOfDetailSwitchingDistanceL12',
+    'Geometry.MeshLOD.L23': 'DFIntCSGLevelOfDetailSwitchingDistanceL23',
+    'Geometry.MeshLOD.L34': 'DFIntCSGLevelOfDetailSwitchingDistanceL34',
     'Rendering.TextureQuality.OverrideEnabled': 'DFFlagTextureQualityOverrideEnabled',
-    'Rendering.TextureQuality.Level':          'DFIntTextureQualityOverride',
+    'Rendering.TextureQuality.Level': 'DFIntTextureQualityOverride',
 }
 
 # Additional standalone toggles not in the preset dict above
 EXTRA_FLAGS: dict[str, str] = {
-    'grey_sky':       'FFlagDebugSkyGray',
+    'grey_sky': 'FFlagDebugSkyGray',
     'pause_voxelizer': 'DFFlagDebugPauseVoxelizer',
-    'grass_max':      'FIntFRMMaxGrassDistance',
-    'grass_min':      'FIntFRMMinGrassDistance',
-    'grass_motion':   'FIntGrassMovementReducedMotionFactor',
+    'grass_max': 'FIntFRMMaxGrassDistance',
+    'grass_min': 'FIntFRMMinGrassDistance',
+    'grass_motion': 'FIntGrassMovementReducedMotionFactor',
 }
 
 CLIENT_SETTINGS_REL = Path('ClientSettings') / 'ClientAppSettings.json'
@@ -218,23 +218,30 @@ class FastFlagManager:
                         except json.JSONDecodeError:
                             config_payload = {}
                     config_payload['fflags'] = {
-                        key: _sober_flag_value(value)
-                        for key, value in flags.items()
+                        key: _sober_flag_value(value) for key, value in flags.items()
                     }
                     sober_config.parent.mkdir(parents=True, exist_ok=True)
                     restore_read_only = _is_read_only(sober_config)
                     _clear_read_only(sober_config)
                     try:
-                        sober_config.write_text(json.dumps(config_payload, indent=2), encoding='utf-8')
+                        sober_config.write_text(
+                            json.dumps(config_payload, indent=2), encoding='utf-8'
+                        )
                     finally:
                         if restore_read_only:
                             _restore_read_only(sober_config)
                 except PermissionError as exc:
                     failed += 1
-                    log_buffer.log('FastFlags', f'Permission denied writing Sober config {sober_config}: {exc}')
+                    log_buffer.log(
+                        'FastFlags',
+                        f'Permission denied writing Sober config {sober_config}: {exc}',
+                    )
                 except OSError as exc:
                     failed += 1
-                    log_buffer.log('FastFlags', f'Failed writing Sober config {sober_config}: {exc}')
+                    log_buffer.log(
+                        'FastFlags',
+                        f'Failed writing Sober config {sober_config}: {exc}',
+                    )
 
         message = f'Wrote {format_count(flags, "flag")} to {format_count(written, "Roblox dir")}'
         if failed:
@@ -284,16 +291,24 @@ class FastFlagManager:
                             payload.pop('fflags', None)
                             _clear_read_only(sober_config)
                             try:
-                                sober_config.write_text(json.dumps(payload, indent=2), encoding='utf-8')
+                                sober_config.write_text(
+                                    json.dumps(payload, indent=2), encoding='utf-8'
+                                )
                             finally:
                                 if restore_read_only:
                                     _restore_read_only(sober_config)
                 except PermissionError as exc:
                     failed += 1
-                    log_buffer.log('FastFlags', f'Permission denied restoring Sober config {sober_config}: {exc}')
+                    log_buffer.log(
+                        'FastFlags',
+                        f'Permission denied restoring Sober config {sober_config}: {exc}',
+                    )
                 except OSError as exc:
                     failed += 1
-                    log_buffer.log('FastFlags', f'Failed restoring Sober config {sober_config}: {exc}')
+                    log_buffer.log(
+                        'FastFlags',
+                        f'Failed restoring Sober config {sober_config}: {exc}',
+                    )
 
         message = 'Restored ClientAppSettings.json'
         if failed:

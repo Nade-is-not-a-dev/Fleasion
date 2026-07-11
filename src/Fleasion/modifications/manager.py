@@ -23,11 +23,22 @@ from typing import Iterable
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from ..utils import CONFIG_DIR, LOCAL_APPDATA, ROBLOX_PROCESS, format_count, get_roblox_player_exe_path, log_buffer
-from ..utils.roblox_dirs import is_roblox_studio_resource_dir, load_saved_roblox_dirs, save_saved_roblox_dirs
+from ..cache.tools.ktx_to_png import strip_prefixed_ktx
+from ..utils import (
+    CONFIG_DIR,
+    LOCAL_APPDATA,
+    ROBLOX_PROCESS,
+    format_count,
+    get_roblox_player_exe_path,
+    log_buffer,
+)
+from ..utils.roblox_dirs import (
+    is_roblox_studio_resource_dir,
+    load_saved_roblox_dirs,
+    save_saved_roblox_dirs,
+)
 from ..utils.threading import run_in_thread
 from .fflag_manager import CLIENT_SETTINGS_REL, FastFlagManager
-from .global_settings_manager import GlobalSettingsManager
 from .font_utils import (
     CUSTOM_FONT_REL,
     FAMILIES_REL,
@@ -35,8 +46,11 @@ from .font_utils import (
     restore_font_families,
     validate_font_bytes,
 )
-from .platform_targets import read_current_platform_original_asset, target_path_for_current_platform
-from ..cache.tools.ktx_to_png import strip_prefixed_ktx
+from .global_settings_manager import GlobalSettingsManager
+from .platform_targets import (
+    read_current_platform_original_asset,
+    target_path_for_current_platform,
+)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -99,12 +113,14 @@ def _instance_attr(obj, name: str, default=None):
     """Read attributes safely on partially initialized QObject test doubles."""
     try:
         return object.__getattribute__(obj, name)
-    except (AttributeError, RuntimeError):
+    except AttributeError, RuntimeError:
         return default
+
 
 # ---------------------------------------------------------------------------
 # Roblox directory discovery  (mirrors proxy/master.py::_find_roblox_dirs)
 # ---------------------------------------------------------------------------
+
 
 def _find_roblox_dirs() -> list[Path]:
     """Locate Roblox resource directories that can receive file modifications."""
@@ -116,7 +132,6 @@ def _find_roblox_dirs() -> list[Path]:
         find_roblox_resource_dirs = None
 
     if find_roblox_resource_dirs is not None:
-
         found: list[Path] = []
         seen: set[str] = set()
 
@@ -200,7 +215,8 @@ def _find_roblox_dirs() -> list[Path]:
             i = 0
             while True:
                 try:
-                    name = winreg.EnumKey(hkey, i); i += 1
+                    name = winreg.EnumKey(hkey, i)
+                    i += 1
                 except OSError:
                     break
                 try:
@@ -223,7 +239,8 @@ def _find_roblox_dirs() -> list[Path]:
                         j = 0
                         while True:
                             try:
-                                sub_name = winreg.EnumKey(sub, j); j += 1
+                                sub_name = winreg.EnumKey(sub, j)
+                                j += 1
                             except OSError:
                                 break
                             try:
@@ -239,7 +256,7 @@ def _find_roblox_dirs() -> list[Path]:
                                         else:
                                             for d in _scan_for_exe(p2, 1):
                                                 _add(d)
-                            except (OSError, ValueError):
+                            except OSError, ValueError:
                                 pass
                 except OSError:
                     pass
@@ -292,6 +309,7 @@ def _find_roblox_dirs() -> list[Path]:
 # Bundled asset resolver
 # ---------------------------------------------------------------------------
 
+
 def _bundled_path(name: str) -> Path:
     """Resolve a bundled asset filename to an absolute path."""
     if getattr(sys, 'frozen', False):
@@ -309,9 +327,10 @@ def _bundled_path(name: str) -> Path:
 # PendingModificationsQueue
 # ---------------------------------------------------------------------------
 
+
 class PendingModificationsQueue:
     """Stores pending FFlag and framerate modifications to apply later.
-    
+
     When Roblox Player is running, changes are queued instead of applied immediately.
     When Roblox exits, all queued changes are applied at once.
     """
@@ -356,11 +375,12 @@ class PendingModificationsQueue:
 # ModificationManager
 # ---------------------------------------------------------------------------
 
+
 class ModificationManager(QObject):
     """Core engine for modification entries: eager-write, stash, restore."""
 
     entry_status_changed = pyqtSignal(str, str, str)  # (entry_id, status, error_msg)
-    apply_started = pyqtSignal(str)   # entry_id
+    apply_started = pyqtSignal(str)  # entry_id
     apply_finished = pyqtSignal(str)  # entry_id
     restore_finished = pyqtSignal()
 
@@ -370,7 +390,10 @@ class ModificationManager(QObject):
         self._roblox_dirs: list[Path] = _find_roblox_dirs()
         self._stash_dir = MOD_ORIGINALS_DIR
 
-        log_buffer.log('Modifications', f'Discovered {format_count(self._roblox_dirs, "Roblox dir")}')
+        log_buffer.log(
+            'Modifications',
+            f'Discovered {format_count(self._roblox_dirs, "Roblox dir")}',
+        )
 
         # Ensure directories exist
         MOD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -390,10 +413,10 @@ class ModificationManager(QObject):
 
         # FastFlagManager
         self.fflag_manager = FastFlagManager(self._roblox_dirs, self._stash_dir)
-        
+
         # GlobalSettingsManager (for Roblox GlobalBasicSettings_13.xml)
         self.global_settings_manager = GlobalSettingsManager(self._stash_dir)
-        
+
         # Queue for pending modifications when Roblox is running
         self.pending_modifications_queue = PendingModificationsQueue()
 
@@ -438,7 +461,10 @@ class ModificationManager(QObject):
                 try:
                     _add(roblox_dir / normalise_target_path(target))
                 except ValueError as exc:
-                    log_buffer.log('Modifications', f'Skipping read-only guard for invalid target path {target!r}: {exc}')
+                    log_buffer.log(
+                        'Modifications',
+                        f'Skipping read-only guard for invalid target path {target!r}: {exc}',
+                    )
 
             if isinstance(data, dict) and data.get('fast_flags_enabled'):
                 _add(roblox_dir / CLIENT_SETTINGS_REL)
@@ -529,7 +555,10 @@ class ModificationManager(QObject):
                     _clear_read_only(path)
                     cleared += 1
             except OSError as exc:
-                log_buffer.log('Modifications', f'Failed to clear read-only guard for {path}: {exc}')
+                log_buffer.log(
+                    'Modifications',
+                    f'Failed to clear read-only guard for {path}: {exc}',
+                )
         protected.clear()
         if cleared:
             log_buffer.log(
@@ -554,7 +583,7 @@ class ModificationManager(QObject):
                 for e in entries:
                     tp = e.get('target_path', '')
                     if tp:
-                        seen[tp] = e   # later entry wins
+                        seen[tp] = e  # later entry wins
                     else:
                         # No target_path key — keep as-is (edge case)
                         seen[e.get('id', str(id(e)))] = e
@@ -562,12 +591,20 @@ class ModificationManager(QObject):
                 if 'global_settings' not in data:
                     data['global_settings'] = {}
                 legacy_framerate = data.get('fast_flags', {}).pop('framerate_cap', None)
-                if legacy_framerate is not None and data['global_settings'].get('framerate_cap') is None:
+                if (
+                    legacy_framerate is not None
+                    and data['global_settings'].get('framerate_cap') is None
+                ):
                     data['global_settings']['framerate_cap'] = legacy_framerate
                 return data
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 pass
-        return {'entries': [], 'fast_flags_enabled': False, 'fast_flags': {}, 'global_settings': {}}
+        return {
+            'entries': [],
+            'fast_flags_enabled': False,
+            'fast_flags': {},
+            'global_settings': {},
+        }
 
     def _save_json(self) -> None:
         MODIFICATIONS_JSON.parent.mkdir(parents=True, exist_ok=True)
@@ -608,9 +645,7 @@ class ModificationManager(QObject):
         """
         target = entry.get('target_path', '')
         if target:
-            existing = next(
-                (e for e in self.entries if e.get('target_path') == target), None
-            )
+            existing = next((e for e in self.entries if e.get('target_path') == target), None)
             if existing is not None:
                 # Reuse the existing entry — delegate to update_entry.
                 existing_id = existing['id']
@@ -619,10 +654,21 @@ class ModificationManager(QObject):
                     source_type=entry.get('source_type'),
                     source_value=entry.get('source_value'),
                     display_name=entry.get('display_name', existing.get('display_name', '')),
-                    **{k: v for k, v in entry.items()
-                       if k not in ('id', 'status', 'error_message',
-                                    'converted_cache_path', 'target_path',
-                                    'source_type', 'source_value', 'display_name')},
+                    **{
+                        k: v
+                        for k, v in entry.items()
+                        if k
+                        not in (
+                            'id',
+                            'status',
+                            'error_message',
+                            'converted_cache_path',
+                            'target_path',
+                            'source_type',
+                            'source_value',
+                            'display_name',
+                        )
+                    },
                 )
                 return existing_id
 
@@ -716,7 +762,10 @@ class ModificationManager(QObject):
         self._save_json()
         if entry_id:
             self.entry_status_changed.emit(entry_id, 'error', error)
-        log_buffer.log('Modifications', f'Restore failed for {entry.get("display_name", "?")}: {exc}')
+        log_buffer.log(
+            'Modifications',
+            f'Restore failed for {entry.get("display_name", "?")}: {exc}',
+        )
 
     # ------------------------------------------------------------------
     # Processing & applying
@@ -788,7 +837,10 @@ class ModificationManager(QObject):
                 entry['error_message'] = str(exc)
                 self._save_json()
                 self.entry_status_changed.emit(entry_id, 'error', str(exc))
-            log_buffer.log('Modifications', f'Error applying {entry.get("display_name", "?")}: {exc}')
+            log_buffer.log(
+                'Modifications',
+                f'Error applying {entry.get("display_name", "?")}: {exc}',
+            )
 
         self.apply_finished.emit(entry_id)
 
@@ -805,7 +857,11 @@ class ModificationManager(QObject):
 
         if src_type == 'bundled':
             # e.g. "bundled:empty.mp3" → strip prefix
-            name = src_value.replace('bundled:', '', 1) if src_value.startswith('bundled:') else src_value
+            name = (
+                src_value.replace('bundled:', '', 1)
+                if src_value.startswith('bundled:')
+                else src_value
+            )
             # Special sentinel: write a zero-byte file (unsupported extension fallback)
             if name == 'zero':
                 return b''
@@ -825,8 +881,9 @@ class ModificationManager(QObject):
     def _fetch_cdn_url(self, url: str) -> bytes:
         """Download a CDN URL, caching to ModCache."""
         import hashlib
-        from urllib.parse import urlparse
         from urllib.error import URLError
+        from urllib.parse import urlparse
+
         from ..utils.http import http_get
 
         MOD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -861,12 +918,12 @@ class ModificationManager(QObject):
         cookie = self._cache_scraper._get_roblosecurity(wait=True)
         if cookie:
             extra_hdrs['Cookie'] = f'.ROBLOSECURITY={cookie};'
-        data, status = self._cache_scraper._fetch_asset_with_place_id_retry(str(asset_id), extra_headers=extra_hdrs or None)
+        data, status = self._cache_scraper._fetch_asset_with_place_id_retry(
+            str(asset_id), extra_headers=extra_hdrs or None
+        )
         if data is None:
             if status == 403:
-                raise PermissionError(
-                    'Asset not found or private. Add .ROBLOSECURITY cookie.'
-                )
+                raise PermissionError('Asset not found or private. Add .ROBLOSECURITY cookie.')
             raise RuntimeError(f'Asset download failed (HTTP {status})')
 
         cache_file.write_bytes(data)
@@ -979,7 +1036,10 @@ class ModificationManager(QObject):
         try:
             target_path = normalise_target_path(target)
         except ValueError as exc:
-            log_buffer.log('Modifications', f'Skipping restore for invalid target path {target!r}: {exc}')
+            log_buffer.log(
+                'Modifications',
+                f'Skipping restore for invalid target path {target!r}: {exc}',
+            )
             return
 
         with self._fs_lock:
@@ -1014,7 +1074,10 @@ class ModificationManager(QObject):
         try:
             target_rel = normalise_target_path(target_path)
         except ValueError as exc:
-            log_buffer.log('Modifications', f'Cannot restore orphaned stash for invalid target path {target_path!r}: {exc}')
+            log_buffer.log(
+                'Modifications',
+                f'Cannot restore orphaned stash for invalid target path {target_path!r}: {exc}',
+            )
             return False
 
         with self._fs_lock:
@@ -1052,14 +1115,17 @@ class ModificationManager(QObject):
                     try:
                         self._restore_entry(entry)
                     except Exception as exc:
-                        log_buffer.log('Modifications', f'Restore failed for {entry.get("display_name", "?")}: {exc}')
+                        log_buffer.log(
+                            'Modifications',
+                            f'Restore failed for {entry.get("display_name", "?")}: {exc}',
+                        )
 
             if self._data.get('fast_flags_enabled'):
                 try:
                     self.fflag_manager.restore()
                 except Exception as exc:
                     log_buffer.log('FastFlags', f'Restore failed: {exc}')
-            
+
             # Restore global settings
             try:
                 self.global_settings_manager.restore()
@@ -1141,7 +1207,7 @@ class ModificationManager(QObject):
             value = self.fast_flags.get('framerate_cap')
         try:
             return 0 if value in (None, '', 'Default') else int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return 0
 
     @framerate_cap.setter
@@ -1175,19 +1241,22 @@ class ModificationManager(QObject):
         """Re-discover Roblox directories (e.g. after an update)."""
         self._roblox_dirs = _find_roblox_dirs()
         self.fflag_manager._roblox_dirs = self._roblox_dirs
-        log_buffer.log('Modifications', f'Refreshed: {format_count(self._roblox_dirs, "Roblox dir")}')
+        log_buffer.log(
+            'Modifications',
+            f'Refreshed: {format_count(self._roblox_dirs, "Roblox dir")}',
+        )
 
     def apply_pending_modifications(self) -> None:
         """Apply all pending modifications that were queued while Roblox was running."""
         flags, framerate = self.pending_modifications_queue.get_pending()
-        
+
         if flags is not None:
             try:
                 self.write_fast_flags(flags)
                 log_buffer.log('Modifications', 'Applied queued Fast Flags after Roblox exit')
             except Exception as exc:
                 log_buffer.log('Modifications', f'Error applying queued Fast Flags: {exc}')
-        
+
         if framerate is not None:
             try:
                 self.sync_saved_global_settings()

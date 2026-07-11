@@ -10,35 +10,34 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
 
-from PyQt6.QtCore import QEvent, QTimer, Qt
+from PyQt6.QtCore import QEvent, Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
-    QInputDialog,
     QListWidget,
     QListWidgetItem,
     QMenu,
     QMessageBox,
     QPushButton,
     QSplitter,
-    QAbstractItemView,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from .roblox_document import classify_roblox_document
 from .roblox_class_names import ROBLOX_CLASS_NAME_SET, ROBLOX_CLASS_NAMES
-
+from .roblox_document import classify_roblox_document
 
 _COPY_VALUE_ROLE = Qt.ItemDataRole.UserRole
 _ROW_KIND_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -232,7 +231,9 @@ class RbxmPreviewWidget(QWidget):
         left_bottom = QHBoxLayout()
         self.add_child_btn = QPushButton('+')
         self.add_child_btn.setFixedWidth(34)
-        self.add_child_btn.setToolTip('Add child to selected item, or add a root if nothing is selected')
+        self.add_child_btn.setToolTip(
+            'Add child to selected item, or add a root if nothing is selected'
+        )
         self.add_child_btn.clicked.connect(self._add_child_from_button)
         left_bottom.addWidget(self.add_child_btn)
         left_bottom.addStretch()
@@ -247,8 +248,7 @@ class RbxmPreviewWidget(QWidget):
         self.properties_table.setColumnCount(3)
         self.properties_table.setHorizontalHeaderLabels(['Property', 'Value', 'Type'])
         self.properties_table.setEditTriggers(
-            QTableWidget.EditTrigger.DoubleClicked
-            | QTableWidget.EditTrigger.EditKeyPressed
+            QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed
         )
         self.properties_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.properties_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
@@ -258,7 +258,9 @@ class RbxmPreviewWidget(QWidget):
         self.properties_table.itemChanged.connect(self._on_property_item_changed)
         self.properties_table.cellDoubleClicked.connect(self._on_property_cell_double_clicked)
         self.properties_table.customContextMenuRequested.connect(self._show_property_context_menu)
-        self.copy_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Copy), self.properties_table)
+        self.copy_shortcut = QShortcut(
+            QKeySequence(QKeySequence.StandardKey.Copy), self.properties_table
+        )
         self.copy_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.copy_shortcut.activated.connect(self._copy_selected_value)
         self.properties_table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
@@ -307,7 +309,9 @@ class RbxmPreviewWidget(QWidget):
         self._update_type_column_visibility()
         self._set_dirty(False)
 
-    def load_document(self, document: PreviewDocument, asset_label: str = '', dirty: bool = True) -> None:
+    def load_document(
+        self, document: PreviewDocument, asset_label: str = '', dirty: bool = True
+    ) -> None:
         """Load an existing in-memory preview document."""
         self.document = document
         self._asset_label = asset_label
@@ -418,7 +422,7 @@ class RbxmPreviewWidget(QWidget):
                 else:
                     value = b''
             elif list(elem):
-                value = { _tag_name(child): (child.text or '').strip() for child in elem }
+                value = {_tag_name(child): (child.text or '').strip() for child in elem}
             else:
                 value = text.strip()
             return PreviewProperty(prop_name, type_name, value)
@@ -444,7 +448,12 @@ class RbxmPreviewWidget(QWidget):
             for elem in root
             if _tag_name(elem) == 'Meta'
         }
-        return PreviewDocument(roots=roots, instances=instances, metadata=metadata, shared_strings=shared_strings)
+        return PreviewDocument(
+            roots=roots,
+            instances=instances,
+            metadata=metadata,
+            shared_strings=shared_strings,
+        )
 
     def _populate_tree(self, asset_label: str) -> None:
         self.tree.clear()
@@ -474,7 +483,9 @@ class RbxmPreviewWidget(QWidget):
             first.setExpanded(True)
         self._on_search_changed(self.search_input.text())
 
-    def _add_instance_item(self, parent: QTreeWidgetItem | None, inst: PreviewInstance) -> QTreeWidgetItem:
+    def _add_instance_item(
+        self, parent: QTreeWidgetItem | None, inst: PreviewInstance
+    ) -> QTreeWidgetItem:
         item = QTreeWidgetItem([inst.label()])
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
         if inst.referent:
@@ -492,7 +503,9 @@ class RbxmPreviewWidget(QWidget):
             self._add_instance_item(item, child)
         return item
 
-    def _on_tree_selection_changed(self, current: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None):
+    def _on_tree_selection_changed(
+        self, current: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
+    ):
         self.properties_table.setRowCount(0)
         if current is None:
             return
@@ -516,7 +529,10 @@ class RbxmPreviewWidget(QWidget):
             type_item = QTableWidgetItem(prop.type_name)
             prop_item.setData(_ROW_KIND_ROLE, 'synthetic' if row < 2 else 'property')
             prop_item.setData(_PROP_OBJECT_ROLE, prop if row >= 2 else None)
-            value_item.setData(_ROW_KIND_ROLE, 'class_name' if row == 0 else 'referent' if row == 1 else 'property')
+            value_item.setData(
+                _ROW_KIND_ROLE,
+                'class_name' if row == 0 else 'referent' if row == 1 else 'property',
+            )
             value_item.setData(_PROP_OBJECT_ROLE, prop if row >= 2 else None)
             type_item.setData(_ROW_KIND_ROLE, 'synthetic' if row < 2 else 'property')
             type_item.setData(_PROP_OBJECT_ROLE, prop if row >= 2 else None)
@@ -658,7 +674,11 @@ class RbxmPreviewWidget(QWidget):
         row = self.properties_table.rowAt(position.y())
         if row >= 0:
             self.properties_table.selectRow(row)
-        kind = self.properties_table.item(row, 0).data(_ROW_KIND_ROLE) if row >= 0 and self.properties_table.item(row, 0) else None
+        kind = (
+            self.properties_table.item(row, 0).data(_ROW_KIND_ROLE)
+            if row >= 0 and self.properties_table.item(row, 0)
+            else None
+        )
         delete_action.setEnabled(kind == 'property')
 
         action = menu.exec(self.properties_table.viewport().mapToGlobal(position))
@@ -715,17 +735,22 @@ class RbxmPreviewWidget(QWidget):
         inst = self._item_to_instance.get(id(item))
         if inst is None:
             return
-        if QMessageBox.question(
-            self,
-            'Delete Instance',
-            f'Delete {inst.label()} and its children?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        ) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(
+                self,
+                'Delete Instance',
+                f'Delete {inst.label()} and its children?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
 
         parent_item = item.parent()
-        parent_inst = self._item_to_instance.get(id(parent_item)) if parent_item is not None else None
+        parent_inst = (
+            self._item_to_instance.get(id(parent_item)) if parent_item is not None else None
+        )
         if parent_inst is None:
             self.document.roots = [root for root in self.document.roots if root is not inst]
         else:
@@ -755,7 +780,9 @@ class RbxmPreviewWidget(QWidget):
         if not ok:
             return
         type_name = type_name.strip() or 'STRING'
-        inst.properties.append(PreviewProperty(name, type_name, self._default_preview_value(type_name)))
+        inst.properties.append(
+            PreviewProperty(name, type_name, self._default_preview_value(type_name))
+        )
         if name == 'Name':
             inst.name = str(inst.properties[-1].value)
             self._refresh_tree_label(inst)
@@ -1009,7 +1036,9 @@ class RbxmPreviewWidget(QWidget):
                 if ref is not None:
                     return {
                         'SourceType': 'Object',
-                        'Ref': ref_mapper(str(ref)) if ref_mapper is not None else self._safe_int(ref),
+                        'Ref': ref_mapper(str(ref))
+                        if ref_mapper is not None
+                        else self._safe_int(ref),
                     }
                 if 'null' in value:
                     return None
@@ -1034,7 +1063,11 @@ class RbxmPreviewWidget(QWidget):
             return self._parse_vector_value(value, ('X', 'Y'), int)
         if fmt == PropertyFormat.VECTOR3INT16:
             return self._parse_vector_value(value, ('X', 'Y', 'Z'), int)
-        if fmt in {PropertyFormat.CFRAME_MATRIX, PropertyFormat.CFRAME_QUAT, PropertyFormat.OPTIONAL_CFRAME}:
+        if fmt in {
+            PropertyFormat.CFRAME_MATRIX,
+            PropertyFormat.CFRAME_QUAT,
+            PropertyFormat.OPTIONAL_CFRAME,
+        }:
             return self._parse_cframe_value(value)
         if fmt == PropertyFormat.NUMBER_RANGE:
             return self._parse_number_range_value(value)
@@ -1073,7 +1106,11 @@ class RbxmPreviewWidget(QWidget):
             return text
         from .tools.solidmodel_converter.rbxm.types import PropertyFormat
 
-        if fmt in {PropertyFormat.CFRAME_MATRIX, PropertyFormat.CFRAME_QUAT, PropertyFormat.OPTIONAL_CFRAME}:
+        if fmt in {
+            PropertyFormat.CFRAME_MATRIX,
+            PropertyFormat.CFRAME_QUAT,
+            PropertyFormat.OPTIONAL_CFRAME,
+        }:
             return self._parse_cframe_value(text, old_value)
         return self._value_for_format(text, fmt)
 
@@ -1083,7 +1120,13 @@ class RbxmPreviewWidget(QWidget):
         compact_key = key.replace('_', '')
         if key in {'BOOL'}:
             return False
-        if key in {'INT', 'ENUM', 'BRICK_COLOR', 'INT64', 'SECURITY_CAPABILITIES'} or compact_key in {
+        if key in {
+            'INT',
+            'ENUM',
+            'BRICK_COLOR',
+            'INT64',
+            'SECURITY_CAPABILITIES',
+        } or compact_key in {
             'BRICKCOLOR',
             'SECURITYCAPABILITIES',
         }:
@@ -1110,12 +1153,25 @@ class RbxmPreviewWidget(QWidget):
             return {'Min': 0.0, 'Max': 1.0}
         if key in {'RECT2D'}:
             return {'min': {'X': 0.0, 'Y': 0.0}, 'max': {'X': 0.0, 'Y': 0.0}}
-        if compact_key in {'CFRAMEMATRIX', 'CFRAMEQUAT', 'OPTIONALCFRAME', 'COORDINATEFRAME'}:
+        if compact_key in {
+            'CFRAMEMATRIX',
+            'CFRAMEQUAT',
+            'OPTIONALCFRAME',
+            'COORDINATEFRAME',
+        }:
             return {
-                'X': 0.0, 'Y': 0.0, 'Z': 0.0,
-                'R00': 1.0, 'R01': 0.0, 'R02': 0.0,
-                'R10': 0.0, 'R11': 1.0, 'R12': 0.0,
-                'R20': 0.0, 'R21': 0.0, 'R22': 1.0,
+                'X': 0.0,
+                'Y': 0.0,
+                'Z': 0.0,
+                'R00': 1.0,
+                'R01': 0.0,
+                'R02': 0.0,
+                'R10': 0.0,
+                'R11': 1.0,
+                'R12': 0.0,
+                'R20': 0.0,
+                'R21': 0.0,
+                'R22': 1.0,
             }
         if key in {'FONT'}:
             return {'Family': '', 'Weight': 400, 'Style': 0, 'CachedFaceId': ''}
@@ -1124,10 +1180,16 @@ class RbxmPreviewWidget(QWidget):
     def _parse_udim_value(self, value: Any) -> dict[str, float | int]:
         if isinstance(value, dict):
             pairs = {str(k): v for k, v in value.items()}
-            return {'S': self._safe_float(pairs.get('S', 0.0)), 'O': self._safe_int(pairs.get('O', 0))}
+            return {
+                'S': self._safe_float(pairs.get('S', 0.0)),
+                'O': self._safe_int(pairs.get('O', 0)),
+            }
         pairs = self._parse_key_values(str(value))
         if pairs:
-            return {'S': self._safe_float(pairs.get('S', 0.0)), 'O': self._safe_int(pairs.get('O', 0))}
+            return {
+                'S': self._safe_float(pairs.get('S', 0.0)),
+                'O': self._safe_int(pairs.get('O', 0)),
+            }
         numbers = self._parse_numbers(str(value))
         return {
             'S': numbers[0] if len(numbers) > 0 else 0.0,
@@ -1185,13 +1247,23 @@ class RbxmPreviewWidget(QWidget):
             return None
 
         result = {
-            'X': 0.0, 'Y': 0.0, 'Z': 0.0,
-            'R00': 1.0, 'R01': 0.0, 'R02': 0.0,
-            'R10': 0.0, 'R11': 1.0, 'R12': 0.0,
-            'R20': 0.0, 'R21': 0.0, 'R22': 1.0,
+            'X': 0.0,
+            'Y': 0.0,
+            'Z': 0.0,
+            'R00': 1.0,
+            'R01': 0.0,
+            'R02': 0.0,
+            'R10': 0.0,
+            'R11': 1.0,
+            'R12': 0.0,
+            'R20': 0.0,
+            'R21': 0.0,
+            'R22': 1.0,
         }
         if isinstance(old_value, dict):
-            result.update({key: self._safe_float(old_value.get(key, result[key])) for key in result})
+            result.update(
+                {key: self._safe_float(old_value.get(key, result[key])) for key in result}
+            )
         if isinstance(value, dict):
             result.update({key: self._safe_float(value.get(key, result[key])) for key in result})
             return result
@@ -1213,10 +1285,16 @@ class RbxmPreviewWidget(QWidget):
 
     def _parse_number_range_value(self, value: Any) -> dict[str, float]:
         if isinstance(value, dict):
-            return {'Min': self._safe_float(value.get('Min', 0.0)), 'Max': self._safe_float(value.get('Max', 0.0))}
+            return {
+                'Min': self._safe_float(value.get('Min', 0.0)),
+                'Max': self._safe_float(value.get('Max', 0.0)),
+            }
         pairs = self._parse_key_values(str(value))
         if pairs:
-            return {'Min': self._safe_float(pairs.get('Min', 0.0)), 'Max': self._safe_float(pairs.get('Max', 0.0))}
+            return {
+                'Min': self._safe_float(pairs.get('Min', 0.0)),
+                'Max': self._safe_float(pairs.get('Max', 0.0)),
+            }
         numbers = self._parse_numbers(str(value))
         return {
             'Min': numbers[0] if len(numbers) > 0 else 0.0,
@@ -1320,14 +1398,14 @@ class RbxmPreviewWidget(QWidget):
     def _safe_int(value: Any) -> int:
         try:
             return int(str(value).strip(), 0)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return 0
 
     @staticmethod
     def _safe_float(value: Any) -> float:
         try:
             return float(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return 0.0
 
     @staticmethod
@@ -1371,7 +1449,13 @@ class RbxmPreviewWidget(QWidget):
             text += ']'
             return text, str(value)
 
-        if isinstance(value, (bool, int, float)) or type_name.lower() in {'bool', 'int', 'int64', 'float', 'double'}:
+        if isinstance(value, (bool, int, float)) or type_name.lower() in {
+            'bool',
+            'int',
+            'int64',
+            'float',
+            'double',
+        }:
             compact_scalar = _format_scalar(value)
             return compact_scalar, compact_scalar
 
@@ -1409,7 +1493,13 @@ class RbxmPreviewWidget(QWidget):
         if isinstance(value, list):
             return '[' + ', '.join(self._copy_text_for_value(v, '') for v in value) + ']'
 
-        if isinstance(value, (bool, int, float)) or type_name.lower() in {'bool', 'int', 'int64', 'float', 'double'}:
+        if isinstance(value, (bool, int, float)) or type_name.lower() in {
+            'bool',
+            'int',
+            'int64',
+            'float',
+            'double',
+        }:
             return _format_scalar(value)
 
         text = '' if value is None else str(value)
@@ -1514,7 +1604,9 @@ class RbxmPreviewWidget(QWidget):
         value_item = self.properties_table.item(row, 1)
         if value_item is not None:
             copy_text = value_item.data(_COPY_VALUE_ROLE)
-            QApplication.clipboard().setText(str(copy_text if copy_text is not None else value_item.text()))
+            QApplication.clipboard().setText(
+                str(copy_text if copy_text is not None else value_item.text())
+            )
 
 
 def _compact(text: str, limit: int) -> str:
@@ -1534,7 +1626,7 @@ def _format_scalar(value: Any) -> str:
         return str(value)
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return _compact(str(value), 80)
     if abs(number) < 1e-8:
         number = 0.0

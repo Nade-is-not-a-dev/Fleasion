@@ -4,10 +4,9 @@ import struct
 import sys
 import time
 
-from PyQt6.QtCore import QByteArray, QBuffer, QIODevice, QMimeData
+from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QMimeData
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import QApplication
-
 
 _BI_BITFIELDS = 3
 _LCS_sRGB = 0x73524742
@@ -42,30 +41,30 @@ def _image_to_dibv5(image: QImage) -> bytes:
 
     header = struct.pack(
         '<IiiHHIIiiIIIIIII36sIIIIIII',
-        124,                         # bV5Size
-        width,                       # bV5Width
-        -height,                     # bV5Height, negative means top-down rows
-        1,                           # bV5Planes
-        32,                          # bV5BitCount
-        _BI_BITFIELDS,               # bV5Compression
-        size_image,                  # bV5SizeImage
-        0,                           # bV5XPelsPerMeter
-        0,                           # bV5YPelsPerMeter
-        0,                           # bV5ClrUsed
-        0,                           # bV5ClrImportant
-        0x00FF0000,                  # bV5RedMask
-        0x0000FF00,                  # bV5GreenMask
-        0x000000FF,                  # bV5BlueMask
-        0xFF000000,                  # bV5AlphaMask
-        _LCS_sRGB,                   # bV5CSType
-        b'\0' * 36,                  # bV5Endpoints
-        0,                           # bV5GammaRed
-        0,                           # bV5GammaGreen
-        0,                           # bV5GammaBlue
-        _LCS_GM_IMAGES,              # bV5Intent
-        0,                           # bV5ProfileData
-        0,                           # bV5ProfileSize
-        0,                           # bV5Reserved
+        124,  # bV5Size
+        width,  # bV5Width
+        -height,  # bV5Height, negative means top-down rows
+        1,  # bV5Planes
+        32,  # bV5BitCount
+        _BI_BITFIELDS,  # bV5Compression
+        size_image,  # bV5SizeImage
+        0,  # bV5XPelsPerMeter
+        0,  # bV5YPelsPerMeter
+        0,  # bV5ClrUsed
+        0,  # bV5ClrImportant
+        0x00FF0000,  # bV5RedMask
+        0x0000FF00,  # bV5GreenMask
+        0x000000FF,  # bV5BlueMask
+        0xFF000000,  # bV5AlphaMask
+        _LCS_sRGB,  # bV5CSType
+        b'\0' * 36,  # bV5Endpoints
+        0,  # bV5GammaRed
+        0,  # bV5GammaGreen
+        0,  # bV5GammaBlue
+        _LCS_GM_IMAGES,  # bV5Intent
+        0,  # bV5ProfileData
+        0,  # bV5ProfileSize
+        0,  # bV5Reserved
     )
 
     ptr = bgra_image.bits()
@@ -76,7 +75,7 @@ def _image_to_dibv5(image: QImage) -> bytes:
     for row in range(height):
         src_start = row * bytes_per_line
         dst_start = row * row_stride
-        pixels[dst_start:dst_start + row_stride] = raw[src_start:src_start + row_stride]
+        pixels[dst_start : dst_start + row_stride] = raw[src_start : src_start + row_stride]
 
     return header + bytes(pixels)
 

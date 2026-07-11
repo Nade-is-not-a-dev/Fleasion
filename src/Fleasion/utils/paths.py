@@ -74,7 +74,16 @@ if sys.platform == 'darwin':
     STORAGE_DB = USER_HOME / 'Library' / 'Roblox' / 'rbx-storage.db'
     STORAGE_DB_GDK = USER_HOME / 'Library' / 'RobloxPCGDK' / 'rbx-storage.db'
 elif sys.platform.startswith('linux'):
-    STORAGE_DB = USER_HOME / '.var' / 'app' / 'org.vinegarhq.Sober' / 'data' / 'sober' / 'appData' / 'rbx-storage.db'
+    STORAGE_DB = (
+        USER_HOME
+        / '.var'
+        / 'app'
+        / 'org.vinegarhq.Sober'
+        / 'data'
+        / 'sober'
+        / 'appData'
+        / 'rbx-storage.db'
+    )
     STORAGE_DB_GDK = STORAGE_DB
 else:
     STORAGE_DB = LOCAL_APPDATA / 'Roblox' / 'rbx-storage.db'
@@ -102,6 +111,7 @@ REPLACEMENTS_DIR = PREJSONS_DIR / 'replacements'
 MODIFICATIONS_JSON = CONFIG_DIR / 'modifications.json'
 MOD_ORIGINALS_DIR = CONFIG_DIR / 'ModOriginals'
 MOD_CACHE_DIR = CONFIG_DIR / 'ModCache'
+
 
 def get_icon_path() -> Path | None:
     """Get the path to the application icon file."""

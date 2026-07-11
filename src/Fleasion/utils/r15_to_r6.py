@@ -7,53 +7,73 @@ Conversion algorithms ported from:
 
 import base64
 import math
+import re
 import struct
 import xml.etree.ElementTree as ET
-import re
-
 
 # CFrame math
 
-IDENTITY = [0., 0., 0.,  1., 0., 0.,  0., 1., 0.,  0., 0., 1.]
+IDENTITY = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
 
 
 def parse_cf(elem):
     d = {c.tag: float(c.text or '0') for c in elem}
-    return [d.get('X',0.),  d.get('Y',0.),  d.get('Z',0.),
-            d.get('R00',1.), d.get('R01',0.), d.get('R02',0.),
-            d.get('R10',0.), d.get('R11',1.), d.get('R12',0.),
-            d.get('R20',0.), d.get('R21',0.), d.get('R22',1.)]
+    return [
+        d.get('X', 0.0),
+        d.get('Y', 0.0),
+        d.get('Z', 0.0),
+        d.get('R00', 1.0),
+        d.get('R01', 0.0),
+        d.get('R02', 0.0),
+        d.get('R10', 0.0),
+        d.get('R11', 1.0),
+        d.get('R12', 0.0),
+        d.get('R20', 0.0),
+        d.get('R21', 0.0),
+        d.get('R22', 1.0),
+    ]
 
 
 def write_cf(elem, cf):
-    for c in list(elem): elem.remove(c)
-    for tag, v in zip(['X','Y','Z','R00','R01','R02','R10','R11','R12','R20','R21','R22'], cf):
+    for c in list(elem):
+        elem.remove(c)
+    for tag, v in zip(
+        ['X', 'Y', 'Z', 'R00', 'R01', 'R02', 'R10', 'R11', 'R12', 'R20', 'R21', 'R22'],
+        cf,
+    ):
         e = ET.SubElement(elem, tag)
         e.text = f'{v:.8g}'
 
 
 def cf_mul(a, b):
-    px = a[0] + a[3]*b[0] + a[4]*b[1] + a[5]*b[2]
-    py = a[1] + a[6]*b[0] + a[7]*b[1] + a[8]*b[2]
-    pz = a[2] + a[9]*b[0] + a[10]*b[1] + a[11]*b[2]
+    px = a[0] + a[3] * b[0] + a[4] * b[1] + a[5] * b[2]
+    py = a[1] + a[6] * b[0] + a[7] * b[1] + a[8] * b[2]
+    pz = a[2] + a[9] * b[0] + a[10] * b[1] + a[11] * b[2]
     ar = (a[3:6], a[6:9], a[9:12])
     br = (b[3:6], b[6:9], b[9:12])
-    r = [[sum(ar[i][k]*br[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
-    return [px, py, pz,
-            r[0][0], r[0][1], r[0][2],
-            r[1][0], r[1][1], r[1][2],
-            r[2][0], r[2][1], r[2][2]]
+    r = [[sum(ar[i][k] * br[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+    return [
+        px,
+        py,
+        pz,
+        r[0][0],
+        r[0][1],
+        r[0][2],
+        r[1][0],
+        r[1][1],
+        r[1][2],
+        r[2][0],
+        r[2][1],
+        r[2][2],
+    ]
 
 
 def cf_inv(a):
-    rx, ry, rz = (a[3],a[6],a[9]), (a[4],a[7],a[10]), (a[5],a[8],a[11])
-    px = -(rx[0]*a[0] + rx[1]*a[1] + rx[2]*a[2])
-    py = -(ry[0]*a[0] + ry[1]*a[1] + ry[2]*a[2])
-    pz = -(rz[0]*a[0] + rz[1]*a[1] + rz[2]*a[2])
-    return [px, py, pz,
-            rx[0], rx[1], rx[2],
-            ry[0], ry[1], ry[2],
-            rz[0], rz[1], rz[2]]
+    rx, ry, rz = (a[3], a[6], a[9]), (a[4], a[7], a[10]), (a[5], a[8], a[11])
+    px = -(rx[0] * a[0] + rx[1] * a[1] + rx[2] * a[2])
+    py = -(ry[0] * a[0] + ry[1] * a[1] + ry[2] * a[2])
+    pz = -(rz[0] * a[0] + rz[1] * a[1] + rz[2] * a[2])
+    return [px, py, pz, rx[0], rx[1], rx[2], ry[0], ry[1], ry[2], rz[0], rz[1], rz[2]]
 
 
 def to_obj(a, b):
@@ -67,10 +87,18 @@ R15_TRAVERSAL_ORDER = [
     'LowerTorso',
     'UpperTorso',
     'Head',
-    'LeftUpperArm',  'LeftLowerArm',  'LeftHand',
-    'RightUpperArm', 'RightLowerArm', 'RightHand',
-    'LeftUpperLeg',  'LeftLowerLeg',  'LeftFoot',
-    'RightUpperLeg', 'RightLowerLeg', 'RightFoot',
+    'LeftUpperArm',
+    'LeftLowerArm',
+    'LeftHand',
+    'RightUpperArm',
+    'RightLowerArm',
+    'RightHand',
+    'LeftUpperLeg',
+    'LeftLowerLeg',
+    'LeftFoot',
+    'RightUpperLeg',
+    'RightLowerLeg',
+    'RightFoot',
 ]
 
 R6_TRAVERSAL_ORDER = ['Torso', 'Head', 'Left Arm', 'Right Arm', 'Left Leg', 'Right Leg']
@@ -81,21 +109,33 @@ def compute_world_cfs(poses, ref_parts, ref_joints, traversal_order):
     world_cfs = {'HumanoidRootPart': list(ref_parts['HumanoidRootPart'])}
     for part_name in traversal_order:
         joint = ref_joints.get(part_name)
-        if joint is None: continue
+        if joint is None:
+            continue
         parent_cf = world_cfs.get(joint['part0_name'])
-        if parent_cf is None: continue
+        if parent_cf is None:
+            continue
         pose_cf = poses.get(part_name, list(IDENTITY))
         world_cfs[part_name] = cf_mul(
-            cf_mul(cf_mul(parent_cf, joint['c0']), pose_cf),
-            cf_inv(joint['c1'])
+            cf_mul(cf_mul(parent_cf, joint['c0']), pose_cf), cf_inv(joint['c1'])
         )
     return world_cfs
 
 
-def _calculate_limb(limb_world_cf, motor_c0, motor_c1, torso_world_cf,
-                    src_hrp_cf, dst_hrp_cf, offset=(0., 0., 0.)):
+def _calculate_limb(
+    limb_world_cf,
+    motor_c0,
+    motor_c1,
+    torso_world_cf,
+    src_hrp_cf,
+    dst_hrp_cf,
+    offset=(0.0, 0.0, 0.0),
+):
     mapped = cf_mul(dst_hrp_cf, cf_mul(cf_inv(src_hrp_cf), limb_world_cf))
-    mapped = [mapped[0]+offset[0], mapped[1]+offset[1], mapped[2]+offset[2]] + list(mapped[3:])
+    mapped = [
+        mapped[0] + offset[0],
+        mapped[1] + offset[1],
+        mapped[2] + offset[2],
+    ] + list(mapped[3:])
     cf = cf_mul(cf_inv(cf_mul(torso_world_cf, motor_c0)), mapped)
     return cf_mul(cf, motor_c1), mapped
 
@@ -132,10 +172,13 @@ def _get_easing(pose):
     if props is not None:
         for t in props.findall('token'):
             n = t.get('name')
-            if n == 'EasingDirection': ed = t.text or '0'
-            elif n == 'EasingStyle':   es = t.text or '0'
+            if n == 'EasingDirection':
+                ed = t.text or '0'
+            elif n == 'EasingStyle':
+                es = t.text or '0'
         for f in props.findall('float'):
-            if f.get('name') == 'Weight': w = f.text or '1'
+            if f.get('name') == 'Weight':
+                w = f.text or '1'
     return ed, es, w
 
 
@@ -144,83 +187,120 @@ def _make_pose(name, cf, easing=('0', '0', '1')):
     item.set('class', 'Pose')
     item.set('referent', _new_ref())
     props = ET.SubElement(item, 'Properties')
-    n  = ET.SubElement(props, 'string');          n.set('name', 'Name');             n.text = name
-    c  = ET.SubElement(props, 'CoordinateFrame'); c.set('name', 'CFrame');           write_cf(c, cf)
-    ed = ET.SubElement(props, 'token');           ed.set('name', 'EasingDirection'); ed.text = easing[0]
-    es = ET.SubElement(props, 'token');           es.set('name', 'EasingStyle');     es.text = easing[1]
-    w  = ET.SubElement(props, 'float');           w.set('name',  'Weight');          w.text  = easing[2]
+    n = ET.SubElement(props, 'string')
+    n.set('name', 'Name')
+    n.text = name
+    c = ET.SubElement(props, 'CoordinateFrame')
+    c.set('name', 'CFrame')
+    write_cf(c, cf)
+    ed = ET.SubElement(props, 'token')
+    ed.set('name', 'EasingDirection')
+    ed.text = easing[0]
+    es = ET.SubElement(props, 'token')
+    es.set('name', 'EasingStyle')
+    es.text = easing[1]
+    w = ET.SubElement(props, 'float')
+    w.set('name', 'Weight')
+    w.text = easing[2]
     return item
 
 
 def _collect_poses(keyframe):
     poses, easings = {}, {}
+
     def walk(item):
-        if item.get('class') != 'Pose': return
+        if item.get('class') != 'Pose':
+            return
         name = _get_name(item)
-        poses[name]  = _get_cf(item)
+        poses[name] = _get_cf(item)
         easings[name] = _get_easing(item)
-        for child in item: walk(child)
-    for child in list(keyframe): walk(child)
+        for child in item:
+            walk(child)
+
+    for child in list(keyframe):
+        walk(child)
     return poses, easings
 
 
 def _clear_poses(keyframe):
     for child in list(keyframe):
-        if child.get('class') == 'Pose': keyframe.remove(child)
+        if child.get('class') == 'Pose':
+            keyframe.remove(child)
 
 
 # R15 -> R6
 
 R6_FROM_R15 = {
-    'Torso':     ('UpperTorso',    ['LowerTorso'],    (0., -0.2,   0.)),
-    'Right Arm': ('RightLowerArm', ['RightUpperArm'], (0.,  0.224, 0.)),
-    'Left Arm':  ('LeftLowerArm',  ['LeftUpperArm'],  (0.,  0.224, 0.)),
-    'Right Leg': ('RightLowerLeg', ['RightUpperLeg'], (0.,  0.201, 0.)),
-    'Left Leg':  ('LeftLowerLeg',  ['LeftUpperLeg'],  (0.,  0.201, 0.)),
-    'Head':      ('Head',          [],                (0.,  0.,    0.)),
+    'Torso': ('UpperTorso', ['LowerTorso'], (0.0, -0.2, 0.0)),
+    'Right Arm': ('RightLowerArm', ['RightUpperArm'], (0.0, 0.224, 0.0)),
+    'Left Arm': ('LeftLowerArm', ['LeftUpperArm'], (0.0, 0.224, 0.0)),
+    'Right Leg': ('RightLowerLeg', ['RightUpperLeg'], (0.0, 0.201, 0.0)),
+    'Left Leg': ('LeftLowerLeg', ['LeftUpperLeg'], (0.0, 0.201, 0.0)),
+    'Head': ('Head', [], (0.0, 0.0, 0.0)),
 }
 
 
 def convert_keyframe_r15_to_r6(keyframe, r6_parts, r6_joints, r15_parts, r15_joints):
     poses, easings = _collect_poses(keyframe)
-    r15_world  = compute_world_cfs(poses, r15_parts, r15_joints, R15_TRAVERSAL_ORDER)
-    r6_hrp_cf  = r6_parts['HumanoidRootPart']
+    r15_world = compute_world_cfs(poses, r15_parts, r15_joints, R15_TRAVERSAL_ORDER)
+    r6_hrp_cf = r6_parts['HumanoidRootPart']
     r15_hrp_cf = r15_parts['HumanoidRootPart']
 
     converted = {}
-    converted['HumanoidRootPart'] = (list(IDENTITY), easings.get('HumanoidRootPart', ('0','0','1')))
+    converted['HumanoidRootPart'] = (
+        list(IDENTITY),
+        easings.get('HumanoidRootPart', ('0', '0', '1')),
+    )
 
     torso_world_cf = r6_parts['Torso']
     preferred, _, offset = R6_FROM_R15['Torso']
     if preferred in r15_world:
         motor = r6_joints['Torso']
         cf, torso_world_cf = _calculate_limb(
-            r15_world[preferred], motor['c0'], motor['c1'],
-            torso_world_cf, r15_hrp_cf, r6_hrp_cf, offset,
+            r15_world[preferred],
+            motor['c0'],
+            motor['c1'],
+            torso_world_cf,
+            r15_hrp_cf,
+            r6_hrp_cf,
+            offset,
         )
-        converted['Torso'] = (cf, easings.get('UpperTorso', easings.get('LowerTorso', ('0','0','1'))))
+        converted['Torso'] = (
+            cf,
+            easings.get('UpperTorso', easings.get('LowerTorso', ('0', '0', '1'))),
+        )
 
     for r6_name, (preferred, fallbacks, offset) in R6_FROM_R15.items():
-        if r6_name == 'Torso': continue
-        r15_name = preferred if preferred in r15_world else next(
-            (fb for fb in fallbacks if fb in r15_world), None
+        if r6_name == 'Torso':
+            continue
+        r15_name = (
+            preferred
+            if preferred in r15_world
+            else next((fb for fb in fallbacks if fb in r15_world), None)
         )
-        if r15_name is None: continue
+        if r15_name is None:
+            continue
         motor = r6_joints.get(r6_name)
-        if motor is None: continue
+        if motor is None:
+            continue
         cf, _ = _calculate_limb(
-            r15_world[r15_name], motor['c0'], motor['c1'],
-            torso_world_cf, r15_hrp_cf, r6_hrp_cf, offset,
+            r15_world[r15_name],
+            motor['c0'],
+            motor['c1'],
+            torso_world_cf,
+            r15_hrp_cf,
+            r6_hrp_cf,
+            offset,
         )
-        converted[r6_name] = (cf, easings.get(r15_name, ('0','0','1')))
+        converted[r6_name] = (cf, easings.get(r15_name, ('0', '0', '1')))
 
     _clear_poses(keyframe)
 
     def p(name):
-        cf, easing = converted.get(name, (list(IDENTITY), ('0','0','1')))
+        cf, easing = converted.get(name, (list(IDENTITY), ('0', '0', '1')))
         return _make_pose(name, cf, easing)
 
-    hrp   = p('HumanoidRootPart')
+    hrp = p('HumanoidRootPart')
     torso = p('Torso')
     hrp.append(torso)
     for limb in ('Head', 'Left Arm', 'Right Arm', 'Left Leg', 'Right Leg'):
@@ -231,67 +311,81 @@ def convert_keyframe_r15_to_r6(keyframe, r6_parts, r6_joints, r15_parts, r15_joi
 # R6 -> R15
 
 R15_FROM_R6 = {
-    'Torso':     'LowerTorso',
-    'Head':      'Head',
-    'Left Arm':  'LeftUpperArm',
+    'Torso': 'LowerTorso',
+    'Head': 'Head',
+    'Left Arm': 'LeftUpperArm',
     'Right Arm': 'RightUpperArm',
-    'Left Leg':  'LeftUpperLeg',
+    'Left Leg': 'LeftUpperLeg',
     'Right Leg': 'RightUpperLeg',
 }
 
 
 def _get_new_transform(transform, from_joint, to_joint, r6_parts, r15_parts):
-    hrp_r6  = r6_parts['HumanoidRootPart']
+    hrp_r6 = r6_parts['HumanoidRootPart']
     hrp_r15 = r15_parts['HumanoidRootPart']
 
     from_limb = r6_parts[from_joint['part1_name']]
-    to_limb   = r15_parts[to_joint['part1_name']]
+    to_limb = r15_parts[to_joint['part1_name']]
     from_root = r6_parts[from_joint['part0_name']]
-    to_root   = r15_parts[to_joint['part0_name']]
+    to_root = r15_parts[to_joint['part0_name']]
 
-    from_offset = to_obj(hrp_r6,  from_limb)
-    to_offset   = to_obj(hrp_r15, to_limb)
+    from_offset = to_obj(hrp_r6, from_limb)
+    to_offset = to_obj(hrp_r15, to_limb)
 
     final_cf = cf_mul(
         cf_mul(from_joint['c0'], cf_inv(cf_mul(from_joint['c1'], transform))),
         to_obj(from_offset, to_offset),
     )
 
-    from_root_obj  = to_obj(hrp_r6,  from_root)
-    to_root_obj    = to_obj(hrp_r15, to_root)
+    from_root_obj = to_obj(hrp_r6, from_root)
+    to_root_obj = to_obj(hrp_r15, to_root)
     to_root_offset = to_obj(from_root_obj, to_root_obj)
 
-    return cf_mul(cf_inv(to_joint['c1']),
-                  cf_mul(cf_inv(final_cf),
-                         cf_mul(to_root_offset, to_joint['c0'])))
+    return cf_mul(
+        cf_inv(to_joint['c1']),
+        cf_mul(cf_inv(final_cf), cf_mul(to_root_offset, to_joint['c0'])),
+    )
 
 
 def convert_keyframe_r6_to_r15(keyframe, r6_parts, r6_joints, r15_parts, r15_joints):
     poses, easings = _collect_poses(keyframe)
 
     converted = {}
-    converted['HumanoidRootPart'] = (list(IDENTITY), easings.get('HumanoidRootPart', ('0','0','1')))
+    converted['HumanoidRootPart'] = (
+        list(IDENTITY),
+        easings.get('HumanoidRootPart', ('0', '0', '1')),
+    )
 
     for r6_name, r15_name in R15_FROM_R6.items():
-        if r6_name not in poses: continue
+        if r6_name not in poses:
+            continue
         from_j = r6_joints.get(r6_name)
-        to_j   = r15_joints.get(r15_name)
-        if from_j is None or to_j is None: continue
+        to_j = r15_joints.get(r15_name)
+        if from_j is None or to_j is None:
+            continue
         cf = _get_new_transform(poses[r6_name], from_j, to_j, r6_parts, r15_parts)
-        converted[r15_name] = (cf, easings.get(r6_name, ('0','0','1')))
+        converted[r15_name] = (cf, easings.get(r6_name, ('0', '0', '1')))
 
-    for part in ('LeftLowerArm', 'LeftHand', 'RightLowerArm', 'RightHand',
-                 'LeftLowerLeg', 'LeftFoot', 'RightLowerLeg', 'RightFoot'):
-        converted.setdefault(part, (list(IDENTITY), ('0','0','1')))
+    for part in (
+        'LeftLowerArm',
+        'LeftHand',
+        'RightLowerArm',
+        'RightHand',
+        'LeftLowerLeg',
+        'LeftFoot',
+        'RightLowerLeg',
+        'RightFoot',
+    ):
+        converted.setdefault(part, (list(IDENTITY), ('0', '0', '1')))
 
     _clear_poses(keyframe)
 
     def p(name):
-        cf, easing = converted.get(name, (list(IDENTITY), ('0','0','1')))
+        cf, easing = converted.get(name, (list(IDENTITY), ('0', '0', '1')))
         return _make_pose(name, cf, easing)
 
     hrp = p('HumanoidRootPart')
-    lt  = p('LowerTorso')
+    lt = p('LowerTorso')
     hrp.append(lt)
 
     ut = p('UpperTorso')
@@ -299,15 +393,15 @@ def convert_keyframe_r6_to_r15(keyframe, r6_parts, r6_joints, r15_parts, r15_joi
     ut.append(p('Head'))
 
     for side in ('Left', 'Right'):
-        ua   = p(f'{side}UpperArm')
-        la   = p(f'{side}LowerArm')
+        ua = p(f'{side}UpperArm')
+        la = p(f'{side}LowerArm')
         hand = p(f'{side}Hand')
         la.append(hand)
         ua.append(la)
         ut.append(ua)
 
-        ul   = p(f'{side}UpperLeg')
-        ll   = p(f'{side}LowerLeg')
+        ul = p(f'{side}UpperLeg')
+        ll = p(f'{side}LowerLeg')
         foot = p(f'{side}Foot')
         ll.append(foot)
         ul.append(ll)
@@ -317,6 +411,7 @@ def convert_keyframe_r6_to_r15(keyframe, r6_parts, r6_joints, r15_parts, r15_joi
 
 
 # XML sanitize helper
+
 
 def sanitize_xml(data: bytes) -> str:
     """Decode bytes and strip XML-illegal control characters."""
@@ -391,8 +486,8 @@ def keyframe_to_curve_anim(xml_bytes: bytes) -> bytes:
         e = ksp.find(f"{tag}[@name='{name}']")
         return (e.text or default).strip() if e is not None else default
 
-    loop_val = _ptext('bool',   'Loop',     'false')
-    prio_val = _ptext('token',  'Priority', '3')
+    loop_val = _ptext('bool', 'Loop', 'false')
+    prio_val = _ptext('token', 'Priority', '3')
     name_val = _xml_escape(_ptext('string', 'Name', 'Animation'))
 
     # Collect keyframe elements sorted by time
@@ -410,7 +505,7 @@ def keyframe_to_curve_anim(xml_bytes: bytes) -> bytes:
     time_scale = 1.0 / 6.0
 
     # Build bone hierarchy from first keyframe
-    parents_of: dict = {}   # bone -> parent_name or None
+    parents_of: dict = {}  # bone -> parent_name or None
     children_of: dict = {}  # bone -> [children]
     roots_list: list = []
 
@@ -477,10 +572,14 @@ def keyframe_to_curve_anim(xml_bytes: bytes) -> bytes:
 
     def _bone_xml(bone):
         data = bone_cfs.get(bone) or [(t, list(IDENTITY)) for t in all_times]
-        times  = [d[0] * time_scale for d in data]
+        times = [d[0] * time_scale for d in data]
         decomp = [_decompose_cf(d[1]) for d in data]
-        px = [d[0] for d in decomp]; py = [d[1] for d in decomp]; pz = [d[2] for d in decomp]
-        rx = [d[3] for d in decomp]; ry = [d[4] for d in decomp]; rz = [d[5] for d in decomp]
+        px = [d[0] for d in decomp]
+        py = [d[1] for d in decomp]
+        pz = [d[2] for d in decomp]
+        rx = [d[3] for d in decomp]
+        ry = [d[4] for d in decomp]
+        rz = [d[5] for d in decomp]
 
         pos_item = (
             f'<Item class="Vector3Curve" referent="{_ref()}">'
@@ -554,5 +653,5 @@ def keyframe_to_curve_anim(xml_bytes: bytes) -> bytes:
 def curve_anim_to_keyframe_xml(anim_data: bytes) -> bytes:
     """Convert a CurveAnimation (binary RBXM or XML) to a KeyframeSequence RBXMX."""
     from ..utils.anim_converter import curve_anim_to_keyframe
-    return curve_anim_to_keyframe(anim_data)
 
+    return curve_anim_to_keyframe(anim_data)

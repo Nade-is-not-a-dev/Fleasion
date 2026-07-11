@@ -6,7 +6,6 @@ import sys
 import zipfile
 from pathlib import Path
 
-
 SOBER_TARGET_PATHS: dict[str, str] = {
     r'PlatformContent\pc\textures\sky\sky512_bk.tex': 'android/textures/sky/sky512_bk.tex',
     r'PlatformContent\pc\textures\sky\sky512_dn.tex': 'android/textures/sky/sky512_dn.tex',
@@ -37,10 +36,7 @@ def target_path_for_current_platform(target_path: str | Path) -> str:
         return str(target_path)
 
     normalised = _normalise_key(target_path)
-    lookup = {
-        _normalise_key(source): dest
-        for source, dest in SOBER_TARGET_PATHS.items()
-    }
+    lookup = {_normalise_key(source): dest for source, dest in SOBER_TARGET_PATHS.items()}
     return lookup.get(normalised, normalised)
 
 
@@ -89,7 +85,7 @@ def read_current_platform_original_asset(target_path: str | Path) -> bytes | Non
                         return archive.read(member)
                     except KeyError:
                         continue
-            except (OSError, zipfile.BadZipFile):
+            except OSError, zipfile.BadZipFile:
                 continue
 
     return None

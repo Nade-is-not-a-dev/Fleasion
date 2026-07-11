@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Optional, cast
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .paths import ROBLOX_PROCESS, ROBLOX_STUDIO_PROCESS, STORAGE_DB, STORAGE_DB_GDK
 from .logging import log_buffer
+from .paths import ROBLOX_PROCESS, ROBLOX_STUDIO_PROCESS, STORAGE_DB, STORAGE_DB_GDK
 
 
 def run_cmd(args: list[str]) -> str:
@@ -38,16 +38,16 @@ _INVALID_HANDLE_VALUE = ctypes.wintypes.HANDLE(-1).value
 
 class _PROCESSENTRY32(ctypes.Structure):
     _fields_ = [
-        ('dwSize',              ctypes.wintypes.DWORD),
-        ('cntUsage',            ctypes.wintypes.DWORD),
-        ('th32ProcessID',       ctypes.wintypes.DWORD),
-        ('th32DefaultHeapID',   ctypes.c_size_t),   # ULONG_PTR — 8 bytes on x64
-        ('th32ModuleID',        ctypes.wintypes.DWORD),
-        ('cntThreads',          ctypes.wintypes.DWORD),
+        ('dwSize', ctypes.wintypes.DWORD),
+        ('cntUsage', ctypes.wintypes.DWORD),
+        ('th32ProcessID', ctypes.wintypes.DWORD),
+        ('th32DefaultHeapID', ctypes.c_size_t),  # ULONG_PTR — 8 bytes on x64
+        ('th32ModuleID', ctypes.wintypes.DWORD),
+        ('cntThreads', ctypes.wintypes.DWORD),
         ('th32ParentProcessID', ctypes.wintypes.DWORD),
-        ('pcPriClassBase',      ctypes.c_long),
-        ('dwFlags',             ctypes.wintypes.DWORD),
-        ('szExeFile',           ctypes.c_char * 260),
+        ('pcPriClassBase', ctypes.c_long),
+        ('dwFlags', ctypes.wintypes.DWORD),
+        ('szExeFile', ctypes.c_char * 260),
     ]
 
 
@@ -65,7 +65,10 @@ def _iter_processes():
         entry.dwSize = ctypes.sizeof(_PROCESSENTRY32)
         if k32.Process32First(snap, ctypes.byref(entry)):
             while True:
-                yield entry.th32ProcessID, entry.szExeFile.decode('utf-8', errors='replace').lower()
+                yield (
+                    entry.th32ProcessID,
+                    entry.szExeFile.decode('utf-8', errors='replace').lower(),
+                )
                 if not k32.Process32Next(snap, ctypes.byref(entry)):
                     break
     finally:
@@ -194,9 +197,9 @@ def _delete_db_file(db_path: Path, messages: list, label: str = 'Storage databas
     except PermissionError:
         messages.append(f'{label}: Permission denied - attempting to unlock...')
         try:
-            import win32file
-            import win32con
             import pywintypes
+            import win32con
+            import win32file
 
             try:
                 handle = win32file.CreateFile(
@@ -206,7 +209,7 @@ def _delete_db_file(db_path: Path, messages: list, label: str = 'Storage databas
                     None,
                     win32con.OPEN_EXISTING,
                     0,
-                    None
+                    None,
                 )
                 win32file.CloseHandle(cast(int, handle))
             except pywintypes.error:
@@ -247,6 +250,7 @@ def delete_cache() -> list[str]:
 
     # Delete rbx-storage folder
     import shutil
+
     storage_folder = STORAGE_DB.parent / 'rbx-storage'
     if storage_folder.exists():
         try:
@@ -261,6 +265,7 @@ def delete_cache() -> list[str]:
 
     # Delete Fleasion APP_CACHE_DIR (preserve predownloaded assets only)
     from .paths import APP_CACHE_DIR
+
     if APP_CACHE_DIR.exists():
         try:
             _preserve_set = {APP_CACHE_DIR / 'predownloaded'}
@@ -427,7 +432,10 @@ def _resolve_roblox_player_exe_for_launch() -> Optional[Path]:
         key = str(path).lower()
         candidate = (priority, _safe_mtime(path), path)
         existing = candidates_by_path.get(key)
-        if existing is not None and (existing[0], existing[1]) >= (candidate[0], candidate[1]):
+        if existing is not None and (existing[0], existing[1]) >= (
+            candidate[0],
+            candidate[1],
+        ):
             return
         candidates_by_path[key] = candidate
 
@@ -534,7 +542,10 @@ def _launch_roblox_uri_direct(target_str: str) -> bool:
     """Launch Roblox URI by executing resolved RobloxPlayerBeta.exe directly."""
     exe_path = _resolve_roblox_player_exe_for_launch()
     if exe_path is None:
-        log_buffer.log('Launcher', 'Direct Roblox URI launch skipped: no Roblox executable resolved')
+        log_buffer.log(
+            'Launcher',
+            'Direct Roblox URI launch skipped: no Roblox executable resolved',
+        )
         return False
     try:
         subprocess.Popen(
@@ -556,7 +567,9 @@ def _launch_roblox_uri_direct(target_str: str) -> bool:
         return False
 
 
-def _build_launch_command(target_str: str, prefer_direct_roblox_uri: bool = False) -> tuple[str, Optional[str]]:
+def _build_launch_command(
+    target_str: str, prefer_direct_roblox_uri: bool = False
+) -> tuple[str, Optional[str]]:
     """Build command line + cwd for token-based process creation."""
     is_uri = '://' in target_str or target_str.startswith(('roblox-player:', 'roblox:'))
     if is_uri:
@@ -569,7 +582,10 @@ def _build_launch_command(target_str: str, prefer_direct_roblox_uri: bool = Fals
                     f'Using direct executable for Roblox URI launch: {exe_path} ({_format_launch_metadata(metadata)})',
                 )
                 return f'"{exe_path}" "{target_str}"', str(exe_path.parent)
-            log_buffer.log('Launcher', 'Roblox URI executable resolution failed; using protocol fallback')
+            log_buffer.log(
+                'Launcher',
+                'Roblox URI executable resolution failed; using protocol fallback',
+            )
         system_root = Path(os.environ.get('SystemRoot', r'C:\Windows'))
         rundll = system_root / 'System32' / 'rundll32.exe'
         cmdline = f'"{rundll}" url.dll,FileProtocolHandler "{target_str}"'
@@ -649,11 +665,11 @@ def _launch_with_shell_token(target_str: str, prefer_direct_roblox_uri: bool = F
             return False
 
         dup_access = (
-            _TOKEN_ASSIGN_PRIMARY |
-            _TOKEN_DUPLICATE |
-            _TOKEN_QUERY |
-            _TOKEN_ADJUST_DEFAULT |
-            _TOKEN_ADJUST_SESSIONID
+            _TOKEN_ASSIGN_PRIMARY
+            | _TOKEN_DUPLICATE
+            | _TOKEN_QUERY
+            | _TOKEN_ADJUST_DEFAULT
+            | _TOKEN_ADJUST_SESSIONID
         )
         if not advapi32.DuplicateTokenEx(
             shell_token,
@@ -722,7 +738,10 @@ def launch_as_standard_user(target: str | Path) -> bool:
     is_roblox_uri = _is_roblox_launch_uri(target_str)
     launch_meta = _extract_launch_metadata(target_str) if is_roblox_uri else {}
     if is_roblox_uri:
-        log_buffer.log('Launcher', f'Launch request (Roblox URI): {_format_launch_metadata(launch_meta)}')
+        log_buffer.log(
+            'Launcher',
+            f'Launch request (Roblox URI): {_format_launch_metadata(launch_meta)}',
+        )
     else:
         log_buffer.log('Launcher', f'Launch request (path): {target_str}')
 
@@ -747,7 +766,10 @@ def launch_as_standard_user(target: str | Path) -> bool:
             if _roblox_launch_confirmed(protocol_started, 'Protocol launch (shell token)'):
                 return True
 
-            log_buffer.log('Launcher', 'Protocol launch failed to start Roblox; falling back to direct executable launch')
+            log_buffer.log(
+                'Launcher',
+                'Protocol launch failed to start Roblox; falling back to direct executable launch',
+            )
             direct_started = _launch_with_shell_token(target_str, prefer_direct_roblox_uri=True)
             if _roblox_launch_confirmed(direct_started, 'Direct executable launch (shell token)'):
                 return True
@@ -766,7 +788,10 @@ def launch_as_standard_user(target: str | Path) -> bool:
         if _roblox_launch_confirmed(protocol_started, 'Protocol launch (os.startfile)'):
             return True
 
-        log_buffer.log('Launcher', 'Protocol launch failed to start Roblox; falling back to direct executable launch')
+        log_buffer.log(
+            'Launcher',
+            'Protocol launch failed to start Roblox; falling back to direct executable launch',
+        )
         direct_started = _launch_roblox_uri_direct(target_str)
         if _roblox_launch_confirmed(direct_started, 'Direct executable launch'):
             return True
@@ -781,7 +806,10 @@ def launch_as_standard_user(target: str | Path) -> bool:
         if launched:
             log_buffer.log('Launcher', 'Launch succeeded via shell token')
             return True
-        log_buffer.log('Launcher', f'Elevated shell launch failed, falling back to os.startfile: {target_str}')
+        log_buffer.log(
+            'Launcher',
+            f'Elevated shell launch failed, falling back to os.startfile: {target_str}',
+        )
 
     try:
         os.startfile(target_str)

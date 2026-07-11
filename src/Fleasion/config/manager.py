@@ -23,27 +23,79 @@ _FALLBACK_JSON_ENCODINGS = (
     'cp1252',
 )
 _ASSET_TYPE_IDS = {
-    'image': 1, 'tshirt': 2, 'audio': 3, 'mesh': 4, 'lua': 5,
-    'html': 6, 'text': 7, 'hat': 8, 'place': 9, 'model': 10,
-    'shirt': 11, 'pants': 12, 'decal': 13, 'avatar': 16, 'head': 17,
-    'face': 18, 'gear': 19, 'badge': 21, 'groupemblem': 22,
-    'animation': 24, 'arms': 25, 'legs': 26, 'torso': 27,
-    'rightarm': 28, 'leftarm': 29, 'leftleg': 30, 'rightleg': 31,
-    'package': 32, 'youtubevideo': 33, 'gamepass': 34, 'app': 35,
-    'code': 37, 'plugin': 38, 'solidmodel': 39, 'meshpart': 40,
-    'hairaccessory': 41, 'faceaccessory': 42, 'neckaccessory': 43,
-    'shoulderaccessory': 44, 'frontaccessory': 45, 'backaccessory': 46,
-    'waistaccessory': 47, 'climbanimation': 48, 'deathanimation': 49,
-    'fallanimation': 50, 'idleanimation': 51, 'jumpanimation': 52,
-    'runanimation': 53, 'swimanimation': 54, 'walkanimation': 55,
-    'poseanimation': 56, 'earaccessory': 57, 'eyeaccessory': 58,
-    'localizationtablemanifest': 59, 'emoteanimation': 61, 'video': 62,
-    'texturepack': 63, 'tshirtaccessory': 64, 'shirtaccessory': 65,
-    'pantsaccessory': 66, 'jacketaccessory': 67, 'sweateraccessory': 68,
-    'shortsaccessory': 69, 'leftshoeaccessory': 70, 'rightshoeaccessory': 71,
-    'dressskirtaccessory': 72, 'fontfamily': 73, 'fontface': 74,
-    'meshhiddensurfaceremoval': 75, 'eyebrowaccessory': 76,
-    'eyelashaccessory': 77, 'moodanimation': 78, 'dynamichead': 79,
+    'image': 1,
+    'tshirt': 2,
+    'audio': 3,
+    'mesh': 4,
+    'lua': 5,
+    'html': 6,
+    'text': 7,
+    'hat': 8,
+    'place': 9,
+    'model': 10,
+    'shirt': 11,
+    'pants': 12,
+    'decal': 13,
+    'avatar': 16,
+    'head': 17,
+    'face': 18,
+    'gear': 19,
+    'badge': 21,
+    'groupemblem': 22,
+    'animation': 24,
+    'arms': 25,
+    'legs': 26,
+    'torso': 27,
+    'rightarm': 28,
+    'leftarm': 29,
+    'leftleg': 30,
+    'rightleg': 31,
+    'package': 32,
+    'youtubevideo': 33,
+    'gamepass': 34,
+    'app': 35,
+    'code': 37,
+    'plugin': 38,
+    'solidmodel': 39,
+    'meshpart': 40,
+    'hairaccessory': 41,
+    'faceaccessory': 42,
+    'neckaccessory': 43,
+    'shoulderaccessory': 44,
+    'frontaccessory': 45,
+    'backaccessory': 46,
+    'waistaccessory': 47,
+    'climbanimation': 48,
+    'deathanimation': 49,
+    'fallanimation': 50,
+    'idleanimation': 51,
+    'jumpanimation': 52,
+    'runanimation': 53,
+    'swimanimation': 54,
+    'walkanimation': 55,
+    'poseanimation': 56,
+    'earaccessory': 57,
+    'eyeaccessory': 58,
+    'localizationtablemanifest': 59,
+    'emoteanimation': 61,
+    'video': 62,
+    'texturepack': 63,
+    'tshirtaccessory': 64,
+    'shirtaccessory': 65,
+    'pantsaccessory': 66,
+    'jacketaccessory': 67,
+    'sweateraccessory': 68,
+    'shortsaccessory': 69,
+    'leftshoeaccessory': 70,
+    'rightshoeaccessory': 71,
+    'dressskirtaccessory': 72,
+    'fontfamily': 73,
+    'fontface': 74,
+    'meshhiddensurfaceremoval': 75,
+    'eyebrowaccessory': 76,
+    'eyelashaccessory': 77,
+    'moodanimation': 78,
+    'dynamichead': 79,
     'codesnippet': 80,
 }
 _VIRTUAL_ANIM_TYPES = {
@@ -89,13 +141,13 @@ DEFAULT_SETTINGS = {
     'export_naming': ['name', 'id'],
     # Scraper tab - column visibility
     'scraper_column_visibility': {
-        'hash_name':  True,
-        'creator':    False,
-        'asset_id':   True,
-        'type':       True,
-        'size':       True,
-        'cached_at':  True,
-        'url':        False,
+        'hash_name': True,
+        'creator': False,
+        'asset_id': True,
+        'type': True,
+        'size': True,
+        'cached_at': True,
+        'url': False,
     },
     'scraper_column_widths': {},
     'time_wasted_seconds': 0,
@@ -135,7 +187,15 @@ class ConfigManager:
         self._config_names_signature: tuple[tuple[str, int, int], ...] | None = None
         self._config_data_cache: dict[str, tuple[tuple[int, int] | None, dict]] = {}
         self._all_replacements_cache_signature: tuple | None = None
-        self._all_replacements_cache: tuple[dict[int | str, int], set[int | str], dict[int | str, str], dict[int | str, str]] | None = None
+        self._all_replacements_cache: (
+            tuple[
+                dict[int | str, int],
+                set[int | str],
+                dict[int | str, str],
+                dict[int | str, str],
+            ]
+            | None
+        ) = None
         self.settings = self._load_settings()
         self._ensure_default_config()
         self.reconcile_configs(save=False)
@@ -158,7 +218,9 @@ class ConfigManager:
                 continue
             entries.append((path.stem, path.name, stat_result.st_mtime_ns, stat_result.st_size))
         entries.sort(key=lambda item: item[0])
-        return [name for name, *_ in entries], tuple((filename, mtime, size) for _, filename, mtime, size in entries)
+        return [name for name, *_ in entries], tuple(
+            (filename, mtime, size) for _, filename, mtime, size in entries
+        )
 
     def _mark_replacements_dirty(self) -> None:
         self._all_replacements_cache_signature = None
@@ -199,7 +261,7 @@ class ConfigManager:
                     loaded['last_config'] = loaded['active_config']
                     del loaded['active_config']
                 return {**DEFAULT_SETTINGS, **loaded}
-            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            except json.JSONDecodeError, OSError, UnicodeDecodeError:
                 pass
         return deepcopy(DEFAULT_SETTINGS)
 
@@ -269,7 +331,7 @@ class ConfigManager:
             try:
                 text = raw.decode(encoding)
                 loaded = _json_loads(text)
-            except (LookupError, UnicodeDecodeError, json.JSONDecodeError):
+            except LookupError, UnicodeDecodeError, json.JSONDecodeError:
                 continue
 
             # Normalize recovered configs back to UTF-8 JSON so future launches
@@ -314,7 +376,7 @@ class ConfigManager:
                 loaded = self._normalize_config_data(self._load_json_file(Path(path)))
                 self._config_data_cache[name] = (self._file_signature(path), loaded)
                 return loaded
-            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            except json.JSONDecodeError, OSError, UnicodeDecodeError:
                 pass
         loaded = {'replacement_rules': []}
         self._config_data_cache[name] = (signature, loaded)
@@ -434,13 +496,35 @@ class ConfigManager:
     @property
     def macos_auth_source(self) -> str:
         value = str(self.settings.get('macos_auth_source', '') or '')
-        valid = {'', 'manual', 'Chrome', 'Safari', 'Firefox', 'Brave', 'Edge', 'Chromium', 'Opera', 'Vivaldi'}
+        valid = {
+            '',
+            'manual',
+            'Chrome',
+            'Safari',
+            'Firefox',
+            'Brave',
+            'Edge',
+            'Chromium',
+            'Opera',
+            'Vivaldi',
+        }
         return value if value in valid else ''
 
     @macos_auth_source.setter
     def macos_auth_source(self, value: str):
         value = str(value or '')
-        valid = {'', 'manual', 'Chrome', 'Safari', 'Firefox', 'Brave', 'Edge', 'Chromium', 'Opera', 'Vivaldi'}
+        valid = {
+            '',
+            'manual',
+            'Chrome',
+            'Safari',
+            'Firefox',
+            'Brave',
+            'Edge',
+            'Chromium',
+            'Opera',
+            'Vivaldi',
+        }
         self.settings['macos_auth_source'] = value if value in valid else ''
         self._save_settings()
 
@@ -453,9 +537,11 @@ class ConfigManager:
     @upstream_transport_mode.setter
     def upstream_transport_mode(self, value: str):
         value = str(value or 'auto').lower()
-        self.settings['upstream_transport_mode'] = value if value in {
-            'auto', 'direct_ip', 'system_proxy', 'http_connect', 'socks5'
-        } else 'auto'
+        self.settings['upstream_transport_mode'] = (
+            value
+            if value in {'auto', 'direct_ip', 'system_proxy', 'http_connect', 'socks5'}
+            else 'auto'
+        )
         self._save_settings()
 
     @property
@@ -482,8 +568,11 @@ class ConfigManager:
     @property
     def upstream_http_connect_port(self) -> int:
         try:
-            return max(0, min(65535, int(self.settings.get('upstream_http_connect_port', 0) or 0)))
-        except (TypeError, ValueError):
+            return max(
+                0,
+                min(65535, int(self.settings.get('upstream_http_connect_port', 0) or 0)),
+            )
+        except TypeError, ValueError:
             return 0
 
     @upstream_http_connect_port.setter
@@ -522,7 +611,7 @@ class ConfigManager:
     def upstream_socks5_port(self) -> int:
         try:
             return max(0, min(65535, int(self.settings.get('upstream_socks5_port', 0) or 0)))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return 0
 
     @upstream_socks5_port.setter
@@ -551,20 +640,34 @@ class ConfigManager:
     @property
     def vpn_compat_max_assetdelivery_connections(self) -> int:
         try:
-            return max(1, min(128, int(self.settings.get('vpn_compat_max_assetdelivery_connections', 16) or 16)))
-        except (TypeError, ValueError):
+            return max(
+                1,
+                min(
+                    128,
+                    int(self.settings.get('vpn_compat_max_assetdelivery_connections', 16) or 16),
+                ),
+            )
+        except TypeError, ValueError:
             return 16
 
     @vpn_compat_max_assetdelivery_connections.setter
     def vpn_compat_max_assetdelivery_connections(self, value: int):
-        self.settings['vpn_compat_max_assetdelivery_connections'] = max(1, min(128, int(value or 16)))
+        self.settings['vpn_compat_max_assetdelivery_connections'] = max(
+            1, min(128, int(value or 16))
+        )
         self._save_settings()
 
     @property
     def vpn_compat_max_cdn_connections(self) -> int:
         try:
-            return max(1, min(256, int(self.settings.get('vpn_compat_max_cdn_connections', 32) or 32)))
-        except (TypeError, ValueError):
+            return max(
+                1,
+                min(
+                    256,
+                    int(self.settings.get('vpn_compat_max_cdn_connections', 32) or 32),
+                ),
+            )
+        except TypeError, ValueError:
             return 32
 
     @vpn_compat_max_cdn_connections.setter
@@ -719,16 +822,33 @@ class ConfigManager:
     def username_spoofer(self, value: dict):
         base = deepcopy(DEFAULT_SETTINGS.get('username_spoofer', {}))
         if isinstance(value, dict):
-            base.update({
-                'save_settings': bool(value.get('save_settings', base.get('save_settings', False))),
-                'others_name': str(value.get('others_name', base.get('others_name', ''))),
-                'others_apply_ingame': bool(value.get('others_apply_ingame', base.get('others_apply_ingame', False))),
-                'others_verified': bool(value.get('others_verified', base.get('others_verified', False))),
-                'self_name': str(value.get('self_name', base.get('self_name', ''))),
-                'self_apply_ingame': bool(value.get('self_apply_ingame', base.get('self_apply_ingame', False))),
-                'self_verified': bool(value.get('self_verified', base.get('self_verified', False))),
-                'self_game_creator': bool(value.get('self_game_creator', base.get('self_game_creator', False))),
-            })
+            base.update(
+                {
+                    'save_settings': bool(
+                        value.get('save_settings', base.get('save_settings', False))
+                    ),
+                    'others_name': str(value.get('others_name', base.get('others_name', ''))),
+                    'others_apply_ingame': bool(
+                        value.get(
+                            'others_apply_ingame',
+                            base.get('others_apply_ingame', False),
+                        )
+                    ),
+                    'others_verified': bool(
+                        value.get('others_verified', base.get('others_verified', False))
+                    ),
+                    'self_name': str(value.get('self_name', base.get('self_name', ''))),
+                    'self_apply_ingame': bool(
+                        value.get('self_apply_ingame', base.get('self_apply_ingame', False))
+                    ),
+                    'self_verified': bool(
+                        value.get('self_verified', base.get('self_verified', False))
+                    ),
+                    'self_game_creator': bool(
+                        value.get('self_game_creator', base.get('self_game_creator', False))
+                    ),
+                }
+            )
         self.settings['username_spoofer'] = base
         self._save_settings()
 
@@ -782,9 +902,7 @@ class ConfigManager:
         """Get list of enabled configs."""
         current_configs = set(self.config_names)
         return [
-            name
-            for name in self.settings.get('enabled_configs', [])
-            if name in current_configs
+            name for name in self.settings.get('enabled_configs', []) if name in current_configs
         ]
 
     @enabled_configs.setter
@@ -835,11 +953,7 @@ class ConfigManager:
         changed = False
 
         enabled = self.settings.get('enabled_configs', [])
-        cleaned_enabled = [
-            name
-            for name in enabled
-            if name in current_configs
-        ]
+        cleaned_enabled = [name for name in enabled if name in current_configs]
         if cleaned_enabled != enabled:
             self.settings['enabled_configs'] = cleaned_enabled
             changed = True
@@ -961,7 +1075,10 @@ class ConfigManager:
             self._get_config_path(old_name).rename(self._get_config_path(new_name))
             cached = self._config_data_cache.pop(old_name, None)
             if cached is not None:
-                self._config_data_cache[new_name] = (self._file_signature(self._get_config_path(new_name)), cached[1])
+                self._config_data_cache[new_name] = (
+                    self._file_signature(self._get_config_path(new_name)),
+                    cached[1],
+                )
             self._config_names_cache = None
             self._config_names_signature = None
             self._mark_replacements_dirty()
@@ -1001,7 +1118,9 @@ class ConfigManager:
             else:
                 yield entry
 
-    def get_all_replacements(self) -> tuple[dict[int | str, int], set[int | str], dict[int | str, str], dict[int | str, str]]:
+    def get_all_replacements(
+        self,
+    ) -> tuple[dict[int | str, int], set[int | str], dict[int | str, str], dict[int | str, str]]:
         """Get replacements from all enabled configs.
 
         Returns
@@ -1057,14 +1176,14 @@ class ConfigManager:
                             parsed_ids.append(v)
                             continue
                         continue
-                    
+
                     # Try to parse as integer ID first
                     try:
                         parsed_ids.append(int(v))
                         continue
-                    except (TypeError, ValueError):
+                    except TypeError, ValueError:
                         pass
-                    
+
                     # Check if it's a known asset type name (case-insensitive)
                     # Convert to numeric ID for proper texture_stripper matching
                     if isinstance(v, str):
@@ -1098,7 +1217,7 @@ class ConfigManager:
                     if (target := rule.get('with_id')) is not None:
                         try:
                             target_id = int(target)
-                        except (TypeError, ValueError):
+                        except TypeError, ValueError:
                             continue
                         if target_id in (0, 1):
                             continue

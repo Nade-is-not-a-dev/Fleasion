@@ -3,7 +3,15 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QFrame, QLabel, QPushButton, QVBoxLayout
 
-from ..utils import APP_AUTHOR, APP_CONCEPT, APP_LOGIC, APP_NAME, APP_REPO, APP_VERSION, get_icon_path
+from ..utils import (
+    APP_AUTHOR,
+    APP_CONCEPT,
+    APP_LOGIC,
+    APP_NAME,
+    APP_REPO,
+    APP_VERSION,
+    get_icon_path,
+)
 
 
 class AboutWindow(QDialog):
@@ -14,9 +22,9 @@ class AboutWindow(QDialog):
         self.setWindowTitle('About')
         self.setFixedSize(360, 240)
         self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowMinimizeButtonHint |
-            Qt.WindowType.WindowCloseButtonHint
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
         )
         self._setup_ui()
         self._set_icon()
@@ -24,6 +32,7 @@ class AboutWindow(QDialog):
     def _set_icon(self):
         if icon_path := get_icon_path():
             from PyQt6.QtGui import QIcon
+
             self.setWindowIcon(QIcon(str(icon_path)))
 
     def _setup_ui(self):
@@ -74,15 +83,10 @@ class AboutWindow(QDialog):
         layout.addSpacing(10)
 
         # Repo link
-        repo_label = QLabel(
-            f'<b>Distributed at:</b> '
-            f'<a href="{APP_REPO}">{APP_REPO}</a>'
-        )
+        repo_label = QLabel(f'<b>Distributed at:</b> <a href="{APP_REPO}">{APP_REPO}</a>')
         repo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         repo_label.setOpenExternalLinks(True)
-        repo_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextBrowserInteraction
-        )
+        repo_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         repo_label.setWordWrap(True)
         layout.addWidget(repo_label)
 

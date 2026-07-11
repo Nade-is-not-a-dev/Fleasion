@@ -12,8 +12,14 @@ from pathlib import Path
 from typing import Optional
 
 from .logging import log_buffer
-from .paths import APP_CACHE_DIR, ROBLOX_PROCESS, ROBLOX_STUDIO_PROCESS, STORAGE_DB, STORAGE_DB_GDK, USER_HOME
-
+from .paths import (
+    APP_CACHE_DIR,
+    ROBLOX_PROCESS,
+    ROBLOX_STUDIO_PROCESS,
+    STORAGE_DB,
+    STORAGE_DB_GDK,
+    USER_HOME,
+)
 
 ROBLOX_APP_CANDIDATES = (
     Path('/Applications/Roblox.app'),
@@ -36,7 +42,10 @@ def set_application_icon(icon_path: Path) -> bool:
             log_buffer.log('App', f'macOS application icon not found: {icon_path}')
             return False
 
-        appkit_path = ctypes.util.find_library('AppKit') or '/System/Library/Frameworks/AppKit.framework/AppKit'
+        appkit_path = (
+            ctypes.util.find_library('AppKit')
+            or '/System/Library/Frameworks/AppKit.framework/AppKit'
+        )
         ctypes.CDLL(appkit_path)
 
         objc_path = ctypes.util.find_library('objc') or '/usr/lib/libobjc.A.dylib'
@@ -86,7 +95,10 @@ def set_application_icon(icon_path: Path) -> bool:
             str(icon_path).encode('utf-8'),
         )
         if not icon_path_string:
-            log_buffer.log('App', f'Failed to create NSString for macOS application icon: {icon_path}')
+            log_buffer.log(
+                'App',
+                f'Failed to create NSString for macOS application icon: {icon_path}',
+            )
             return False
 
         image_alloc = msg_send_object(ns_image, sel_register_name(b'alloc'))
@@ -106,7 +118,10 @@ def set_application_icon(icon_path: Path) -> bool:
         )
         return True
     except Exception as exc:
-        log_buffer.log('App', f'Failed to update macOS application icon: {type(exc).__name__}: {exc}')
+        log_buffer.log(
+            'App',
+            f'Failed to update macOS application icon: {type(exc).__name__}: {exc}',
+        )
         return False
 
 
@@ -149,10 +164,13 @@ def set_application_foreground_mode(enabled: bool) -> bool:
             if enabled
             else _NS_APPLICATION_ACTIVATION_POLICY_ACCESSORY
         )
-        if msg_send_integer(
-            shared_application,
-            sel_register_name(b'activationPolicy'),
-        ) == policy:
+        if (
+            msg_send_integer(
+                shared_application,
+                sel_register_name(b'activationPolicy'),
+            )
+            == policy
+        ):
             return True
         return bool(
             msg_send_policy(
@@ -162,7 +180,10 @@ def set_application_foreground_mode(enabled: bool) -> bool:
             )
         )
     except Exception as exc:
-        log_buffer.log('App', f'Failed to update macOS activation policy: {type(exc).__name__}: {exc}')
+        log_buffer.log(
+            'App',
+            f'Failed to update macOS activation policy: {type(exc).__name__}: {exc}',
+        )
         return False
 
 
@@ -262,12 +283,18 @@ def _quit_app_bundle(app_path: Path) -> bool:
             timeout=10,
         )
     except Exception as exc:
-        log_buffer.log('App', f'Failed to request macOS quit for {app_name}: {type(exc).__name__}: {exc}')
+        log_buffer.log(
+            'App',
+            f'Failed to request macOS quit for {app_name}: {type(exc).__name__}: {exc}',
+        )
         return False
 
     if result.returncode != 0:
         err = (result.stderr or result.stdout or '').strip()
-        log_buffer.log('App', f'macOS quit request for {app_name} failed: {err or result.returncode}')
+        log_buffer.log(
+            'App',
+            f'macOS quit request for {app_name} failed: {err or result.returncode}',
+        )
         return False
     return True
 
@@ -439,7 +466,10 @@ def find_roblox_resource_dirs(include_studio: bool = True) -> list[Path]:
             if exe.is_file() and resources.is_dir():
                 _add(resources)
 
-    for exe_path in (get_roblox_player_exe_path(), get_roblox_studio_exe_path() if include_studio else None):
+    for exe_path in (
+        get_roblox_player_exe_path(),
+        get_roblox_studio_exe_path() if include_studio else None,
+    ):
         if exe_path is not None:
             _add(_resource_root_from_executable(exe_path))
 
@@ -455,7 +485,7 @@ def _app_for_executable(path: Path) -> Path | None:
     parts = path.parts
     for index, part in enumerate(parts):
         if part.endswith('.app'):
-            app = Path(*parts[:index + 1])
+            app = Path(*parts[: index + 1])
             return app if app.exists() else None
     return None
 
@@ -507,12 +537,7 @@ def open_folder(path: Path):
 
 def show_message_box(title: str, message: str, icon: int = 0x40):
     """Show a simple macOS alert."""
-    script = (
-        'display alert '
-        + json.dumps(title)
-        + ' message '
-        + json.dumps(message)
-    )
+    script = 'display alert ' + json.dumps(title) + ' message ' + json.dumps(message)
     try:
         subprocess.run(['osascript', '-e', script], capture_output=True, timeout=10)
     except Exception:

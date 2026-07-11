@@ -10,8 +10,6 @@ from .metadata import (
     APP_REPO,
     APP_VERSION,
 )
-from .plural import format_count, pluralize
-from .time_tracker import TimeTracker, time_tracker
 from .paths import (
     APP_CACHE_DIR,
     CLOG_URL,
@@ -41,15 +39,17 @@ from .paths import (
     USER_HOME,
     get_icon_path,
 )
+from .plural import format_count, pluralize
 from .threading import run_in_thread
+from .time_tracker import TimeTracker, time_tracker
 from .windows import (
     delete_cache,
     get_roblox_player_exe_path,
     get_roblox_studio_exe_path,
     is_roblox_running,
     is_studio_running,
-    open_folder,
     launch_as_standard_user,
+    open_folder,
     show_message_box,
     terminate_roblox,
     wait_for_roblox_exit,
@@ -61,6 +61,7 @@ def start_update_check(*args, **kwargs):
     from .updater import start_update_check as _start_update_check
 
     return _start_update_check(*args, **kwargs)
+
 
 __all__ = [
     'APP_AUTHOR',

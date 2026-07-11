@@ -21,12 +21,15 @@ from ...utils import format_count, log_buffer
 
 try:
     import orjson
+
     def _loads(data):
         return orjson.loads(data)
 except ImportError:
     import json
+
     def _loads(data):
         return json.loads(data)
+
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +85,12 @@ def _texpack_slot_from_build_type(value) -> int | None:
     if any(token in normalized for token in ('normal', 'bump')):
         return 1
     if (
-        'metal' in normalized or 'rough' in normalized or 'emiss' in normalized
-        or 'height' in normalized or 'displace' in normalized or normalized == 'orm'
+        'metal' in normalized
+        or 'rough' in normalized
+        or 'emiss' in normalized
+        or 'height' in normalized
+        or 'displace' in normalized
+        or normalized == 'orm'
     ):
         return 2
     return None
@@ -91,8 +98,12 @@ def _texpack_slot_from_build_type(value) -> int | None:
 
 def _texpack_slot_from_request(item: dict) -> int | None:
     for key in (
-        'requestedBuildType', 'buildType', 'textureType',
-        'textureMap', 'mapType', 'contentType',
+        'requestedBuildType',
+        'buildType',
+        'textureType',
+        'textureMap',
+        'mapType',
+        'contentType',
     ):
         slot = _texpack_slot_from_build_type(item.get(key))
         if slot is not None:
@@ -102,8 +113,12 @@ def _texpack_slot_from_request(item: dict) -> int | None:
 
 def _texpack_build_key(item: dict):
     for key in (
-        'requestedBuildType', 'buildType', 'textureType',
-        'textureMap', 'mapType', 'contentType',
+        'requestedBuildType',
+        'buildType',
+        'textureType',
+        'textureMap',
+        'mapType',
+        'contentType',
     ):
         value = _normalized_build_type(item.get(key))
         if value is not None:
@@ -201,8 +216,13 @@ def _build_texpack_request_slot_map(req_json: list) -> dict[int, int]:
 
 def _representation_matches_requested(representation: dict, requested) -> bool:
     for key in (
-        'requestedBuildType', 'buildType', 'contentType',
-        'type', 'format', 'name', 'representationType',
+        'requestedBuildType',
+        'buildType',
+        'contentType',
+        'type',
+        'format',
+        'name',
+        'representationType',
     ):
         if _normalized_build_type(representation.get(key)) == requested:
             return True
@@ -223,7 +243,9 @@ def _select_content_representation(item: dict) -> dict | None:
     requested = _normalized_build_type(item.get('requestedBuildType'))
     if requested is not None:
         for representation in decoded:
-            if isinstance(representation, dict) and _representation_matches_requested(representation, requested):
+            if isinstance(representation, dict) and _representation_matches_requested(
+                representation, requested
+            ):
                 return representation
         if isinstance(requested, int) and 0 <= requested < len(decoded):
             representation = decoded[requested]
@@ -369,7 +391,10 @@ class CacheScraper:
                     request_slot = texpack_request_slots.get(idx)
                     selected_quality = _decode_selected_representation_slot_quality(res_item)
                     if request_slot is not None:
-                        slot_quality = (request_slot, selected_quality[1] if selected_quality else 0)
+                        slot_quality = (
+                            request_slot,
+                            selected_quality[1] if selected_quality else 0,
+                        )
                     else:
                         slot_quality = None
                     if slot_quality is not None:
@@ -387,7 +412,10 @@ class CacheScraper:
                 if base_url in self._url_to_asset:
                     continue
                 if asset_id not in self.cache_logs:
-                    self.cache_logs[asset_id] = {'location': location, 'assetTypeId': asset_type}
+                    self.cache_logs[asset_id] = {
+                        'location': location,
+                        'assetTypeId': asset_type,
+                    }
                 url_list = self._url_to_asset.setdefault(base_url, [])
 
                 # Check if a sibling for this CDN URL is already cached
@@ -411,7 +439,11 @@ class CacheScraper:
         for source_id, dest_id, asset_type, url in to_copy:
             try:
                 self._executor.submit(
-                    self._copy_cached_asset, source_id, dest_id, asset_type, url,
+                    self._copy_cached_asset,
+                    source_id,
+                    dest_id,
+                    asset_type,
+                    url,
                 )
             except RuntimeError as exc:
                 log_buffer.log('Cache', f'Failed to submit copy task: {exc}')
@@ -423,7 +455,9 @@ class CacheScraper:
     # Called from server MITM thread for Roblox CDN responses
     # ------------------------------------------------------------------
 
-    def process_cdn_response(self, full_url: str, path: str, body: bytes, content_type: str) -> None:
+    def process_cdn_response(
+        self, full_url: str, path: str, body: bytes, content_type: str
+    ) -> None:
         """Stage 2: cache the actual CDN asset bytes."""
         if not self.enabled or not body:
             return
@@ -439,7 +473,7 @@ class CacheScraper:
             _cdn_id = base_url.rsplit('/', 1)[-1]
             log_buffer.log(
                 'DEBUG_CDN',
-                f'[CDN UNKNOWN] URL not seen in any batch (cdn_id={_cdn_id})'
+                f'[CDN UNKNOWN] URL not seen in any batch (cdn_id={_cdn_id})',
             )
 
         with self._lock:
@@ -477,6 +511,7 @@ class CacheScraper:
         inner = body
         if body[:2] == b'\x1f\x8b':
             import gzip as _gzip
+
             try:
                 inner = _gzip.decompress(body)
             except Exception:
@@ -484,8 +519,10 @@ class CacheScraper:
         elif body[:4] == b'\x28\xb5\x2f\xfd':
             try:
                 import zstandard
+
                 inner = zstandard.ZstdDecompressor().decompress(
-                    body, max_output_size=64 * 1024 * 1024)
+                    body, max_output_size=64 * 1024 * 1024
+                )
             except Exception:
                 inner = body
 
@@ -498,7 +535,10 @@ class CacheScraper:
             try:
                 self._executor.submit(
                     self._store_texpack_slot_ktx2_async,
-                    _tp_id, _tp_slot, _tp_qual, inner,
+                    _tp_id,
+                    _tp_slot,
+                    _tp_qual,
+                    inner,
                 )
             except RuntimeError as exc:
                 log_buffer.log('Cache', f'Failed to submit texpack slot store: {exc}')
@@ -506,15 +546,19 @@ class CacheScraper:
         # Store / convert for every original asset ID that shares this CDN URL
         for asset_id, asset_type in pending:
             needs_conversion = (
-                (asset_type in (1, 13) and inner[:8] in (b'\xabKTX 20\xbb', b'\xabKTX 11\xbb')) or
-                asset_type == 63
-            )
+                asset_type in (1, 13) and inner[:8] in (b'\xabKTX 20\xbb', b'\xabKTX 11\xbb')
+            ) or asset_type == 63
 
             if needs_conversion:
                 try:
                     self._executor.submit(
                         self._fetch_and_update_cache,
-                        asset_id, asset_type, full_url, metadata, body, inner,
+                        asset_id,
+                        asset_type,
+                        full_url,
+                        metadata,
+                        body,
+                        inner,
                     )
                 except RuntimeError as exc:
                     log_buffer.log('Cache', f'Failed to submit conversion task: {exc}')
@@ -522,7 +566,11 @@ class CacheScraper:
                 try:
                     self._executor.submit(
                         self._store_asset_async,
-                        asset_id, asset_type, inner, full_url, metadata,
+                        asset_id,
+                        asset_type,
+                        inner,
+                        full_url,
+                        metadata,
                     )
                 except RuntimeError as exc:
                     log_buffer.log('Cache', f'Failed to submit cache store task: {exc}')
@@ -538,9 +586,15 @@ class CacheScraper:
         self._real_ips = real_ips
         log_buffer.log('Cache', f'API bypass configured for: {list(real_ips.keys())}')
 
-    def _https_get(self, hostname: str, path: str, extra_headers: dict | None = None,
-                   timeout: float = 8.0, max_redirects: int = 6,
-                   return_status: bool = False) -> 'bytes | None | tuple[bytes | None, int | None]':
+    def _https_get(
+        self,
+        hostname: str,
+        path: str,
+        extra_headers: dict | None = None,
+        timeout: float = 8.0,
+        max_redirects: int = 6,
+        return_status: bool = False,
+    ) -> 'bytes | None | tuple[bytes | None, int | None]':
         """Make an HTTPS GET request, bypassing our hosts file by connecting to the
         real IP while passing the original hostname as SNI and Host header.
 
@@ -556,9 +610,9 @@ class CacheScraper:
         because Python's requests library sends gzip/deflate Accept-Encoding by
         default, never zstd.
         """
-        import ssl
-        import socket
         import http.client
+        import socket
+        import ssl
         from urllib.parse import urlparse
 
         ctx = ssl.create_default_context()
@@ -619,6 +673,7 @@ class CacheScraper:
                     ce = resp.headers.get('Content-Encoding', '').lower()
                     if ce == 'gzip' and data:
                         import gzip as _gzip
+
                         try:
                             data = _gzip.decompress(data)
                         except Exception:
@@ -626,8 +681,10 @@ class CacheScraper:
                     elif data[:4] == b'\x28\xb5\x2f\xfd':  # zstd magic
                         try:
                             import zstandard
+
                             data = zstandard.ZstdDecompressor().decompress(
-                                data, max_output_size=32 * 1024 * 1024)
+                                data, max_output_size=32 * 1024 * 1024
+                            )
                         except Exception:
                             pass
                     result = data if data else None
@@ -674,6 +731,7 @@ class CacheScraper:
             if not raw:
                 return None, None
             import json as _json
+
             data = _json.loads(raw).get('data', [])
             if not data:
                 return None, None
@@ -722,11 +780,14 @@ class CacheScraper:
                     cursor = ''
                     for _page in range(max_pages):
                         path = base_path + (f'&cursor={cursor}' if cursor else '')
-                        raw = self._https_get(host, path, extra_headers={'Accept': 'application/json'})
+                        raw = self._https_get(
+                            host, path, extra_headers={'Accept': 'application/json'}
+                        )
                         if not raw:
                             break
 
                         import json as _json
+
                         resp = _json.loads(raw)
                         games = resp.get('data', [])
                         for game in games:
@@ -746,7 +807,10 @@ class CacheScraper:
 
             self._creator_place_cache[creator_id] = place_ids
             if place_ids:
-                log_buffer.log('Cache', f'Found {format_count(place_ids, "place")} for creator {creator_id}')
+                log_buffer.log(
+                    'Cache',
+                    f'Found {format_count(place_ids, "place")} for creator {creator_id}',
+                )
             else:
                 log_buffer.log('Cache', f'No games found for creator {creator_id}')
             return place_ids
@@ -756,7 +820,9 @@ class CacheScraper:
             return []
 
     def _fetch_asset_with_place_id_retry(
-        self, asset_id: str, extra_headers: dict | None = None,
+        self,
+        asset_id: str,
+        extra_headers: dict | None = None,
     ) -> tuple[bytes | None, int | None]:
         """Download an asset, retrying with Roblox-Place-Id on 403.
 
@@ -804,7 +870,10 @@ class CacheScraper:
                 return_status=True,
             )
             if data:
-                log_buffer.log('Cache', f'Successfully downloaded privated asset {asset_id} (cached place {last_success})')
+                log_buffer.log(
+                    'Cache',
+                    f'Successfully downloaded privated asset {asset_id} (cached place {last_success})',
+                )
                 return data, status
 
         # Try each place ID until one works
@@ -820,7 +889,10 @@ class CacheScraper:
                 return_status=True,
             )
             if data:
-                log_buffer.log('Cache', f'Successfully downloaded privated asset {asset_id} (place {place_id})')
+                log_buffer.log(
+                    'Cache',
+                    f'Successfully downloaded privated asset {asset_id} (place {place_id})',
+                )
                 self._creator_last_success[creator_id] = place_id
                 return data, status
 
@@ -843,15 +915,21 @@ class CacheScraper:
             extra = {}
             if cookie:
                 extra['Cookie'] = f'.ROBLOSECURITY={cookie};'
-            data, _status = self._fetch_asset_with_place_id_retry(asset_id, extra_headers=extra or None)
+            data, _status = self._fetch_asset_with_place_id_retry(
+                asset_id, extra_headers=extra or None
+            )
             return data
         except Exception as exc:
             log_buffer.log('Cache', f'API fetch error for {asset_id}: {exc}')
         return None
 
     def _fetch_and_update_cache(
-        self, asset_id: str, asset_type: int, url: str,
-        metadata: dict, original_content: bytes | None = None,
+        self,
+        asset_id: str,
+        asset_type: int,
+        url: str,
+        metadata: dict,
+        original_content: bytes | None = None,
         inner_content: bytes | None = None,
     ) -> None:
         try:
@@ -860,14 +938,18 @@ class CacheScraper:
             if asset_type in (1, 13) and inner_content:
                 try:
                     from ...cache.tools.ktx_to_png import convert as _ktx_convert
+
                     png_bytes = _ktx_convert(inner_content)
                 except Exception:
                     png_bytes = None
                 if png_bytes and png_bytes[:4] == b'\x89PNG':
                     metadata['content_length'] = len(png_bytes)
                     success = self.cache_manager.store_asset(
-                        asset_id=str(asset_id), asset_type=asset_type,
-                        data=png_bytes, url=url, metadata=metadata,
+                        asset_id=str(asset_id),
+                        asset_type=asset_type,
+                        data=png_bytes,
+                        url=url,
+                        metadata=metadata,
                     )
                     if success:
                         log_buffer.log('Cache', f'KTX\u2192PNG (local): {asset_id}')
@@ -885,25 +967,36 @@ class CacheScraper:
                 if is_valid:
                     metadata['content_length'] = len(api_content)
                     success = self.cache_manager.store_asset(
-                        asset_id=str(asset_id), asset_type=asset_type,
-                        data=api_content, url=url, metadata=metadata,
+                        asset_id=str(asset_id),
+                        asset_type=asset_type,
+                        data=api_content,
+                        url=url,
+                        metadata=metadata,
                     )
                     if success:
                         type_name = self.cache_manager.get_asset_type_name(asset_type)
-                        log_buffer.log('Cache', f'Converted {type_name} to {content_desc}: {asset_id}')
+                        log_buffer.log(
+                            'Cache',
+                            f'Converted {type_name} to {content_desc}: {asset_id}',
+                        )
                         # For TexturePack: preserve raw KTX2 sidecar AND populate
                         # the sub-asset lookup so replacements can target sub-asset IDs.
                         if asset_type == 63:
                             if inner_content:
-                                self.cache_manager.store_raw_asset(str(asset_id), asset_type, inner_content)
+                                self.cache_manager.store_raw_asset(
+                                    str(asset_id), asset_type, inner_content
+                                )
                             self._populate_texpack_subasset_lookup(int(asset_id), api_content)
                     return
 
             if original_content is not None:
                 metadata['content_length'] = len(original_content)
                 success = self.cache_manager.store_asset(
-                    asset_id=str(asset_id), asset_type=asset_type,
-                    data=original_content, url=url, metadata=metadata,
+                    asset_id=str(asset_id),
+                    asset_type=asset_type,
+                    data=original_content,
+                    url=url,
+                    metadata=metadata,
                 )
                 if success:
                     type_name = self.cache_manager.get_asset_type_name(asset_type)
@@ -913,8 +1006,11 @@ class CacheScraper:
             if original_content is not None:
                 try:
                     self.cache_manager.store_asset(
-                        asset_id=str(asset_id), asset_type=asset_type,
-                        data=original_content, url=url, metadata=metadata,
+                        asset_id=str(asset_id),
+                        asset_type=asset_type,
+                        data=original_content,
+                        url=url,
+                        metadata=metadata,
                     )
                 except Exception:
                     pass
@@ -936,32 +1032,49 @@ class CacheScraper:
         """
         # Semantic mapping: XML tag name → global index.
         _TAG_TO_GLOBAL_INDEX = {
-            'color': 0, 'albedo': 0, 'diffuse': 0, 'basecolor': 0,
-            'normal': 1, 'normalmap': 1, 'bumpmap': 1,
-            'metalness': 2, 'orm': 2,
+            'color': 0,
+            'albedo': 0,
+            'diffuse': 0,
+            'basecolor': 0,
+            'normal': 1,
+            'normalmap': 1,
+            'bumpmap': 1,
+            'metalness': 2,
+            'orm': 2,
             'roughness': 3,
-            'emissive': 4, 'emissivemap': 4,
-            'height': 5, 'displacement': 5, 'heightmap': 5,
+            'emissive': 4,
+            'emissivemap': 4,
+            'height': 5,
+            'displacement': 5,
+            'heightmap': 5,
         }
         # ORM channel name for each recognised PBR sub-tag.
         # Tags without a channel (Color, Normal, or combined 'orm') map to None.
         _TAG_TO_CHANNEL: dict[str, str | None] = {
-            'color': None, 'albedo': None, 'diffuse': None, 'basecolor': None,
-            'normal': None, 'normalmap': None, 'bumpmap': None,
-            'orm': None,          # full combined ORM — no single channel
+            'color': None,
+            'albedo': None,
+            'diffuse': None,
+            'basecolor': None,
+            'normal': None,
+            'normalmap': None,
+            'bumpmap': None,
+            'orm': None,  # full combined ORM — no single channel
             'metalness': 'metalness',
             'roughness': 'roughness',
-            'emissive':  'emissive',
+            'emissive': 'emissive',
             'emissivemap': 'emissive',
-            'height':    'height',
+            'height': 'height',
             'displacement': 'height',
-            'heightmap':    'height',
+            'heightmap': 'height',
         }
         try:
             import xml.etree.ElementTree as _ET
+
             root = _ET.fromstring(xml_content)
             added = 0
-            virtual_slot = 0  # sequential index among recognised XML children (legacy, kept for vslot_channel)
+            virtual_slot = (
+                0  # sequential index among recognised XML children (legacy, kept for vslot_channel)
+            )
             for elem in root:  # direct children only — no recursion into sub-trees
                 tag_lower = elem.tag.lower().lstrip('{').split('}')[-1]  # strip namespace
                 global_index = _TAG_TO_GLOBAL_INDEX.get(tag_lower)
@@ -979,12 +1092,19 @@ class CacheScraper:
                         self._texpack_vslot_channel[(parent_id, virtual_slot)] = channel
                 virtual_slot += 1
             if added:
-                log_buffer.log('Cache', f'TexturePack {parent_id}: mapped {format_count(added, "sub-asset")}')
+                log_buffer.log(
+                    'Cache',
+                    f'TexturePack {parent_id}: mapped {format_count(added, "sub-asset")}',
+                )
         except Exception as exc:
             log_buffer.log('Cache', f'TexturePack {parent_id} sub-asset parse error: {exc}')
 
     def _store_texpack_slot_ktx2_async(
-        self, parent_id: int, slot: int, quality: int, ktx2_bytes: bytes,
+        self,
+        parent_id: int,
+        slot: int,
+        quality: int,
+        ktx2_bytes: bytes,
     ) -> None:
         """Quality-aware per-slot KTX2 storage for TexturePacks.
 
@@ -1004,7 +1124,9 @@ class CacheScraper:
         """
         try:
             import struct as _struct
+
             from ...utils.paths import APP_CACHE_DIR
+
             slot_dir = APP_CACHE_DIR / 'texpack_slots'
             slot_dir.mkdir(parents=True, exist_ok=True)
             slot_path = slot_dir / f'{parent_id}_slot{slot}.ktx2'
@@ -1018,7 +1140,9 @@ class CacheScraper:
             if slot_path.exists():
                 try:
                     existing = slot_path.read_bytes()
-                    existing_w = _struct.unpack_from('<I', existing, 20)[0] if len(existing) >= 24 else 0
+                    existing_w = (
+                        _struct.unpack_from('<I', existing, 20)[0] if len(existing) >= 24 else 0
+                    )
                     existing_quality = self._texpack_slot_quality.get(key)
                     if new_w < existing_w:
                         return
@@ -1032,8 +1156,10 @@ class CacheScraper:
                             f'Replacing {parent_id} slot{slot}: same {new_w}px, q={quality}, bytes changed',
                         )
                     else:
-                        log_buffer.log('TexPackSlot',
-                                       f'Upgrading {parent_id} slot{slot}: {existing_w}px -> {new_w}px')
+                        log_buffer.log(
+                            'TexPackSlot',
+                            f'Upgrading {parent_id} slot{slot}: {existing_w}px -> {new_w}px',
+                        )
                 except Exception:
                     pass  # can't read existing — overwrite it
 
@@ -1044,9 +1170,11 @@ class CacheScraper:
 
             _SLOT_NAMES = {0: 'Color', 1: 'Normal', 2: 'ORM'}
             slot_name = _SLOT_NAMES.get(slot, f'slot{slot}')
-            log_buffer.log('TexPackSlot',
-                           f'Cached {slot_name} q={quality} {new_w}px for pack {parent_id} '
-                           f'({len(ktx2_bytes)} bytes) -> {slot_path.name}')
+            log_buffer.log(
+                'TexPackSlot',
+                f'Cached {slot_name} q={quality} {new_w}px for pack {parent_id} '
+                f'({len(ktx2_bytes)} bytes) -> {slot_path.name}',
+            )
         except Exception as exc:
             log_buffer.log('TexPackSlot', f'Failed to store slot {slot} for {parent_id}: {exc}')
 
@@ -1079,12 +1207,20 @@ class CacheScraper:
                 self._texpack_layout_fetched.add(parent_id)
 
     def _store_asset_async(
-        self, asset_id: str, asset_type: int, data: bytes, url: str, metadata: dict,
+        self,
+        asset_id: str,
+        asset_type: int,
+        data: bytes,
+        url: str,
+        metadata: dict,
     ) -> None:
         try:
             success = self.cache_manager.store_asset(
-                asset_id=str(asset_id), asset_type=asset_type,
-                data=data, url=url, metadata=metadata,
+                asset_id=str(asset_id),
+                asset_type=asset_type,
+                data=data,
+                url=url,
+                metadata=metadata,
             )
             if success:
                 type_name = self.cache_manager.get_asset_type_name(asset_type)
@@ -1093,15 +1229,22 @@ class CacheScraper:
             log_buffer.log('Cache', f'Cache store error for {asset_id}: {exc}')
 
     def _copy_cached_asset(
-        self, source_id, dest_id, asset_type: int, url: str,
+        self,
+        source_id,
+        dest_id,
+        asset_type: int,
+        url: str,
     ) -> None:
         """Copy an already-cached asset to a new asset ID (cross-batch replication)."""
         try:
             data = self.cache_manager.get_asset(str(source_id), asset_type)
             if data:
                 success = self.cache_manager.store_asset(
-                    asset_id=str(dest_id), asset_type=asset_type,
-                    data=data, url=url, metadata={'replicated_from': str(source_id)},
+                    asset_id=str(dest_id),
+                    asset_type=asset_type,
+                    data=data,
+                    url=url,
+                    metadata={'replicated_from': str(source_id)},
                 )
                 if success:
                     type_name = self.cache_manager.get_asset_type_name(asset_type)
@@ -1136,6 +1279,7 @@ class CacheScraper:
 
         # Parse asset ID out of path like /v1/asset/?id=7547298681
         import re as _re
+
         _m = _re.search(r'[?&]id=(\d+)', path)
         asset_id = _m.group(1) if _m else None
 
@@ -1151,7 +1295,7 @@ class CacheScraper:
             f'[DIRECT ASSET] asset_id={asset_id!r} '
             f'status={status} is_redirect={is_redirect} '
             f'body_len={len(body)} magic={magic} '
-            f'content_type={content_type!r}'
+            f'content_type={content_type!r}',
         )
 
         if is_redirect:
@@ -1163,14 +1307,13 @@ class CacheScraper:
                 'DEBUG_DIRECT',
                 f'[DIRECT ASSET REDIRECT] asset_id={asset_id!r} cdn_id={_cdn_id!r}  '
                 f'<-- this CDN URL will NOT be caught by process_cdn_response '
-                f'because it was never registered via a batch response'
+                f'because it was never registered via a batch response',
             )
         else:
             # Direct bytes (rare for images but possible). Log what we got.
             log_buffer.log(
                 'DEBUG_DIRECT',
-                f'[DIRECT ASSET BYTES] asset_id={asset_id!r} '
-                f'body_head={body_snippet}'
+                f'[DIRECT ASSET BYTES] asset_id={asset_id!r} body_head={body_snippet}',
             )
 
     # ------------------------------------------------------------------
@@ -1193,6 +1336,7 @@ class CacheScraper:
 
     def _get_roblosecurity(self, *, wait: bool = False) -> str | None:
         from ...utils.roblox_auth import get_roblosecurity, wait_for_roblosecurity
+
         if wait:
             return wait_for_roblosecurity()
         return get_roblosecurity()

@@ -62,16 +62,24 @@ class UsernameSpoofer:
     def _normalize_state(self, state: dict) -> dict:
         base = self._default_state()
         if isinstance(state, dict):
-            base.update({
-                'save_settings': bool(state.get('save_settings', base['save_settings'])),
-                'others_name': str(state.get('others_name', base['others_name'])),
-                'others_apply_ingame': bool(state.get('others_apply_ingame', base['others_apply_ingame'])),
-                'others_verified': bool(state.get('others_verified', base['others_verified'])),
-                'self_name': str(state.get('self_name', base['self_name'])),
-                'self_apply_ingame': bool(state.get('self_apply_ingame', base['self_apply_ingame'])),
-                'self_verified': bool(state.get('self_verified', base['self_verified'])),
-                'self_game_creator': bool(state.get('self_game_creator', base['self_game_creator'])),
-            })
+            base.update(
+                {
+                    'save_settings': bool(state.get('save_settings', base['save_settings'])),
+                    'others_name': str(state.get('others_name', base['others_name'])),
+                    'others_apply_ingame': bool(
+                        state.get('others_apply_ingame', base['others_apply_ingame'])
+                    ),
+                    'others_verified': bool(state.get('others_verified', base['others_verified'])),
+                    'self_name': str(state.get('self_name', base['self_name'])),
+                    'self_apply_ingame': bool(
+                        state.get('self_apply_ingame', base['self_apply_ingame'])
+                    ),
+                    'self_verified': bool(state.get('self_verified', base['self_verified'])),
+                    'self_game_creator': bool(
+                        state.get('self_game_creator', base['self_game_creator'])
+                    ),
+                }
+            )
         return base
 
     @staticmethod
@@ -174,7 +182,9 @@ class UsernameSpoofer:
         return 'User'
 
     @classmethod
-    def _set_creator_id_type_pair(cls, value: dict, creator_id_key: str, creator_type_key: str, user_id: int) -> int:
+    def _set_creator_id_type_pair(
+        cls, value: dict, creator_id_key: str, creator_type_key: str, user_id: int
+    ) -> int:
         if creator_id_key not in value and creator_type_key not in value:
             return 0
 
@@ -184,7 +194,9 @@ class UsernameSpoofer:
             changed += 1
 
         if creator_type_key in value:
-            user_type = cls._game_creator_type_user_value(value.get(creator_type_key), creator_type_key)
+            user_type = cls._game_creator_type_user_value(
+                value.get(creator_type_key), creator_type_key
+            )
             if value.get(creator_type_key) != user_type:
                 value[creator_type_key] = user_type
                 changed += 1
@@ -206,7 +218,9 @@ class UsernameSpoofer:
             ('creatorId', 'creatorType'),
             ('creatorTargetId', 'creatorType'),
         ):
-            changed += cls._set_creator_id_type_pair(value, creator_id_key, creator_type_key, user_id)
+            changed += cls._set_creator_id_type_pair(
+                value, creator_id_key, creator_type_key, user_id
+            )
 
         for child in value.values():
             changed += cls._set_game_creator_fields(child, user_id)

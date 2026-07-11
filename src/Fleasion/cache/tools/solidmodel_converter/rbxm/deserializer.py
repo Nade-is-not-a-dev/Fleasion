@@ -61,6 +61,7 @@ def _decompress_chunk(raw: bytes, uncompressed_size: int) -> bytes:
         raw, uncompressed_size=uncompressed_size
     )
 
+
 # 24 axis-aligned rotation matrices (orientation IDs 0..23).
 # Each is a 3x3 matrix stored row-major as 9 floats.
 _ORIENTATION_MATRICES: dict[int, tuple[float, ...]] = {
@@ -437,27 +438,19 @@ class RbxmDeserializer:
             results.append(val)
         return results
 
-    def _read_udims(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, float | int]]:
+    def _read_udims(self, data: bytes, offset: int, count: int) -> list[dict[str, float | int]]:
         scales = deinterleave_f32(data, offset, count)
         offsets = deinterleave_i32(data, offset + count * 4, count)
         return [{'S': scales[i], 'O': offsets[i]} for i in range(count)]
 
-    def _read_udim2s(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, float | int]]:
+    def _read_udim2s(self, data: bytes, offset: int, count: int) -> list[dict[str, float | int]]:
         xs = deinterleave_f32(data, offset, count)
         ys = deinterleave_f32(data, offset + count * 4, count)
         xo = deinterleave_i32(data, offset + count * 8, count)
         yo = deinterleave_i32(data, offset + count * 12, count)
-        return [
-            {'XS': xs[i], 'XO': xo[i], 'YS': ys[i], 'YO': yo[i]} for i in range(count)
-        ]
+        return [{'XS': xs[i], 'XO': xo[i], 'YS': ys[i], 'YO': yo[i]} for i in range(count)]
 
-    def _read_rays(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, dict[str, float]]]:
+    def _read_rays(self, data: bytes, offset: int, count: int) -> list[dict[str, dict[str, float]]]:
         results: list[dict[str, dict[str, float]]] = []
         for _ in range(count):
             ox, offset = read_f32(data, offset)
@@ -483,32 +476,24 @@ class RbxmDeserializer:
     def _read_brick_colors(self, data: bytes, offset: int, count: int) -> list[int]:
         return deinterleave_u32(data, offset, count)
 
-    def _read_color3s(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, float]]:
+    def _read_color3s(self, data: bytes, offset: int, count: int) -> list[dict[str, float]]:
         rs = deinterleave_f32(data, offset, count)
         gs = deinterleave_f32(data, offset + count * 4, count)
         bs = deinterleave_f32(data, offset + count * 8, count)
         return [{'R': rs[i], 'G': gs[i], 'B': bs[i]} for i in range(count)]
 
-    def _read_vector2s(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, float]]:
+    def _read_vector2s(self, data: bytes, offset: int, count: int) -> list[dict[str, float]]:
         xs = deinterleave_f32(data, offset, count)
         ys = deinterleave_f32(data, offset + count * 4, count)
         return [{'X': xs[i], 'Y': ys[i]} for i in range(count)]
 
-    def _read_vector3s(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, float]]:
+    def _read_vector3s(self, data: bytes, offset: int, count: int) -> list[dict[str, float]]:
         xs = deinterleave_f32(data, offset, count)
         ys = deinterleave_f32(data, offset + count * 4, count)
         zs = deinterleave_f32(data, offset + count * 8, count)
         return [{'X': xs[i], 'Y': ys[i], 'Z': zs[i]} for i in range(count)]
 
-    def _read_vector2int16s(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, int]]:
+    def _read_vector2int16s(self, data: bytes, offset: int, count: int) -> list[dict[str, int]]:
         results: list[dict[str, int]] = []
         for _ in range(count):
             x = struct.unpack_from('<h', data, offset)[0]
@@ -517,9 +502,7 @@ class RbxmDeserializer:
             results.append({'X': x, 'Y': y})
         return results
 
-    def _read_vector3int16s(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, int]]:
+    def _read_vector3int16s(self, data: bytes, offset: int, count: int) -> list[dict[str, int]]:
         results: list[dict[str, int]] = []
         for _ in range(count):
             x = struct.unpack_from('<h', data, offset)[0]
@@ -640,9 +623,7 @@ class RbxmDeserializer:
             results.append(keys)
         return results
 
-    def _read_number_ranges(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, float]]:
+    def _read_number_ranges(self, data: bytes, offset: int, count: int) -> list[dict[str, float]]:
         results: list[dict[str, float]] = []
         for _ in range(count):
             low, offset = read_f32(data, offset)
@@ -702,9 +683,7 @@ class RbxmDeserializer:
                 results.append(None)
         return results
 
-    def _read_color3uint8s(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, int]]:
+    def _read_color3uint8s(self, data: bytes, offset: int, count: int) -> list[dict[str, int]]:
         rs = data[offset : offset + count]
         gs = data[offset + count : offset + 2 * count]
         bs = data[offset + 2 * count : offset + 3 * count]
@@ -716,8 +695,7 @@ class RbxmDeserializer:
     def _read_shared_strings(self, data: bytes, offset: int, count: int) -> list[bytes]:
         indices = deinterleave_u32(data, offset, count)
         return [
-            self._shared_strings[idx] if idx < len(self._shared_strings) else b''
-            for idx in indices
+            self._shared_strings[idx] if idx < len(self._shared_strings) else b'' for idx in indices
         ]
 
     def _read_bytecodes(self, data: bytes, offset: int, count: int) -> list[bytes]:
@@ -748,9 +726,7 @@ class RbxmDeserializer:
         present = self._read_bools(data, offset, count)
         return [cframes[i] if present[i] else None for i in range(count)]
 
-    def _read_unique_ids(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, int]]:
+    def _read_unique_ids(self, data: bytes, offset: int, count: int) -> list[dict[str, int]]:
         records = deinterleave_bytes(data, offset, count, 16)
         results: list[dict[str, int]] = []
         for record in records:
@@ -776,14 +752,10 @@ class RbxmDeserializer:
             )
         return results
 
-    def _read_security_capabilities(
-        self, data: bytes, offset: int, count: int
-    ) -> list[int]:
+    def _read_security_capabilities(self, data: bytes, offset: int, count: int) -> list[int]:
         return deinterleave_u64(data, offset, count)
 
-    def _read_contents(
-        self, data: bytes, offset: int, count: int
-    ) -> list[dict[str, Any] | None]:
+    def _read_contents(self, data: bytes, offset: int, count: int) -> list[dict[str, Any] | None]:
         source_types = deinterleave_u32(data, offset, count)
         offset += count * 4
 
@@ -822,9 +794,7 @@ class RbxmDeserializer:
                         else None
                     )
                     external_object_index += 1
-                    results.append(
-                        {'SourceType': 'Object', 'Ref': ref, 'External': True}
-                    )
+                    results.append({'SourceType': 'Object', 'Ref': ref, 'External': True})
             else:
                 results.append({'SourceType': source_type})
         return results
@@ -856,9 +826,7 @@ class RbxmDeserializer:
             for child in inst.children:
                 parented.add(child.referent)
 
-        return [
-            inst for inst in self._instances.values() if inst.referent not in parented
-        ]
+        return [inst for inst in self._instances.values() if inst.referent not in parented]
 
 
 def _quat_to_matrix(x: float, y: float, z: float, w: float) -> tuple[float, ...]:

@@ -183,24 +183,42 @@ def parse_obj_to_csg_vertices(
                         tv = 1.0 - tv
 
                         vert = CSGVertex(
-                            px=vx, py=vy, pz=vz,
-                            nx=nx, ny=ny, nz=nz,
-                            cr=cr, cg=cg, cb=cb, ca=255,
+                            px=vx,
+                            py=vy,
+                            pz=vz,
+                            nx=nx,
+                            ny=ny,
+                            nz=nz,
+                            cr=cr,
+                            cg=cg,
+                            cb=cb,
+                            ca=255,
                             # extra_r is a 1-indexed surface/part ID mapping the vertex to one
                             # of the source Parts from ChildData.  The engine rejects 0 as
                             # invalid.  We have no per-face part information from OBJ, so we
                             # claim surface 1 for every vertex (the safest valid value).
-                            extra_r=1, extra_g=0, extra_b=0, extra_a=0,
-                            u=tu, v=tv,
+                            extra_r=1,
+                            extra_g=0,
+                            extra_b=0,
+                            extra_a=0,
+                            u=tu,
+                            v=tv,
                             # uvStuds / uvDecal are auxiliary UV channels used by Roblox's
                             # SurfaceAppearance system.  The engine stores 0.0 for both when
                             # no stud/decal mapping is needed; non-zero values here confuse
                             # the texture pipeline and can cause visual or load failures.
-                            u_studs=0.0, v_studs=0.0,
-                            u_decal=0.0, v_decal=0.0,
+                            u_studs=0.0,
+                            v_studs=0.0,
+                            u_decal=0.0,
+                            v_decal=0.0,
                             # Tangent will be filled in during pass 2
-                            tx=0.0, ty=0.0, tz=0.0,
-                            ed0=0.0, ed1=0.0, ed2=0.0, ed3=0.0,
+                            tx=0.0,
+                            ty=0.0,
+                            tz=0.0,
+                            ed0=0.0,
+                            ed1=0.0,
+                            ed2=0.0,
+                            ed3=0.0,
                         )
                         vert_idx = len(vertices_out)
                         unique_verts[key] = vert_idx
@@ -244,21 +262,42 @@ def parse_obj_to_csg_vertices(
 
         v = vertices_out[vi]
         vertices_out[vi] = CSGVertex(
-            px=v.px, py=v.py, pz=v.pz,
-            nx=v.nx, ny=v.ny, nz=v.nz,
-            cr=v.cr, cg=v.cg, cb=v.cb, ca=v.ca,
-            extra_r=v.extra_r, extra_g=v.extra_g, extra_b=v.extra_b, extra_a=v.extra_a,
-            u=v.u, v=v.v,
-            u_studs=v.u_studs, v_studs=v.v_studs,
-            u_decal=v.u_decal, v_decal=v.v_decal,
-            tx=ax, ty=ay, tz=az,
-            ed0=v.ed0, ed1=v.ed1, ed2=v.ed2, ed3=v.ed3,
+            px=v.px,
+            py=v.py,
+            pz=v.pz,
+            nx=v.nx,
+            ny=v.ny,
+            nz=v.nz,
+            cr=v.cr,
+            cg=v.cg,
+            cb=v.cb,
+            ca=v.ca,
+            extra_r=v.extra_r,
+            extra_g=v.extra_g,
+            extra_b=v.extra_b,
+            extra_a=v.extra_a,
+            u=v.u,
+            v=v.v,
+            u_studs=v.u_studs,
+            v_studs=v.v_studs,
+            u_decal=v.u_decal,
+            v_decal=v.v_decal,
+            tx=ax,
+            ty=ay,
+            tz=az,
+            ed0=v.ed0,
+            ed1=v.ed1,
+            ed2=v.ed2,
+            ed3=v.ed3,
         )
 
     log.info(
         'OBJ parsed: %d positions, %d normals, %d UVs → %d unique vertices, %d triangles',
-        len(raw_v), len(raw_vn), len(raw_vt),
-        len(vertices_out), len(indices_out) // 3,
+        len(raw_v),
+        len(raw_vn),
+        len(raw_vt),
+        len(vertices_out),
+        len(indices_out) // 3,
     )
     return vertices_out, indices_out
 
@@ -309,6 +348,9 @@ def export_csg_mesh(obj_path: Path, version: int = 2) -> bytes:
 
     log.info(
         'Serializing CSGMDL v%d from %s: %d vertices, %d triangles',
-        version, obj_path.name, len(vertices), len(indices) // 3,
+        version,
+        obj_path.name,
+        len(vertices),
+        len(indices) // 3,
     )
     return serialize_csg_mesh(vertices, indices, version=version)

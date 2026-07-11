@@ -7,7 +7,14 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QEvent, pyqtSignal
+from PyQt6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QPropertyAnimation,
+    Qt,
+    QTimer,
+    pyqtSignal,
+)
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -31,12 +38,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ..cache.tools.ktx_to_png import convert as ktx_to_png, strip_prefixed_ktx
 from ..modifications.manager import ModificationManager, normalise_target_path
 from ..modifications.platform_targets import (
     read_current_platform_original_asset,
     target_path_for_current_platform,
 )
-from ..cache.tools.ktx_to_png import convert as ktx_to_png, strip_prefixed_ktx
 from ..utils import format_count, log_buffer, open_folder
 from ..utils.threading import run_in_thread
 from .file_drop import FileDropLineEdit
@@ -47,46 +54,138 @@ from .theme import ThemeManager
 # ---------------------------------------------------------------------------
 
 AVATAR_MESHES = [
-    ('Left Arm',  target_path_for_current_platform(r'content\avatar\meshes\leftarm.mesh')),
-    ('Left Leg',  target_path_for_current_platform(r'content\avatar\meshes\leftleg.mesh')),
-    ('Right Arm', target_path_for_current_platform(r'content\avatar\meshes\rightarm.mesh')),
-    ('Right Leg', target_path_for_current_platform(r'content\avatar\meshes\rightleg.mesh')),
-    ('Torso',     target_path_for_current_platform(r'content\avatar\meshes\torso.mesh')),
-    ('Head',      target_path_for_current_platform(r'content\avatar\heads\head.mesh')),
+    (
+        'Left Arm',
+        target_path_for_current_platform(r'content\avatar\meshes\leftarm.mesh'),
+    ),
+    (
+        'Left Leg',
+        target_path_for_current_platform(r'content\avatar\meshes\leftleg.mesh'),
+    ),
+    (
+        'Right Arm',
+        target_path_for_current_platform(r'content\avatar\meshes\rightarm.mesh'),
+    ),
+    (
+        'Right Leg',
+        target_path_for_current_platform(r'content\avatar\meshes\rightleg.mesh'),
+    ),
+    ('Torso', target_path_for_current_platform(r'content\avatar\meshes\torso.mesh')),
+    ('Head', target_path_for_current_platform(r'content\avatar\heads\head.mesh')),
 ]
 
 HEAD_VARIANTS = [f'head{chr(c)}.mesh' for c in range(ord('A'), ord('P') + 1)]
 
 SKYBOX_FACES = [
-    ('Sky \u2014 Back',  target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_bk.tex')),
-    ('Sky \u2014 Down',  target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_dn.tex')),
-    ('Sky \u2014 Front', target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_ft.tex')),
-    ('Sky \u2014 Left',  target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_lf.tex')),
-    ('Sky \u2014 Right', target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_rt.tex')),
-    ('Sky \u2014 Up',    target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_up.tex')),
+    (
+        'Sky \u2014 Back',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_bk.tex'),
+    ),
+    (
+        'Sky \u2014 Down',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_dn.tex'),
+    ),
+    (
+        'Sky \u2014 Front',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_ft.tex'),
+    ),
+    (
+        'Sky \u2014 Left',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_lf.tex'),
+    ),
+    (
+        'Sky \u2014 Right',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_rt.tex'),
+    ),
+    (
+        'Sky \u2014 Up',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\sky512_up.tex'),
+    ),
 ]
 
 INDOOR_FACES = [
-    ('Indoor \u2014 Back',  target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_bk.tex')),
-    ('Indoor \u2014 Down',  target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_dn.tex')),
-    ('Indoor \u2014 Front', target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_ft.tex')),
-    ('Indoor \u2014 Left',  target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_lf.tex')),
-    ('Indoor \u2014 Right', target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_rt.tex')),
-    ('Indoor \u2014 Up',    target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_up.tex')),
+    (
+        'Indoor \u2014 Back',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_bk.tex'),
+    ),
+    (
+        'Indoor \u2014 Down',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_dn.tex'),
+    ),
+    (
+        'Indoor \u2014 Front',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_ft.tex'),
+    ),
+    (
+        'Indoor \u2014 Left',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_lf.tex'),
+    ),
+    (
+        'Indoor \u2014 Right',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_rt.tex'),
+    ),
+    (
+        'Indoor \u2014 Up',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\sky\indoor512_up.tex'),
+    ),
 ]
 
 SOUNDS = [
-    ('Footsteps (Plastic)', target_path_for_current_platform(r'content\sounds\action_footsteps_plastic.mp3'), 'bundled:empty.mp3'),
-    ('Falling',             target_path_for_current_platform(r'content\sounds\action_falling.ogg'),           'bundled:empty.ogg'),
-    ('Get Up',              target_path_for_current_platform(r'content\sounds\action_get_up.mp3'),            'bundled:empty.mp3'),
-    ('Jump',                target_path_for_current_platform(r'content\sounds\action_jump.mp3'),              'bundled:empty.mp3'),
-    ('Jump Land',           target_path_for_current_platform(r'content\sounds\action_jump_land.mp3'),         'bundled:empty.mp3'),
-    ('Swim',                target_path_for_current_platform(r'content\sounds\action_swim.mp3'),              'bundled:empty.mp3'),
-    ('Explosion',           target_path_for_current_platform(r'content\sounds\impact_explosion_03.mp3'),      'bundled:empty.mp3'),
-    ('Water Impact',        target_path_for_current_platform(r'content\sounds\impact_water.mp3'),             'bundled:empty.mp3'),
-    ('Oof',                 target_path_for_current_platform(r'content\sounds\oof.ogg'),                      'bundled:empty.ogg'),
-    ('Ouch',                target_path_for_current_platform(r'content\sounds\ouch.ogg'),                     'bundled:empty.ogg'),
-    ('Volume Slider',       target_path_for_current_platform(r'content\sounds\volume_slider.ogg'),            'bundled:empty.ogg'),
+    (
+        'Footsteps (Plastic)',
+        target_path_for_current_platform(r'content\sounds\action_footsteps_plastic.mp3'),
+        'bundled:empty.mp3',
+    ),
+    (
+        'Falling',
+        target_path_for_current_platform(r'content\sounds\action_falling.ogg'),
+        'bundled:empty.ogg',
+    ),
+    (
+        'Get Up',
+        target_path_for_current_platform(r'content\sounds\action_get_up.mp3'),
+        'bundled:empty.mp3',
+    ),
+    (
+        'Jump',
+        target_path_for_current_platform(r'content\sounds\action_jump.mp3'),
+        'bundled:empty.mp3',
+    ),
+    (
+        'Jump Land',
+        target_path_for_current_platform(r'content\sounds\action_jump_land.mp3'),
+        'bundled:empty.mp3',
+    ),
+    (
+        'Swim',
+        target_path_for_current_platform(r'content\sounds\action_swim.mp3'),
+        'bundled:empty.mp3',
+    ),
+    (
+        'Explosion',
+        target_path_for_current_platform(r'content\sounds\impact_explosion_03.mp3'),
+        'bundled:empty.mp3',
+    ),
+    (
+        'Water Impact',
+        target_path_for_current_platform(r'content\sounds\impact_water.mp3'),
+        'bundled:empty.mp3',
+    ),
+    (
+        'Oof',
+        target_path_for_current_platform(r'content\sounds\oof.ogg'),
+        'bundled:empty.ogg',
+    ),
+    (
+        'Ouch',
+        target_path_for_current_platform(r'content\sounds\ouch.ogg'),
+        'bundled:empty.ogg',
+    ),
+    (
+        'Volume Slider',
+        target_path_for_current_platform(r'content\sounds\volume_slider.ogg'),
+        'bundled:empty.ogg',
+    ),
 ]
 
 if sys.platform.startswith('linux'):
@@ -97,34 +196,68 @@ if sys.platform.startswith('linux'):
     ]
 
 # File-type filter strings for QFileDialog
-MESH_FILTER  = 'Mesh Files (*.mesh *.obj);;All Files (*)'
+MESH_FILTER = 'Mesh Files (*.mesh *.obj);;All Files (*)'
 IMAGE_FILTER = 'Image Files (*.png *.jpg *.jpeg *.tex);;All Files (*)'
 # DDS textures — Roblox accepts a .png renamed to .dds as a drop-in replacement
-DDS_FILTER   = 'Image Files (*.dds *.png);;All Files (*)'
+DDS_FILTER = 'Image Files (*.dds *.png);;All Files (*)'
 # JPG textures (moon/sun) — Roblox also accepts a .png renamed to .jpg
-JPG_FILTER   = 'Image Files (*.jpg *.jpeg *.png);;All Files (*)'
+JPG_FILTER = 'Image Files (*.jpg *.jpeg *.png);;All Files (*)'
 SOUND_FILTER = 'Audio Files (*.mp3 *.ogg *.wav);;All Files (*)'
-FONT_FILTER  = 'Font Files (*.ttf *.otf *.ttc);;All Files (*)'
+FONT_FILTER = 'Font Files (*.ttf *.otf *.ttc);;All Files (*)'
 
 TEXTURES = [
     # (display_name, target_path, file_filter)
-    ('High Quality Studs — Diffuse',       target_path_for_current_platform(r'PlatformContent\pc\textures\plastic\diffuse.dds'),      DDS_FILTER),
-    ('High Quality Studs — Normal',        target_path_for_current_platform(r'PlatformContent\pc\textures\plastic\normal.dds'),       DDS_FILTER),
-    ('High Quality Studs — Detail',        target_path_for_current_platform(r'PlatformContent\pc\textures\plastic\normaldetail.dds'), DDS_FILTER),
-    ('Low Quality Studs',                  target_path_for_current_platform(r'PlatformContent\pc\textures\studs.dds'),                DDS_FILTER),
-    ('Shiftlock Cursor',                   target_path_for_current_platform(r'content\textures\MouseLockedCursor.png'),               IMAGE_FILTER),
-    ('Cursor — Pointing',                  target_path_for_current_platform(r'content\textures\Cursors\KeyboardMouse\ArrowCursor.png'),    IMAGE_FILTER),
-    ('Cursor — Arrow',                     target_path_for_current_platform(r'content\textures\Cursors\KeyboardMouse\ArrowFarCursor.png'), IMAGE_FILTER),
-    ('Cursor — IBeam',                     target_path_for_current_platform(r'content\textures\Cursors\KeyboardMouse\IBeamCursor.png'),    IMAGE_FILTER),
-    ('Moon',                               target_path_for_current_platform(r'content\sky\moon.jpg'),                                JPG_FILTER),
-    ('Sun',                                target_path_for_current_platform(r'content\sky\sun.jpg'),                                 JPG_FILTER),
+    (
+        'High Quality Studs — Diffuse',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\plastic\diffuse.dds'),
+        DDS_FILTER,
+    ),
+    (
+        'High Quality Studs — Normal',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\plastic\normal.dds'),
+        DDS_FILTER,
+    ),
+    (
+        'High Quality Studs — Detail',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\plastic\normaldetail.dds'),
+        DDS_FILTER,
+    ),
+    (
+        'Low Quality Studs',
+        target_path_for_current_platform(r'PlatformContent\pc\textures\studs.dds'),
+        DDS_FILTER,
+    ),
+    (
+        'Shiftlock Cursor',
+        target_path_for_current_platform(r'content\textures\MouseLockedCursor.png'),
+        IMAGE_FILTER,
+    ),
+    (
+        'Cursor — Pointing',
+        target_path_for_current_platform(r'content\textures\Cursors\KeyboardMouse\ArrowCursor.png'),
+        IMAGE_FILTER,
+    ),
+    (
+        'Cursor — Arrow',
+        target_path_for_current_platform(
+            r'content\textures\Cursors\KeyboardMouse\ArrowFarCursor.png'
+        ),
+        IMAGE_FILTER,
+    ),
+    (
+        'Cursor — IBeam',
+        target_path_for_current_platform(r'content\textures\Cursors\KeyboardMouse\IBeamCursor.png'),
+        IMAGE_FILTER,
+    ),
+    ('Moon', target_path_for_current_platform(r'content\sky\moon.jpg'), JPG_FILTER),
+    ('Sun', target_path_for_current_platform(r'content\sky\sun.jpg'), JPG_FILTER),
 ]
 
 # Status badge styling
 _STATUS_STYLES = {
-    'not_set':        'color: #888; font-style: italic;',
-    'pending':        'color: #4a9eda;',
-    'applied':        'font-style: normal;',
+    'not_set': 'color: #888; font-style: italic;',
+    'pending': 'color: #4a9eda;',
+    'applied': 'font-style: normal;',
     'orphaned_stash': 'color: #c90; font-weight: bold;',
 }
 
@@ -132,13 +265,21 @@ _STATUS_STYLES = {
 # _RichTextButton — QPushButton-like label that renders HTML/rich text
 # ═══════════════════════════════════════════════════════════════════
 
+
 class _RichTextButton(QPushButton):
     """QPushButton that draws a label and a larger suffix character, each independently
     vertically centred so mixed font sizes don't shift each other's position."""
 
-    def __init__(self, label: str, suffix: str = '', suffix_size_offset: int = 0,
-                 y_offset: int = 0, suffix_x_offset: int = 0,
-                 suffix_pixel_size: int | None = None, parent=None):
+    def __init__(
+        self,
+        label: str,
+        suffix: str = '',
+        suffix_size_offset: int = 0,
+        y_offset: int = 0,
+        suffix_x_offset: int = 0,
+        suffix_pixel_size: int | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self._label = label
         self._suffix = suffix
@@ -150,8 +291,8 @@ class _RichTextButton(QPushButton):
         super().setText('\u200b')
 
     def paintEvent(self, a0):
-        from PyQt6.QtWidgets import QStyleOptionButton, QStyle
-        from PyQt6.QtGui import QPainter, QFontMetrics, QFont, QPalette
+        from PyQt6.QtGui import QFont, QFontMetrics, QPainter, QPalette
+        from PyQt6.QtWidgets import QStyle, QStyleOptionButton
 
         opt = QStyleOptionButton()
         self.initStyleOption(opt)
@@ -192,13 +333,19 @@ class _RichTextButton(QPushButton):
             start_x = int(cr.x() + (cr.width() - label_w - arrow_w) / 2)
 
             # baseline = center_y + (ascent - descent) / 2 centres each piece independently
-            baseline_label = int(center_y + (fm_base.ascent() - fm_base.descent()) / 2) + self._y_offset
-            baseline_arrow = int(center_y + (fm_large.ascent() - fm_large.descent()) / 2) + self._y_offset
+            baseline_label = (
+                int(center_y + (fm_base.ascent() - fm_base.descent()) / 2) + self._y_offset
+            )
+            baseline_arrow = (
+                int(center_y + (fm_large.ascent() - fm_large.descent()) / 2) + self._y_offset
+            )
 
             painter.setFont(base_font)
             painter.drawText(start_x, baseline_label, label_text)
             painter.setFont(large_font)
-            painter.drawText(start_x + label_w + self._suffix_x_offset, baseline_arrow, self._suffix)
+            painter.drawText(
+                start_x + label_w + self._suffix_x_offset, baseline_arrow, self._suffix
+            )
         else:
             fm = QFontMetrics(base_font)
             label_text = self._label + (' ' if self._suffix else '')
@@ -219,18 +366,24 @@ class _RichTextButton(QPushButton):
 # CollapsibleSection
 # ═══════════════════════════════════════════════════════════════════
 
+
 class CollapsibleSection(QWidget):
     """A section with a clickable header that collapses/expands its content."""
 
-    _EXPANDED_ARROW = '\u25BC'
-    _COLLAPSED_ARROW = '\u25B6'
+    _EXPANDED_ARROW = '\u25bc'
+    _COLLAPSED_ARROW = '\u25b6'
     _DEFAULT_ARROW_STYLE = 'border: none;'
     _WINDOWS_COLLAPSED_ARROW_SIZE = 19
     _WINDOWS_EXPANDED_ARROW_STYLE = 'font-size: 11px; border: none;'
     _WINDOWS_COLLAPSED_ARROW_STYLE = f'font-size: {_WINDOWS_COLLAPSED_ARROW_SIZE}px; border: none;'
 
-    def __init__(self, title: str, parent=None, expanded: bool = True,
-                 header_widgets: list[QWidget] | None = None):
+    def __init__(
+        self,
+        title: str,
+        parent=None,
+        expanded: bool = True,
+        header_widgets: list[QWidget] | None = None,
+    ):
         super().__init__(parent)
 
         self._expanded = expanded
@@ -284,8 +437,9 @@ class CollapsibleSection(QWidget):
 
     def paintEvent(self, a0):  # noqa: N802
         """Draw a rounded-rect card that adapts to dark and light themes."""
-        from PyQt6.QtGui import QPainter, QPainterPath
         from PyQt6.QtCore import QRectF
+        from PyQt6.QtGui import QPainter, QPainterPath
+
         colors = ThemeManager.panel_colors(self.palette())
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -308,7 +462,8 @@ class CollapsibleSection(QWidget):
         """Return platform-specific arrow styling for Unicode triangle glyphs."""
         if os.name == 'nt':
             return (
-                self._WINDOWS_EXPANDED_ARROW_STYLE if expanded
+                self._WINDOWS_EXPANDED_ARROW_STYLE
+                if expanded
                 else self._WINDOWS_COLLAPSED_ARROW_STYLE
             )
         return self._DEFAULT_ARROW_STYLE
@@ -328,9 +483,7 @@ class CollapsibleSection(QWidget):
         if self._expanded:
             self._animation.setStartValue(self._content.maximumHeight())
             self._animation.setEndValue(self._content.sizeHint().height())
-            self._animation.finished.connect(
-                lambda: self._content.setMaximumHeight(16777215)
-            )
+            self._animation.finished.connect(lambda: self._content.setMaximumHeight(16777215))
         else:
             # Capture the real rendered height so the animation starts from
             # the actual visible size rather than QWIDGETSIZE_MAX.
@@ -345,6 +498,7 @@ class CollapsibleSection(QWidget):
 # ═══════════════════════════════════════════════════════════════════
 # NoWheelSpinBox — QSpinBox that ignores mouse wheel events
 # ═══════════════════════════════════════════════════════════════════
+
 
 class NoWheelSpinBox(QSpinBox):
     """QSpinBox that ignores wheel events to prevent accidental value changes."""
@@ -364,6 +518,7 @@ class NoWheelSlider(QSlider):
 # DropdownComboBox — QComboBox with ▼ indicator instead of OS arrow
 # ═══════════════════════════════════════════════════════════════════
 
+
 class DropdownComboBox(QComboBox):
     """QComboBox that paints ▼ as the dropdown indicator and ignores wheel events."""
 
@@ -372,7 +527,7 @@ class DropdownComboBox(QComboBox):
         e.ignore()
 
     def paintEvent(self, e):
-        from PyQt6.QtWidgets import QStylePainter, QStyleOptionComboBox, QStyle
+        from PyQt6.QtWidgets import QStyle, QStyleOptionComboBox, QStylePainter
 
         style = self.style()
         if style is None:
@@ -390,20 +545,23 @@ class DropdownComboBox(QComboBox):
 
         # Overdraw the default OS arrow indicator with ▼
         arrow_rect = style.subControlRect(
-            QStyle.ComplexControl.CC_ComboBox, opt,
-            QStyle.SubControl.SC_ComboBoxArrow, self,
+            QStyle.ComplexControl.CC_ComboBox,
+            opt,
+            QStyle.SubControl.SC_ComboBoxArrow,
+            self,
         )
         painter.fillRect(arrow_rect.adjusted(1, 1, -1, -1), self.palette().button())
         painter.setPen(self.palette().buttonText().color())
         f = painter.font()
         f.setPointSize(8)
         painter.setFont(f)
-        painter.drawText(arrow_rect, Qt.AlignmentFlag.AlignCenter, '\u25BC')
+        painter.drawText(arrow_rect, Qt.AlignmentFlag.AlignCenter, '\u25bc')
 
 
 # ═══════════════════════════════════════════════════════════════════
 # ModRowWidget — the reusable row for each modifiable file
 # ═══════════════════════════════════════════════════════════════════
+
 
 class ModRowWidget(QWidget):
     """A single row representing one modification entry."""
@@ -457,10 +615,10 @@ class ModRowWidget(QWidget):
 
         # Source text field (expands to fill remaining row space)
         self._source_edit = FileDropLineEdit()
-        self._source_edit.setPlaceholderText('ID, URL (http://...), path (C:\\...), or "remove" to remove')
-        self._source_edit.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        self._source_edit.setPlaceholderText(
+            'ID, URL (http://...), path (C:\\...), or "remove" to remove'
         )
+        self._source_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self._source_edit)
 
         # Debounce timer: apply 1 s after the user stops typing
@@ -493,9 +651,7 @@ class ModRowWidget(QWidget):
 
         # Preview button
         preview_arrow_size = (
-            CollapsibleSection._WINDOWS_COLLAPSED_ARROW_SIZE
-            if os.name == 'nt'
-            else None
+            CollapsibleSection._WINDOWS_COLLAPSED_ARROW_SIZE if os.name == 'nt' else None
         )
         self._preview_btn = _RichTextButton(
             'Preview',
@@ -541,6 +697,7 @@ class ModRowWidget(QWidget):
     def _check_for_orphaned_stash(self):
         """Show a warning if a stash file exists but Fleasion has no active record."""
         from ..modifications.manager import MOD_ORIGINALS_DIR, normalise_target_path
+
         roblox_dirs = self._manager.roblox_dirs
         if not roblox_dirs:
             return
@@ -555,7 +712,7 @@ class ModRowWidget(QWidget):
                 'A stash of the original file was found on disk but Fleasion has '
                 'no active record for this modification. This can happen if you '
                 'manually replaced the file, or if Fleasion closed unexpectedly. '
-                'Click \u21BA to restore the original file.'
+                'Click \u21ba to restore the original file.'
             )
 
     def _on_status_changed(self, entry_id: str, status: str, error_msg: str):
@@ -571,9 +728,9 @@ class ModRowWidget(QWidget):
         display_status = 'not_set' if status == 'error' else status
 
         labels = {
-            'not_set':        'Not Set',
-            'pending':        'Applying...',
-            'applied':        'Applied',
+            'not_set': 'Not Set',
+            'pending': 'Applying...',
+            'applied': 'Applied',
             'orphaned_stash': 'Ext. Modified',
         }
         self._status_label.setText(labels.get(display_status, display_status))
@@ -604,9 +761,9 @@ class ModRowWidget(QWidget):
             entry_data['_is_font'] = True
 
         if self._entry_id:
-            self._manager.update_entry(self._entry_id,
-                                       source_type=source_type,
-                                       source_value=source_value)
+            self._manager.update_entry(
+                self._entry_id, source_type=source_type, source_value=source_value
+            )
         else:
             self._entry_id = self._manager.add_entry(entry_data)
 
@@ -640,7 +797,10 @@ class ModRowWidget(QWidget):
 
     def _on_preview(self):
         dlg = ModPreviewDialog(
-            self._manager, self._target_path, self._display_name, self,
+            self._manager,
+            self._target_path,
+            self._display_name,
+            self,
         )
         dlg.exec()
 
@@ -719,7 +879,7 @@ class ModRowWidget(QWidget):
         if text.isdigit():
             return 'asset_id', text
         if text.lower().startswith('rbxassetid://'):
-            return 'asset_id', text[len('rbxassetid://'):]
+            return 'asset_id', text[len('rbxassetid://') :]
         # 'bundled:empty' shorthand → resolve based on target extension
         if text.lower() == 'bundled:empty':
             return 'bundled', self._resolve_bundled_empty()
@@ -769,7 +929,10 @@ class ModRowWidget(QWidget):
             if p.parent.exists():
                 initial_dir = str(p)
         path, _ = QFileDialog.getOpenFileName(
-            self, 'Select replacement file', initial_dir, self._file_filter,
+            self,
+            'Select replacement file',
+            initial_dir,
+            self._file_filter,
         )
         if path:
             self._set_source_text_silent(path)
@@ -787,11 +950,17 @@ class ModRowWidget(QWidget):
 # ModPreviewDialog
 # ═══════════════════════════════════════════════════════════════════
 
+
 class ModPreviewDialog(QDialog):
     """Preview dialog showing Modification vs Original side-by-side tabs."""
 
-    def __init__(self, manager: ModificationManager, target_path: str,
-                 display_name: str, parent=None):
+    def __init__(
+        self,
+        manager: ModificationManager,
+        target_path: str,
+        display_name: str,
+        parent=None,
+    ):
         super().__init__(parent)
         self._manager = manager
         self._target_path = target_path
@@ -839,7 +1008,9 @@ class ModPreviewDialog(QDialog):
         if data is None:
             lower_check = self._target_path.lower()
             if mode == 'original' and lower_check.endswith(('.ttf', '.otf', '.ttc')):
-                lbl = QLabel('Preview of Roblox Original fonts are not supported because it includes multiple Font files')
+                lbl = QLabel(
+                    'Preview of Roblox Original fonts are not supported because it includes multiple Font files'
+                )
                 lbl.setWordWrap(True)
                 layout.addWidget(lbl)
                 self._orig_unavailable = True
@@ -871,12 +1042,13 @@ class ModPreviewDialog(QDialog):
                 # The replacement may be a plain image (PNG/JPEG) even though
                 # the target path ends in .tex/.dds — detect by magic bytes first.
                 _is_raw_image = (
-                    data[:8] == b'\x89PNG\r\n\x1a\n'   # PNG
-                    or data[:2] == b'\xff\xd8'          # JPEG
+                    data[:8] == b'\x89PNG\r\n\x1a\n'  # PNG
+                    or data[:2] == b'\xff\xd8'  # JPEG
                     or data[:6] in (b'GIF87a', b'GIF89a')
                 )
                 if not _is_raw_image:
                     from ..modifications.dds_to_png import tex_to_png_bytes
+
                     converted = tex_to_png_bytes(data)
                     if converted:
                         display_bytes = converted
@@ -889,12 +1061,16 @@ class ModPreviewDialog(QDialog):
                         return container
 
             from PyQt6.QtGui import QPixmap
+
             pixmap = QPixmap()
             pixmap.loadFromData(display_bytes)
             if not pixmap.isNull():
-                scaled = pixmap.scaled(460, 350,
-                                       Qt.AspectRatioMode.KeepAspectRatio,
-                                       Qt.TransformationMode.SmoothTransformation)
+                scaled = pixmap.scaled(
+                    460,
+                    350,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
                 label.setPixmap(scaled)
             else:
                 label.setText('Could not render image')
@@ -904,12 +1080,14 @@ class ModPreviewDialog(QDialog):
         elif lower.endswith('.mesh'):
             try:
                 from ..cache import mesh_processing
+
                 obj_text = mesh_processing.convert(data)
                 if obj_text:
                     if mode == 'mod':
                         self._mod_converted_bytes = obj_text.encode()
                         self._mod_converted_ext = '.obj'
                     from ..cache.obj_viewer import ObjViewerPanel
+
                     viewer = ObjViewerPanel()
                     viewer.load_obj(obj_text)
                     layout.addWidget(viewer)
@@ -923,11 +1101,13 @@ class ModPreviewDialog(QDialog):
             try:
                 # Write to temp file for AudioPlayerWidget
                 import tempfile
+
                 suffix = Path(self._target_path).suffix
                 tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
                 tmp.write(data)
                 tmp.close()
                 from ..cache.audio_player import AudioPlayerWidget
+
                 player = AudioPlayerWidget(tmp.name)
                 layout.addWidget(player)
             except Exception as exc:
@@ -939,21 +1119,25 @@ class ModPreviewDialog(QDialog):
                 # Check if it's actually JSON (FontFamily) instead of a font file
                 try:
                     import json as json_module
+
                     decoded = data.decode('utf-8', errors='replace')
                     json_module.loads(decoded)
                     # It's valid JSON, show as JSON instead
                     from PyQt6.QtWidgets import QTextEdit
+
                     viewer = QTextEdit()
                     viewer.setReadOnly(True)
                     # Pretty print the JSON
                     import json as json_module
+
                     parsed = json_module.loads(decoded)
                     pretty_json = json_module.dumps(parsed, indent=2)
                     viewer.setPlainText(pretty_json)
                     layout.addWidget(viewer)
-                except (ValueError, UnicodeDecodeError):
+                except ValueError, UnicodeDecodeError:
                     # Not JSON, treat as font file
                     from ..cache.font_viewer import FontViewerWidget
+
                     font_viewer = FontViewerWidget(data)
                     layout.addWidget(font_viewer)
             except Exception as exc:
@@ -968,6 +1152,7 @@ class ModPreviewDialog(QDialog):
     def _load_data(self, mode: str) -> bytes | None:
         """Load file bytes for preview. mode='mod' or 'original'."""
         from ..modifications.manager import MOD_ORIGINALS_DIR, normalise_target_path
+
         if not self._manager.roblox_dirs:
             return None
         roblox_dir = self._manager.roblox_dirs[0]
@@ -985,8 +1170,7 @@ class ModPreviewDialog(QDialog):
             if original is not None:
                 return original
             mod_active = any(
-                e.get('target_path') == self._target_path
-                for e in self._manager.entries
+                e.get('target_path') == self._target_path for e in self._manager.entries
             )
             if mod_active:
                 return None
@@ -1001,7 +1185,8 @@ class ModPreviewDialog(QDialog):
 
     def _on_export(self):
         path, _ = QFileDialog.getSaveFileName(
-            self, 'Export Original File',
+            self,
+            'Export Original File',
             Path(self._target_path).name,
         )
         if path:
@@ -1021,7 +1206,9 @@ class ModPreviewDialog(QDialog):
         stem = Path(self._target_path).stem
         default_name = stem + self._mod_converted_ext
         path, _ = QFileDialog.getSaveFileName(
-            self, 'Export Converted File', default_name,
+            self,
+            'Export Converted File',
+            default_name,
         )
         if path:
             export_path = Path(path)
@@ -1065,6 +1252,7 @@ class ModPreviewDialog(QDialog):
 # Fast Flags section widgets
 # ═══════════════════════════════════════════════════════════════════
 
+
 class FFlagSection(QWidget):
     """The complete Fast Flags section content with all controls."""
 
@@ -1072,12 +1260,12 @@ class FFlagSection(QWidget):
         super().__init__(parent)
         self._manager = manager
         self._roblox_monitor = roblox_monitor
-        
+
         self._debounce_timer = QTimer()
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.setInterval(500)
         self._debounce_timer.timeout.connect(self._write_flags)
-        
+
         self._framerate_debounce_timer = QTimer()
         self._framerate_debounce_timer.setSingleShot(True)
         self._framerate_debounce_timer.setInterval(500)
@@ -1093,7 +1281,7 @@ class FFlagSection(QWidget):
 
         # Warning
         warn = QLabel(
-            '\u26A0 Fast Flags are written to ClientSettings/ClientAppSettings.json '
+            '\u26a0 Fast Flags are written to ClientSettings/ClientAppSettings.json '
             'in every detected Roblox directory.'
         )
         warn.setWordWrap(True)
@@ -1143,7 +1331,9 @@ class FFlagSection(QWidget):
         # Texture Quality
         grid.addWidget(QLabel('Texture Quality'), row, 0)
         self._texture_quality = DropdownComboBox()
-        self._texture_quality.addItems(['Default', 'Level 0 (Lowest)', 'Level 1', 'Level 2', 'Level 3 (Highest)'])
+        self._texture_quality.addItems(
+            ['Default', 'Level 0 (Lowest)', 'Level 1', 'Level 2', 'Level 3 (Highest)']
+        )
         self._texture_quality.currentTextChanged.connect(self._schedule_write)
         grid.addWidget(self._texture_quality, row, 1)
         row += 1
@@ -1155,7 +1345,9 @@ class FFlagSection(QWidget):
         lod_row = QHBoxLayout()
         lod_row.addWidget(QLabel('Default'))
         self._mesh_lod_slider = NoWheelSlider(Qt.Orientation.Horizontal)
-        self._mesh_lod_slider.setRange(0, 4)  # 0=Default(no flag), 1=Level0, 2=Level1, 3=Level2, 4=Level3
+        self._mesh_lod_slider.setRange(
+            0, 4
+        )  # 0=Default(no flag), 1=Level0, 2=Level1, 3=Level2, 4=Level3
         self._mesh_lod_slider.setValue(4)
         self._mesh_lod_slider.setEnabled(False)
         self._mesh_lod_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
@@ -1237,7 +1429,7 @@ class FFlagSection(QWidget):
         layout.addLayout(grid)
 
         # Reset button
-        reset_btn = QPushButton('\u21BA Reset All Fast Flags')
+        reset_btn = QPushButton('\u21ba Reset All Fast Flags')
         reset_btn.clicked.connect(self._on_reset_all)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -1266,12 +1458,12 @@ class FFlagSection(QWidget):
         # Only write if FFlags are enabled
         if not self._manager.fast_flags_enabled:
             return
-        
+
         # Check if Roblox Player is running
         is_roblox_running = False
         if self._roblox_monitor:
             is_roblox_running = self._roblox_monitor.is_player_running()
-        
+
         if is_roblox_running:
             # Queue the modification instead of writing immediately
             self._manager.pending_modifications_queue.enqueue_framerate_cap(value)
@@ -1317,12 +1509,12 @@ class FFlagSection(QWidget):
 
     def _write_flags(self):
         settings = self._gather_settings()
-        
+
         # Check if Roblox Player is running
         is_roblox_running = False
         if self._roblox_monitor:
             is_roblox_running = self._roblox_monitor.is_player_running()
-        
+
         if is_roblox_running:
             # Queue the modification instead of writing immediately
             self._manager.pending_modifications_queue.enqueue_fast_flags(settings)
@@ -1336,11 +1528,21 @@ class FFlagSection(QWidget):
 
         # Block signals while bulk-setting
         widgets = [
-            self._rendering_mode, self._msaa, self._dpi_scale,
-            self._alt_enter, self._texture_quality, self._mesh_lod_enabled,
-            self._mesh_lod_slider, self._frm_enabled, self._frm_slider,
-            self._grey_sky, self._pause_vox, self._grass_max,
-            self._grass_min, self._grass_motion, self._framerate_cap,
+            self._rendering_mode,
+            self._msaa,
+            self._dpi_scale,
+            self._alt_enter,
+            self._texture_quality,
+            self._mesh_lod_enabled,
+            self._mesh_lod_slider,
+            self._frm_enabled,
+            self._frm_slider,
+            self._grey_sky,
+            self._pause_vox,
+            self._grass_max,
+            self._grass_min,
+            self._grass_motion,
+            self._framerate_cap,
         ]
         for w in widgets:
             w.blockSignals(True)
@@ -1386,7 +1588,9 @@ class FFlagSection(QWidget):
         mesh_lod_val = s.get('mesh_lod', 4)
         self._mesh_lod_slider.setValue(mesh_lod_val)
         self._mesh_lod_slider.setEnabled(s.get('mesh_lod_enabled', False))
-        self._mesh_lod_value.setText('Default' if mesh_lod_val == 0 else f'Level {mesh_lod_val - 1}')
+        self._mesh_lod_value.setText(
+            'Default' if mesh_lod_val == 0 else f'Level {mesh_lod_val - 1}'
+        )
 
         self._frm_enabled.setChecked(s.get('frm_quality_enabled', False))
         frm_val = s.get('frm_quality', 21)
@@ -1400,7 +1604,7 @@ class FFlagSection(QWidget):
         self._grass_max.setValue(s.get('grass_max') or 0)
         self._grass_min.setValue(s.get('grass_min') or 0)
         self._grass_motion.setValue(s.get('grass_motion') or 0)
-        
+
         self._framerate_cap.setValue(self._manager.framerate_cap)
 
         for w in widgets:
@@ -1434,6 +1638,7 @@ class FFlagSection(QWidget):
 # ModificationsTab — the top-level tab widget
 # ═══════════════════════════════════════════════════════════════════
 
+
 class ModificationsTab(QWidget):
     """The entire Modifications tab, added to the dashboard's QTabWidget."""
 
@@ -1450,10 +1655,12 @@ class ModificationsTab(QWidget):
         # Connect for live status bar updates
         mod_manager.apply_finished.connect(lambda _: self._update_status_bar())
         mod_manager.restore_finished.connect(self._update_status_bar)
-        
+
         # Connect for Roblox player status changes
         if self._roblox_monitor:
-            self._roblox_monitor.player_status_changed.connect(self._on_roblox_player_status_changed)
+            self._roblox_monitor.player_status_changed.connect(
+                self._on_roblox_player_status_changed
+            )
 
     def _setup_ui(self):
         outer = QVBoxLayout()
@@ -1479,7 +1686,8 @@ class ModificationsTab(QWidget):
         self._fflag_toggle.toggled.connect(self._on_fflag_toggle)
 
         fflag_section = CollapsibleSection(
-            'Fast Flags \u26A0', expanded=False,
+            'Fast Flags \u26a0',
+            expanded=False,
             header_widgets=[self._fflag_toggle],
         )
         self._fflag_widget = FFlagSection(self._manager, self._roblox_monitor)
@@ -1498,8 +1706,7 @@ class ModificationsTab(QWidget):
         sky_section.add_widget(apply_all_btn)
 
         for name, path in SKYBOX_FACES:
-            row = ModRowWidget(self._manager, name, path,
-                               file_filter=IMAGE_FILTER)
+            row = ModRowWidget(self._manager, name, path, file_filter=IMAGE_FILTER)
             sky_section.add_widget(row)
             self._row_widgets[path] = row
 
@@ -1509,8 +1716,7 @@ class ModificationsTab(QWidget):
         sky_section.add_widget(indoor_label)
 
         for name, path in INDOOR_FACES:
-            row = ModRowWidget(self._manager, name, path,
-                               file_filter=IMAGE_FILTER)
+            row = ModRowWidget(self._manager, name, path, file_filter=IMAGE_FILTER)
             sky_section.add_widget(row)
             self._row_widgets[path] = row
 
@@ -1519,8 +1725,7 @@ class ModificationsTab(QWidget):
         # ── Textures ─────────────────────────────────────────────
         tex_section = CollapsibleSection('Textures', expanded=True)
         for name, path, filt in TEXTURES:
-            row = ModRowWidget(self._manager, name, path,
-                               file_filter=filt)
+            row = ModRowWidget(self._manager, name, path, file_filter=filt)
             tex_section.add_widget(row)
             self._row_widgets[path] = row
         self._container_layout.addWidget(tex_section)
@@ -1528,8 +1733,7 @@ class ModificationsTab(QWidget):
         # ── R6 Default Avatar Meshes ─────────────────────────────
         self._mesh_section = CollapsibleSection('R6 Default Avatar Meshes', expanded=True)
         for name, path in AVATAR_MESHES:
-            row = ModRowWidget(self._manager, name, path,
-                               file_filter=MESH_FILTER)
+            row = ModRowWidget(self._manager, name, path, file_filter=MESH_FILTER)
             self._mesh_section.add_widget(row)
             self._row_widgets[path] = row
 
@@ -1545,9 +1749,13 @@ class ModificationsTab(QWidget):
         # ── Sounds ───────────────────────────────────────────────
         sounds_section = CollapsibleSection('Sounds', expanded=True)
         for name, path, bundled in SOUNDS:
-            row = ModRowWidget(self._manager, name, path,
-                               file_filter=SOUND_FILTER,
-                               mute_bundled=bundled)
+            row = ModRowWidget(
+                self._manager,
+                name,
+                path,
+                file_filter=SOUND_FILTER,
+                mute_bundled=bundled,
+            )
             sounds_section.add_widget(row)
             self._row_widgets[path] = row
 
@@ -1556,13 +1764,16 @@ class ModificationsTab(QWidget):
         # ── Custom Font ──────────────────────────────────────────
         font_section = CollapsibleSection('Custom Font', expanded=True)
         font_row = ModRowWidget(
-            self._manager, 'Custom Font',
+            self._manager,
+            'Custom Font',
             target_path_for_current_platform(r'content\fonts\CustomFont.ttf'),
             file_filter=FONT_FILTER,
             is_font=True,
         )
         font_section.add_widget(font_row)
-        self._row_widgets[target_path_for_current_platform(r'content\fonts\CustomFont.ttf')] = font_row
+        self._row_widgets[target_path_for_current_platform(r'content\fonts\CustomFont.ttf')] = (
+            font_row
+        )
 
         self._container_layout.addWidget(font_section)
 
@@ -1575,11 +1786,13 @@ class ModificationsTab(QWidget):
             fname = Path(target.replace('\\', '/')).name
             if fname in _head_variant_set:
                 name = fname.replace('.mesh', '').title()
-                row = ModRowWidget(self._manager, name, target,
-                                   file_filter=MESH_FILTER, deletable=True)
+                row = ModRowWidget(
+                    self._manager, name, target, file_filter=MESH_FILTER, deletable=True
+                )
                 row.delete_requested.connect(partial(self._on_row_deleted, row))
                 self._head_variant_layout.insertWidget(
-                    self._head_variant_layout.count() - 1, row,
+                    self._head_variant_layout.count() - 1,
+                    row,
                 )
                 self._row_widgets[target] = row
 
@@ -1635,6 +1848,7 @@ class ModificationsTab(QWidget):
 
     def changeEvent(self, a0: QEvent | None):
         from PyQt6.QtCore import QEvent
+
         super().changeEvent(a0)
         if a0 is not None and a0.type() == QEvent.Type.PaletteChange:
             self._update_container_bg()
@@ -1657,12 +1871,11 @@ class ModificationsTab(QWidget):
             bg = 'background-color: rgb(64, 64, 64);'
         else:
             bg = 'background-color: palette(alternate-base);'
-        self._mod_container.setStyleSheet(
-            f'QWidget#_FleasionModContainer {{ {bg} }}'
-        )
+        self._mod_container.setStyleSheet(f'QWidget#_FleasionModContainer {{ {bg} }}')
 
     def _clear_roblox_cache(self):
         from .delete_cache import DeleteCacheWindow
+
         window = DeleteCacheWindow()
         window.show()
 
@@ -1693,7 +1906,8 @@ class ModificationsTab(QWidget):
         # Filter out already-added variants
         existing = {r._target_path for r in self._row_widgets.values()}
         available = [
-            v for v in HEAD_VARIANTS
+            v
+            for v in HEAD_VARIANTS
             if target_path_for_current_platform(rf'content\avatar\heads\{v}') not in existing
         ]
         if not available:
@@ -1701,17 +1915,22 @@ class ModificationsTab(QWidget):
             return
 
         item, ok = QInputDialog.getItem(
-            self, 'Add Head Variant', 'Select variant:', available, 0, False,
+            self,
+            'Add Head Variant',
+            'Select variant:',
+            available,
+            0,
+            False,
         )
         if ok and item:
             target = target_path_for_current_platform(rf'content\avatar\heads\{item}')
             name = item.replace('.mesh', '').title()
-            row = ModRowWidget(self._manager, name, target,
-                               file_filter=MESH_FILTER, deletable=True)
+            row = ModRowWidget(self._manager, name, target, file_filter=MESH_FILTER, deletable=True)
             row.delete_requested.connect(partial(self._on_row_deleted, row))
             # Insert before the "Add" button (last widget)
             self._head_variant_layout.insertWidget(
-                self._head_variant_layout.count() - 1, row,
+                self._head_variant_layout.count() - 1,
+                row,
             )
             self._row_widgets[target] = row
 
@@ -1721,12 +1940,16 @@ class ModificationsTab(QWidget):
 
     def _on_apply_all_sky(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, 'Select file for all sky faces', '', IMAGE_FILTER,
+            self,
+            'Select file for all sky faces',
+            '',
+            IMAGE_FILTER,
         )
         if not path:
             # Try asset ID instead
             text, ok = QInputDialog.getText(
-                self, 'Asset ID for All Sky Faces',
+                self,
+                'Asset ID for All Sky Faces',
                 'Enter an Asset ID (or cancel):',
             )
             if ok and text.strip() and text.strip().isdigit():
@@ -1758,12 +1981,12 @@ class ModificationsTab(QWidget):
                 row._apply_from_text()
 
     def _add_custom_row(self, name: str, target_path: str) -> ModRowWidget:
-        row = ModRowWidget(self._manager, name, target_path,
-                           deletable=True)
+        row = ModRowWidget(self._manager, name, target_path, deletable=True)
         row.delete_requested.connect(partial(self._on_row_deleted, row))
         # Insert before the "Add" button (first widget in custom section)
         self._custom_content_layout.insertWidget(
-            max(0, self._custom_content_layout.count() - 1), row,
+            max(0, self._custom_content_layout.count() - 1),
+            row,
         )
         self._row_widgets[target_path] = row
         self._custom_rows.append(row)
@@ -1802,7 +2025,10 @@ class ModificationsTab(QWidget):
 # Custom Modification Dialog
 # ═══════════════════════════════════════════════════════════════════
 
-def _relative_target_path_for_resource_file(path: str | Path, roblox_dirs: list[Path]) -> str | None:
+
+def _relative_target_path_for_resource_file(
+    path: str | Path, roblox_dirs: list[Path]
+) -> str | None:
     """Return a safe relative Roblox resource path for a selected file, if possible."""
     try:
         selected = Path(path).expanduser()
@@ -1815,7 +2041,7 @@ def _relative_target_path_for_resource_file(path: str | Path, roblox_dirs: list[
             root = Path(raw_root).expanduser().resolve(strict=True)
             rel = selected_resolved.relative_to(root)
             normalized = normalise_target_path(rel.as_posix())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             continue
         return normalized.as_posix()
     return None
@@ -1860,7 +2086,9 @@ class _CustomModDialog(QDialog):
         row3 = QHBoxLayout()
         row3.addWidget(QLabel('Source:'))
         self._source_edit = FileDropLineEdit()
-        self._source_edit.setPlaceholderText('ID, URL (http://...), path (C:\\...), or "remove" to remove')
+        self._source_edit.setPlaceholderText(
+            'ID, URL (http://...), path (C:\\...), or "remove" to remove'
+        )
         row3.addWidget(self._source_edit)
         browse_btn = QPushButton('Browse\u2026')
         browse_btn.setAutoDefault(False)
@@ -1904,7 +2132,9 @@ class _CustomModDialog(QDialog):
         if self._manager.roblox_dirs:
             start = str(self._manager.roblox_dirs[0])
         path, _ = QFileDialog.getOpenFileName(
-            self, 'Select target file in Roblox directory', start,
+            self,
+            'Select target file in Roblox directory',
+            start,
         )
         if path:
             rel = _relative_target_path_for_resource_file(path, self._manager.roblox_dirs)
@@ -1950,6 +2180,6 @@ class _CustomModDialog(QDialog):
             return
         self.display_name = name
         self.target_path = target
-        raw = self._source_edit.text().strip().strip('"\'') 
+        raw = self._source_edit.text().strip().strip('"\'')
         self.raw_source = raw
         self.accept()

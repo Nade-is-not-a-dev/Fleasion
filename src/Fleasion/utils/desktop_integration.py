@@ -9,15 +9,14 @@ from __future__ import annotations
 
 import os
 import plistlib
-import shutil
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from .metadata import APP_NAME, APP_VERSION
 from .paths import USER_HOME, get_icon_path
-
 
 WINDOWS_START_MENU_SHORTCUT_PATH = (
     Path(os.environ.get('APPDATA', USER_HOME / 'AppData' / 'Roaming'))
@@ -60,7 +59,11 @@ def _launch_command() -> tuple[list[str], Path | None, dict[str, str]]:
     project = _find_project_root()
     uv = shutil.which('uv') or shutil.which('uv.exe')
     if project is not None and uv:
-        return [str(Path(uv).resolve()), '--project', str(project), 'run', 'fleasion'], project, {}
+        return (
+            [str(Path(uv).resolve()), '--project', str(project), 'run', 'fleasion'],
+            project,
+            {},
+        )
 
     if project is not None:
         return (
@@ -107,19 +110,14 @@ def _create_windows_shortcut() -> bool:
         return False
 
 
-def _macos_launcher_script(command: list[str], working_dir: Path | None, env: dict[str, str]) -> str:
+def _macos_launcher_script(
+    command: list[str], working_dir: Path | None, env: dict[str, str]
+) -> str:
     lines = ['#!/bin/sh', 'set -eu']
     if working_dir is not None:
         lines.append(f'cd {shlex.quote(str(working_dir))}')
     for name, value in env.items():
-        lines.append(
-            f'export {name}={shlex.quote(value)}'
-            + '${'
-            + name
-            + ':+:$'
-            + name
-            + '}'
-        )
+        lines.append(f'export {name}={shlex.quote(value)}' + '${' + name + ':+:$' + name + '}')
     lines.append('exec ' + ' '.join(shlex.quote(part) for part in command) + ' "$@"')
     return '\n'.join(lines) + '\n'
 

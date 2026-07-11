@@ -16,24 +16,23 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSpinBox,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from ..gui.theme import ThemeManager
-from .modifications_tab import CollapsibleSection, DropdownComboBox, NoWheelSpinBox
+from ..utils import CONFIG_DIR
 from ..utils.autostart import sync_autostart
 from ..utils.desktop_integration import sync_desktop_integration
-from ..utils import CONFIG_DIR
 from ..utils.roblox_auth import (
     notify_auth_source_changed,
     store_manual_roblosecurity,
     validate_roblosecurity_for_import,
 )
-
+from .modifications_tab import CollapsibleSection, DropdownComboBox, NoWheelSpinBox
 
 _MACOS_AUTH_SOURCES = (
     ('Choose on launch', ''),
@@ -179,7 +178,7 @@ class SettingsTab(QWidget):
     def _build_proxy_section(self) -> CollapsibleSection:
         section = CollapsibleSection('Proxy', expanded=True)
 
-        self._proxy_features_chk = QCheckBox("⚠ Enable Proxy Features")
+        self._proxy_features_chk = QCheckBox('⚠ Enable Proxy Features')
         self._proxy_features_chk.setChecked(self._config.proxy_features_enabled)
         self._proxy_features_chk.toggled.connect(self._on_proxy_features_toggled)
         section.add_widget(self._proxy_features_chk)
@@ -208,7 +207,9 @@ class SettingsTab(QWidget):
         mode_widget.setLayout(mode_row)
         section.add_widget(mode_widget)
 
-        self._wire_preserving_chk = QCheckBox('Enable Wire-Preserving Passthrough (Advanced compatibility mode)')
+        self._wire_preserving_chk = QCheckBox(
+            'Enable Wire-Preserving Passthrough (Advanced compatibility mode)'
+        )
         self._wire_preserving_chk.setChecked(self._config.wire_preserving_passthrough)
         self._wire_preserving_chk.toggled.connect(self._on_wire_preserving_toggled)
         section.add_widget(self._wire_preserving_chk)
@@ -264,7 +265,12 @@ class SettingsTab(QWidget):
         self._socks5_pass.setText(self._config.upstream_socks5_password)
         self._socks5_pass.setPlaceholderText('SOCKS password')
         self._socks5_pass.setEchoMode(QLineEdit.EchoMode.Password)
-        for widget in (self._http_proxy_user, self._http_proxy_pass, self._socks5_user, self._socks5_pass):
+        for widget in (
+            self._http_proxy_user,
+            self._http_proxy_pass,
+            self._socks5_user,
+            self._socks5_pass,
+        ):
             auth_row.addWidget(widget)
         auth_widget = QWidget()
         auth_widget.setLayout(auth_row)
@@ -303,44 +309,44 @@ class SettingsTab(QWidget):
 
         boot_allowed = _is_admin() or not _run_on_boot_requires_admin()
 
-        self._open_dashboard_chk = QCheckBox("Open Dashboard on Start")
+        self._open_dashboard_chk = QCheckBox('Open Dashboard on Start')
         self._open_dashboard_chk.setChecked(self._config.open_dashboard_on_launch)
         self._open_dashboard_chk.toggled.connect(self._on_open_dashboard_toggled)
         section.add_widget(self._open_dashboard_chk)
 
-        self._auto_clear_cache_chk = QCheckBox("Auto-Clear Cache on Exit")
+        self._auto_clear_cache_chk = QCheckBox('Auto-Clear Cache on Exit')
         self._auto_clear_cache_chk.setChecked(self._config.auto_delete_cache_on_exit)
         self._auto_clear_cache_chk.toggled.connect(self._on_auto_clear_cache_toggled)
         section.add_widget(self._auto_clear_cache_chk)
 
-        self._clear_cache_launch_chk = QCheckBox("Clear Cache on Launch")
+        self._clear_cache_launch_chk = QCheckBox('Clear Cache on Launch')
         self._clear_cache_launch_chk.setChecked(self._config.clear_cache_on_launch)
         self._clear_cache_launch_chk.toggled.connect(self._on_clear_cache_launch_toggled)
         section.add_widget(self._clear_cache_launch_chk)
 
-        boot_label = "Run on Boot" if boot_allowed else "Run on Boot  (requires administrator)"
+        boot_label = 'Run on Boot' if boot_allowed else 'Run on Boot  (requires administrator)'
         self._run_on_boot_chk = QCheckBox(boot_label)
         self._run_on_boot_chk.setChecked(self._config.run_on_boot)
         self._run_on_boot_chk.setEnabled(boot_allowed)
         self._run_on_boot_chk.toggled.connect(self._on_run_on_boot_toggled)
         section.add_widget(self._run_on_boot_chk)
 
-        self._desktop_integration_chk = QCheckBox("Create desktop/start menu integration on boot")
+        self._desktop_integration_chk = QCheckBox('Create desktop/start menu integration on boot')
         self._desktop_integration_chk.setChecked(self._config.desktop_integration)
         self._desktop_integration_chk.toggled.connect(self._on_desktop_integration_toggled)
         section.add_widget(self._desktop_integration_chk)
 
-        self._close_scraped_games_chk = QCheckBox("Close Roblox on Open")
+        self._close_scraped_games_chk = QCheckBox('Close Roblox on Open')
         self._close_scraped_games_chk.setChecked(self._config.close_scraped_games_on_open)
         self._close_scraped_games_chk.toggled.connect(self._on_close_scraped_games_toggled)
         section.add_widget(self._close_scraped_games_chk)
 
-        self._close_to_tray_chk = QCheckBox("Close to Tray")
+        self._close_to_tray_chk = QCheckBox('Close to Tray')
         self._close_to_tray_chk.setChecked(self._config.close_to_tray)
         self._close_to_tray_chk.toggled.connect(self._on_close_to_tray_toggled)
         section.add_widget(self._close_to_tray_chk)
 
-        self._always_on_top_chk = QCheckBox("Always on Top")
+        self._always_on_top_chk = QCheckBox('Always on Top')
         self._always_on_top_chk.setChecked(self._config.always_on_top)
         self._always_on_top_chk.toggled.connect(self._on_always_on_top_toggled)
         section.add_widget(self._always_on_top_chk)
@@ -350,17 +356,17 @@ class SettingsTab(QWidget):
     def _build_scraper_section(self) -> CollapsibleSection:
         section = CollapsibleSection('Scraper', expanded=True)
 
-        self._cache_scraper_chk = QCheckBox("Enable Cache Scraper")
+        self._cache_scraper_chk = QCheckBox('Enable Cache Scraper')
         self._cache_scraper_chk.setChecked(self._is_cache_scraper_enabled())
         self._cache_scraper_chk.toggled.connect(self._on_cache_scraper_toggled)
         section.add_widget(self._cache_scraper_chk)
 
-        self._show_names_chk = QCheckBox("Show Names")
+        self._show_names_chk = QCheckBox('Show Names')
         self._show_names_chk.setChecked(self._config.show_names)
         self._show_names_chk.toggled.connect(self._on_show_names_toggled)
         section.add_widget(self._show_names_chk)
 
-        self._show_creator_id_chk = QCheckBox("Show User ID")
+        self._show_creator_id_chk = QCheckBox('Show User ID')
         self._show_creator_id_chk.setChecked(self._config.show_creator_id)
         self._show_creator_id_chk.toggled.connect(self._on_show_creator_id_toggled)
         section.add_widget(self._show_creator_id_chk)
@@ -375,10 +381,12 @@ class SettingsTab(QWidget):
         self._export_chks: dict[str, QCheckBox] = {}
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        for option in ("name", "id", "hash"):
+        for option in ('name', 'id', 'hash'):
             chk = QCheckBox(option.capitalize())
             chk.setChecked(self._config.is_export_naming_enabled(option))
-            chk.toggled.connect(lambda checked, opt=option: self._on_export_naming_toggled(checked, opt))
+            chk.toggled.connect(
+                lambda checked, opt=option: self._on_export_naming_toggled(checked, opt)
+            )
             row.addWidget(chk)
             self._export_chks[option] = chk
         row.addStretch()
@@ -391,19 +399,25 @@ class SettingsTab(QWidget):
     def _build_scraped_games_section(self) -> CollapsibleSection:
         section = CollapsibleSection('Scraped Games', expanded=True)
 
-        self._show_replacer_notifications_chk = QCheckBox("Show Replacer Notifications")
+        self._show_replacer_notifications_chk = QCheckBox('Show Replacer Notifications')
         self._show_replacer_notifications_chk.setChecked(self._config.show_replacer_notifications)
-        self._show_replacer_notifications_chk.toggled.connect(self._on_show_replacer_notifications_toggled)
+        self._show_replacer_notifications_chk.toggled.connect(
+            self._on_show_replacer_notifications_toggled
+        )
         section.add_widget(self._show_replacer_notifications_chk)
 
-        self._close_viewer_on_replace_chk = QCheckBox("Close Viewer on Replace")
+        self._close_viewer_on_replace_chk = QCheckBox('Close Viewer on Replace')
         self._close_viewer_on_replace_chk.setChecked(self._config.close_viewer_on_replace)
         self._close_viewer_on_replace_chk.toggled.connect(self._on_close_viewer_on_replace_toggled)
         section.add_widget(self._close_viewer_on_replace_chk)
 
-        self._close_scraped_games_menu_on_open_chk = QCheckBox("Close Scraped Games Menu on Open")
-        self._close_scraped_games_menu_on_open_chk.setChecked(self._config.close_scraped_games_menu_on_open)
-        self._close_scraped_games_menu_on_open_chk.toggled.connect(self._on_close_scraped_games_menu_on_open_toggled)
+        self._close_scraped_games_menu_on_open_chk = QCheckBox('Close Scraped Games Menu on Open')
+        self._close_scraped_games_menu_on_open_chk.setChecked(
+            self._config.close_scraped_games_menu_on_open
+        )
+        self._close_scraped_games_menu_on_open_chk.toggled.connect(
+            self._on_close_scraped_games_menu_on_open_toggled
+        )
         section.add_widget(self._close_scraped_games_menu_on_open_chk)
 
         return section
@@ -435,9 +449,15 @@ class SettingsTab(QWidget):
             (self._close_scraped_games_chk, self._config.close_scraped_games_on_open),
             (self._close_to_tray_chk, self._config.close_to_tray),
             (self._always_on_top_chk, self._config.always_on_top),
-            (self._show_replacer_notifications_chk, self._config.show_replacer_notifications),
+            (
+                self._show_replacer_notifications_chk,
+                self._config.show_replacer_notifications,
+            ),
             (self._close_viewer_on_replace_chk, self._config.close_viewer_on_replace),
-            (self._close_scraped_games_menu_on_open_chk, self._config.close_scraped_games_menu_on_open),
+            (
+                self._close_scraped_games_menu_on_open_chk,
+                self._config.close_scraped_games_menu_on_open,
+            ),
             (self._show_names_chk, self._config.show_names),
             (self._show_creator_id_chk, self._config.show_creator_id),
         ]:
@@ -465,7 +485,10 @@ class SettingsTab(QWidget):
         for widget, value in [
             (self._http_proxy_port, self._config.upstream_http_connect_port),
             (self._socks5_port, self._config.upstream_socks5_port),
-            (self._asset_limit_spin, self._config.vpn_compat_max_assetdelivery_connections),
+            (
+                self._asset_limit_spin,
+                self._config.vpn_compat_max_assetdelivery_connections,
+            ),
             (self._cdn_limit_spin, self._config.vpn_compat_max_cdn_connections),
         ]:
             widget.blockSignals(True)
@@ -488,6 +511,7 @@ class SettingsTab(QWidget):
 
     def _clear_roblox_cache(self):
         from .delete_cache import DeleteCacheWindow
+
         window = DeleteCacheWindow()
         window.show()
 

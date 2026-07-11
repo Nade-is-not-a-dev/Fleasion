@@ -10,7 +10,10 @@ import xml.etree.ElementTree as ET
 from typing import Any
 
 from .tools.solidmodel_converter.rbxm.binary_reader import read_string
-from .tools.solidmodel_converter.rbxm.deserializer import RbxmDeserializer, _decompress_chunk
+from .tools.solidmodel_converter.rbxm.deserializer import (
+    RbxmDeserializer,
+    _decompress_chunk,
+)
 from .tools.solidmodel_converter.rbxm.serializer import write_rbxm
 from .tools.solidmodel_converter.rbxm.types import (
     PROPERTY_FORMAT_TO_XML_TAG,
@@ -63,7 +66,9 @@ def get_roblox_document_export_formats(data: bytes, asset_type: int | None = Non
     return []
 
 
-def get_default_roblox_document_export_format(data: bytes, asset_type: int | None = None) -> str | None:
+def get_default_roblox_document_export_format(
+    data: bytes, asset_type: int | None = None
+) -> str | None:
     """Return the best default converted export format for a Roblox document."""
     kind = classify_roblox_document(data)
     if asset_type == 9 and kind in {'rbxl', 'rbxm', 'rbxmx'}:
@@ -158,8 +163,7 @@ def _binary_contains_class(data: bytes, class_name: str) -> bool:
 
 def _xml_contains_datamodel(root: ET.Element) -> bool:
     return any(
-        _tag_name(elem) == 'Item' and elem.get('class') == 'DataModel'
-        for elem in root.iter()
+        _tag_name(elem) == 'Item' and elem.get('class') == 'DataModel' for elem in root.iter()
     )
 
 
@@ -388,7 +392,11 @@ def _value_for_format(value: Any, fmt: PropertyFormat, ref_mapper) -> Any:
         return _parse_vector_value(value, ('X', 'Y'), int)
     if fmt == PropertyFormat.VECTOR3INT16:
         return _parse_vector_value(value, ('X', 'Y', 'Z'), int)
-    if fmt in {PropertyFormat.CFRAME_MATRIX, PropertyFormat.CFRAME_QUAT, PropertyFormat.OPTIONAL_CFRAME}:
+    if fmt in {
+        PropertyFormat.CFRAME_MATRIX,
+        PropertyFormat.CFRAME_QUAT,
+        PropertyFormat.OPTIONAL_CFRAME,
+    }:
         return _parse_cframe_value(value)
     if fmt == PropertyFormat.NUMBER_RANGE:
         return _parse_number_range_value(value)
@@ -404,15 +412,29 @@ def _value_for_format(value: Any, fmt: PropertyFormat, ref_mapper) -> Any:
 
 
 def _parse_udim_value(value: Any) -> dict[str, float | int]:
-    pairs = {str(k): v for k, v in value.items()} if isinstance(value, dict) else _parse_key_values(str(value))
+    pairs = (
+        {str(k): v for k, v in value.items()}
+        if isinstance(value, dict)
+        else _parse_key_values(str(value))
+    )
     if pairs:
-        return {'S': _safe_float(pairs.get('S', 0.0)), 'O': _safe_int(pairs.get('O', 0))}
+        return {
+            'S': _safe_float(pairs.get('S', 0.0)),
+            'O': _safe_int(pairs.get('O', 0)),
+        }
     numbers = _parse_numbers(str(value))
-    return {'S': numbers[0] if len(numbers) > 0 else 0.0, 'O': int(numbers[1]) if len(numbers) > 1 else 0}
+    return {
+        'S': numbers[0] if len(numbers) > 0 else 0.0,
+        'O': int(numbers[1]) if len(numbers) > 1 else 0,
+    }
 
 
 def _parse_udim2_value(value: Any) -> dict[str, float | int]:
-    pairs = {str(k): v for k, v in value.items()} if isinstance(value, dict) else _parse_key_values(str(value))
+    pairs = (
+        {str(k): v for k, v in value.items()}
+        if isinstance(value, dict)
+        else _parse_key_values(str(value))
+    )
     if pairs:
         return {
             'XS': _safe_float(pairs.get('XS', 0.0)),
@@ -430,11 +452,18 @@ def _parse_udim2_value(value: Any) -> dict[str, float | int]:
 
 
 def _parse_vector_value(value: Any, keys: tuple[str, ...], caster) -> dict[str, Any]:
-    pairs = {str(k): v for k, v in value.items()} if isinstance(value, dict) else _parse_key_values(str(value))
+    pairs = (
+        {str(k): v for k, v in value.items()}
+        if isinstance(value, dict)
+        else _parse_key_values(str(value))
+    )
     if pairs:
         return {key: _cast_number(pairs.get(key, 0), caster) for key in keys}
     numbers = _parse_numbers(str(value))
-    return {key: _cast_number(numbers[index] if index < len(numbers) else 0, caster) for index, key in enumerate(keys)}
+    return {
+        key: _cast_number(numbers[index] if index < len(numbers) else 0, caster)
+        for index, key in enumerate(keys)
+    }
 
 
 def _parse_ray_value(value: Any) -> dict[str, dict[str, float]]:
@@ -456,10 +485,18 @@ def _parse_cframe_value(value: Any) -> dict[str, float] | None:
     if value is None or text.lower() in {'', 'none', 'null'}:
         return None
     result = {
-        'X': 0.0, 'Y': 0.0, 'Z': 0.0,
-        'R00': 1.0, 'R01': 0.0, 'R02': 0.0,
-        'R10': 0.0, 'R11': 1.0, 'R12': 0.0,
-        'R20': 0.0, 'R21': 0.0, 'R22': 1.0,
+        'X': 0.0,
+        'Y': 0.0,
+        'Z': 0.0,
+        'R00': 1.0,
+        'R01': 0.0,
+        'R02': 0.0,
+        'R10': 0.0,
+        'R11': 1.0,
+        'R12': 0.0,
+        'R20': 0.0,
+        'R21': 0.0,
+        'R22': 1.0,
     }
     if isinstance(value, dict):
         result.update({key: _safe_float(value.get(key, result[key])) for key in result})
@@ -481,12 +518,21 @@ def _parse_cframe_value(value: Any) -> dict[str, float] | None:
 
 def _parse_number_range_value(value: Any) -> dict[str, float]:
     if isinstance(value, dict):
-        return {'Min': _safe_float(value.get('Min', 0.0)), 'Max': _safe_float(value.get('Max', 0.0))}
+        return {
+            'Min': _safe_float(value.get('Min', 0.0)),
+            'Max': _safe_float(value.get('Max', 0.0)),
+        }
     pairs = _parse_key_values(str(value))
     if pairs:
-        return {'Min': _safe_float(pairs.get('Min', 0.0)), 'Max': _safe_float(pairs.get('Max', 0.0))}
+        return {
+            'Min': _safe_float(pairs.get('Min', 0.0)),
+            'Max': _safe_float(pairs.get('Max', 0.0)),
+        }
     numbers = _parse_numbers(str(value))
-    return {'Min': numbers[0] if len(numbers) > 0 else 0.0, 'Max': numbers[1] if len(numbers) > 1 else 0.0}
+    return {
+        'Min': numbers[0] if len(numbers) > 0 else 0.0,
+        'Max': numbers[1] if len(numbers) > 1 else 0.0,
+    }
 
 
 def _parse_rect2d_value(value: Any) -> dict[str, dict[str, float]]:
@@ -497,7 +543,10 @@ def _parse_rect2d_value(value: Any) -> dict[str, dict[str, float]]:
         }
     numbers = _parse_numbers(str(value))
     padded = numbers + [0.0] * max(0, 4 - len(numbers))
-    return {'min': {'X': padded[0], 'Y': padded[1]}, 'max': {'X': padded[2], 'Y': padded[3]}}
+    return {
+        'min': {'X': padded[0], 'Y': padded[1]},
+        'max': {'X': padded[2], 'Y': padded[3]},
+    }
 
 
 def _parse_physical_properties_value(value: Any) -> dict[str, Any] | None:
@@ -585,14 +634,14 @@ def _cast_number(value: Any, caster):
 def _safe_int(value: Any) -> int:
     try:
         return int(str(value).strip(), 0)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
 
 
 def _safe_float(value: Any) -> float:
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0
 
 

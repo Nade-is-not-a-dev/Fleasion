@@ -36,7 +36,7 @@ def _query_reg_value(key, name: str):
 
 
 def _read_wininet() -> tuple[bool, Optional[str], Optional[str]]:
-    if platform.system() != "Windows":
+    if platform.system() != 'Windows':
         return False, None, None
 
     try:
@@ -44,11 +44,11 @@ def _read_wininet() -> tuple[bool, Optional[str], Optional[str]]:
 
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            r'Software\Microsoft\Windows\CurrentVersion\Internet Settings',
         ) as key:
-            enabled = bool(int(_query_reg_value(key, "ProxyEnable") or 0))
-            proxy_server = _query_reg_value(key, "ProxyServer")
-            auto_config_url = _query_reg_value(key, "AutoConfigURL")
+            enabled = bool(int(_query_reg_value(key, 'ProxyEnable') or 0))
+            proxy_server = _query_reg_value(key, 'ProxyServer')
+            auto_config_url = _query_reg_value(key, 'AutoConfigURL')
             return (
                 enabled,
                 str(proxy_server) if proxy_server else None,
@@ -59,13 +59,13 @@ def _read_wininet() -> tuple[bool, Optional[str], Optional[str]]:
 
 
 def _read_winhttp_proxy() -> Optional[str]:
-    if platform.system() != "Windows":
+    if platform.system() != 'Windows':
         return None
 
     try:
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
         result = subprocess.run(
-            ["netsh", "winhttp", "show", "proxy"],
+            ['netsh', 'winhttp', 'show', 'proxy'],
             capture_output=True,
             text=True,
             timeout=5,
@@ -74,11 +74,11 @@ def _read_winhttp_proxy() -> Optional[str]:
     except Exception:
         return None
 
-    text = (result.stdout or "") + "\n" + (result.stderr or "")
-    if "Direct access" in text:
+    text = (result.stdout or '') + '\n' + (result.stderr or '')
+    if 'Direct access' in text:
         return None
 
-    match = re.search(r"Proxy Server\(s\)\s*:\s*(.+)", text, flags=re.IGNORECASE)
+    match = re.search(r'Proxy Server\(s\)\s*:\s*(.+)', text, flags=re.IGNORECASE)
     if match:
         value = match.group(1).strip()
         return value or None
@@ -86,42 +86,52 @@ def _read_winhttp_proxy() -> Optional[str]:
 
 
 def _proxy_target(host: Optional[str], port: object) -> Optional[str]:
-    host_text = str(host or "").strip()
+    host_text = str(host or '').strip()
     if not host_text:
         return None
     try:
         port_int = int(str(port).strip())
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if port_int <= 0 or port_int > 65535:
         return None
-    if ":" in host_text and not host_text.startswith("["):
-        host_text = f"[{host_text}]"
-    return f"{host_text}:{port_int}"
+    if ':' in host_text and not host_text.startswith('['):
+        host_text = f'[{host_text}]'
+    return f'{host_text}:{port_int}'
 
 
-def _parse_scutil_proxy_output(text: str) -> tuple[bool, Optional[str], bool, Optional[str], Optional[str]]:
+def _parse_scutil_proxy_output(
+    text: str,
+) -> tuple[bool, Optional[str], bool, Optional[str], Optional[str]]:
     values: dict[str, str] = {}
-    for line in (text or "").splitlines():
-        match = re.match(r"\s*([A-Za-z0-9]+)\s*:\s*(.*?)\s*$", line)
+    for line in (text or '').splitlines():
+        match = re.match(r'\s*([A-Za-z0-9]+)\s*:\s*(.*?)\s*$', line)
         if match:
             values[match.group(1)] = match.group(2)
 
-    http_enabled = values.get("HTTPEnable") == "1"
-    https_enabled = values.get("HTTPSEnable") == "1"
-    auto_config_url = values.get("ProxyAutoConfigURLString") if values.get("ProxyAutoConfigEnable") == "1" else None
-    http_proxy = _proxy_target(values.get("HTTPProxy"), values.get("HTTPPort")) if http_enabled else None
-    https_proxy = _proxy_target(values.get("HTTPSProxy"), values.get("HTTPSPort")) if https_enabled else None
+    http_enabled = values.get('HTTPEnable') == '1'
+    https_enabled = values.get('HTTPSEnable') == '1'
+    auto_config_url = (
+        values.get('ProxyAutoConfigURLString')
+        if values.get('ProxyAutoConfigEnable') == '1'
+        else None
+    )
+    http_proxy = (
+        _proxy_target(values.get('HTTPProxy'), values.get('HTTPPort')) if http_enabled else None
+    )
+    https_proxy = (
+        _proxy_target(values.get('HTTPSProxy'), values.get('HTTPSPort')) if https_enabled else None
+    )
     return http_enabled, http_proxy, https_enabled, https_proxy, auto_config_url
 
 
 def _read_macos_proxies() -> tuple[bool, Optional[str], bool, Optional[str], Optional[str]]:
-    if platform.system() != "Darwin":
+    if platform.system() != 'Darwin':
         return False, None, False, None, None
 
     try:
         result = subprocess.run(
-            ["scutil", "--proxy"],
+            ['scutil', '--proxy'],
             capture_output=True,
             text=True,
             timeout=5,
@@ -129,11 +139,11 @@ def _read_macos_proxies() -> tuple[bool, Optional[str], bool, Optional[str], Opt
     except Exception:
         return False, None, False, None, None
 
-    return _parse_scutil_proxy_output((result.stdout or "") + "\n" + (result.stderr or ""))
+    return _parse_scutil_proxy_output((result.stdout or '') + '\n' + (result.stderr or ''))
 
 
 def detect_windows_proxy() -> WindowsProxyInfo:
-    if platform.system() == "Darwin":
+    if platform.system() == 'Darwin':
         http_enabled, http_proxy, https_enabled, https_proxy, auto_url = _read_macos_proxies()
         return WindowsProxyInfo(
             macos_http_enabled=http_enabled,
@@ -157,7 +167,7 @@ def _host_port_from_target(target: str) -> Optional[tuple[str, int]]:
     if not target:
         return None
 
-    if "://" in target:
+    if '://' in target:
         parsed = urlparse(target)
         host = parsed.hostname
         port = parsed.port
@@ -165,17 +175,17 @@ def _host_port_from_target(target: str) -> Optional[tuple[str, int]]:
             return host, int(port)
         return None
 
-    if target.startswith("["):
-        host, sep, rest = target[1:].partition("]")
-        if sep and rest.startswith(":"):
+    if target.startswith('['):
+        host, sep, rest = target[1:].partition(']')
+        if sep and rest.startswith(':'):
             try:
                 return host, int(rest[1:])
             except ValueError:
                 return None
         return None
 
-    if target.count(":") == 1:
-        host, port_text = target.rsplit(":", 1)
+    if target.count(':') == 1:
+        host, port_text = target.rsplit(':', 1)
         try:
             return host.strip(), int(port_text)
         except ValueError:
@@ -189,19 +199,19 @@ def parse_static_http_proxy(proxy_server: Optional[str]) -> Optional[HttpProxyCo
     if not proxy_server:
         return None
 
-    parts = [part.strip() for part in re.split(r"[;\s]+", proxy_server) if part.strip()]
+    parts = [part.strip() for part in re.split(r'[;\s]+', proxy_server) if part.strip()]
     scheme_targets: dict[str, str] = {}
     bare_targets: list[str] = []
 
     for part in parts:
-        if "=" in part:
-            scheme, target = part.split("=", 1)
+        if '=' in part:
+            scheme, target = part.split('=', 1)
             scheme_targets[scheme.strip().lower()] = target.strip()
         else:
             bare_targets.append(part)
 
-    for key in ("https", "http"):
-        parsed = _host_port_from_target(scheme_targets.get(key, ""))
+    for key in ('https', 'http'):
+        parsed = _host_port_from_target(scheme_targets.get(key, ''))
         if parsed:
             return HttpProxyConfig(host=parsed[0], port=parsed[1])
 
@@ -214,7 +224,7 @@ def parse_static_http_proxy(proxy_server: Optional[str]) -> Optional[HttpProxyCo
 
 
 def detected_http_proxy(info: WindowsProxyInfo) -> Optional[HttpProxyConfig]:
-    if platform.system() == "Darwin":
+    if platform.system() == 'Darwin':
         if info.macos_https_enabled:
             proxy = parse_static_http_proxy(info.macos_https_proxy_server)
             if proxy is not None:

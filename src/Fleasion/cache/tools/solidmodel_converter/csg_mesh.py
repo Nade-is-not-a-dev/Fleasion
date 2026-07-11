@@ -137,31 +137,61 @@ class CSGVertex:
     def from_bytes(data: bytes, offset: int = 0) -> CSGVertex:
         """Parse a CSGVertex from 84 bytes at the given offset."""
         (
-            px, py, pz,
-            nx, ny, nz,
+            px,
+            py,
+            pz,
+            nx,
+            ny,
+            nz,
         ) = struct.unpack_from('<6f', data, offset)
 
         cr, cg, cb, ca = data[offset + 24 : offset + 28]
         er, eg, eb, ea = data[offset + 28 : offset + 32]
 
         (
-            u, v,
-            us, vs,
-            ud, vd,
-            tx, ty, tz,
-            e0, e1, e2, e3,
+            u,
+            v,
+            us,
+            vs,
+            ud,
+            vd,
+            tx,
+            ty,
+            tz,
+            e0,
+            e1,
+            e2,
+            e3,
         ) = struct.unpack_from('<13f', data, offset + 32)
 
         return CSGVertex(
-            px=px, py=py, pz=pz,
-            nx=nx, ny=ny, nz=nz,
-            cr=cr, cg=cg, cb=cb, ca=ca,
-            extra_r=er, extra_g=eg, extra_b=eb, extra_a=ea,
-            u=u, v=v,
-            u_studs=us, v_studs=vs,
-            u_decal=ud, v_decal=vd,
-            tx=tx, ty=ty, tz=tz,
-            ed0=e0, ed1=e1, ed2=e2, ed3=e3,
+            px=px,
+            py=py,
+            pz=pz,
+            nx=nx,
+            ny=ny,
+            nz=nz,
+            cr=cr,
+            cg=cg,
+            cb=cb,
+            ca=ca,
+            extra_r=er,
+            extra_g=eg,
+            extra_b=eb,
+            extra_a=ea,
+            u=u,
+            v=v,
+            u_studs=us,
+            v_studs=vs,
+            u_decal=ud,
+            v_decal=vd,
+            tx=tx,
+            ty=ty,
+            tz=tz,
+            ed0=e0,
+            ed1=e1,
+            ed2=e2,
+            ed3=e3,
         )
 
 
@@ -231,7 +261,8 @@ def _decode_faces5_state_machine(vertex_data: bytes, vertex_count: int) -> list[
         if pos >= data_len:
             raise ValueError(f'V5 Faces5: ran out of vertex_data early ({i}/{vertex_count})')
 
-        v0 = vertex_data[pos]; pos += 1
+        v0 = vertex_data[pos]
+        pos += 1
 
         if v0 & 0x80 == 0:
             if v0 & 0x40 == 0:
@@ -246,8 +277,10 @@ def _decode_faces5_state_machine(vertex_data: bytes, vertex_count: int) -> list[
             # 3-byte large positive delta
             if pos + 2 > data_len:
                 raise ValueError(f'V5 Faces5: truncated 3-byte delta at pos {pos - 1}')
-            v1 = vertex_data[pos];     pos += 1
-            v2 = vertex_data[pos];     pos += 1
+            v1 = vertex_data[pos]
+            pos += 1
+            v2 = vertex_data[pos]
+            pos += 1
             index_out += v2 | (v1 << 8) | ((v0 & 0x7F) << 16)
 
         indices.append(index_out & 0x7FFFFF)
@@ -326,15 +359,22 @@ def _parse_csg_mesh_v5(encrypted_data: bytes, version: int) -> CSGMeshData:
     normals: list[tuple[float, float, float]] = []
     normal_data_size = ns_count * 6
     if ns_bytes != normal_data_size:
-        log.debug('CSGMDL v%d: normals_len=%d but count implies %d', version, ns_bytes, normal_data_size)
+        log.debug(
+            'CSGMDL v%d: normals_len=%d but count implies %d',
+            version,
+            ns_bytes,
+            normal_data_size,
+        )
     _require(normal_data_size, 'normal section data')
     for i in range(ns_count):
         rx, ry, rz = struct.unpack_from('<3h', body, cursor + i * 6)
-        normals.append((
-            _decode_quantized_f32_component(rx),
-            _decode_quantized_f32_component(ry),
-            _decode_quantized_f32_component(rz),
-        ))
+        normals.append(
+            (
+                _decode_quantized_f32_component(rx),
+                _decode_quantized_f32_component(ry),
+                _decode_quantized_f32_component(rz),
+            )
+        )
     cursor += normal_data_size
 
     # ── Colors: [uint16=count] count × uint8×4 ──────────────────────────────
@@ -379,15 +419,22 @@ def _parse_csg_mesh_v5(encrypted_data: bytes, version: int) -> CSGMeshData:
     tangents: list[tuple[float, float, float]] = []
     tangent_data_size = tc * 6
     if tb != tangent_data_size:
-        log.debug('CSGMDL v%d: tangents_len=%d but count implies %d', version, tb, tangent_data_size)
+        log.debug(
+            'CSGMDL v%d: tangents_len=%d but count implies %d',
+            version,
+            tb,
+            tangent_data_size,
+        )
     _require(tangent_data_size, 'tangent section data')
     for i in range(tc):
         tx_, ty_, tz_ = struct.unpack_from('<3h', body, cursor + i * 6)
-        tangents.append((
-            _decode_quantized_f32_component(tx_),
-            _decode_quantized_f32_component(ty_),
-            _decode_quantized_f32_component(tz_),
-        ))
+        tangents.append(
+            (
+                _decode_quantized_f32_component(tx_),
+                _decode_quantized_f32_component(ty_),
+                _decode_quantized_f32_component(tz_),
+            )
+        )
     cursor += tangent_data_size
 
     # ── Faces5 block ────────────────────────────────────────────────────────
@@ -396,10 +443,10 @@ def _parse_csg_mesh_v5(encrypted_data: bytes, version: int) -> CSGMeshData:
     if faces_start + 9 > len(body):
         raise ValueError(f'CSGMDL v{version}: Faces5 block missing (body too short after tangents)')
 
-    vertex_count_f  = struct.unpack_from('<I', body, faces_start)[0]
+    vertex_count_f = struct.unpack_from('<I', body, faces_start)[0]
     vertex_data_len = struct.unpack_from('<I', body, faces_start + 4)[0]
     vd_start = faces_start + 8
-    vd_end   = vd_start + vertex_data_len
+    vd_end = vd_start + vertex_data_len
 
     if vd_end > len(body):
         raise ValueError(
@@ -410,20 +457,23 @@ def _parse_csg_mesh_v5(encrypted_data: bytes, version: int) -> CSGMeshData:
     vertex_data = body[vd_start:vd_end]
 
     # Range markers: uint8 count + count × uint32
-    rmc_offset          = vd_end
-    range_marker_count  = body[rmc_offset]
-    rm_start            = rmc_offset + 1
-    rm_end              = rm_start + range_marker_count * 4
+    rmc_offset = vd_end
+    range_marker_count = body[rmc_offset]
+    rm_start = rmc_offset + 1
+    rm_end = rm_start + range_marker_count * 4
     if rm_end > len(body):
         raise ValueError(f'CSGMDL v{version}: range_markers overflow body')
     range_markers = [
-        struct.unpack_from('<I', body, rm_start + i * 4)[0]
-        for i in range(range_marker_count)
+        struct.unpack_from('<I', body, rm_start + i * 4)[0] for i in range(range_marker_count)
     ]
 
     log.debug(
         'CSGMDL v%d: N=%d, vertex_count=%d, vertex_data_len=%d, range_markers=%s',
-        version, N, vertex_count_f, vertex_data_len, range_markers,
+        version,
+        N,
+        vertex_count_f,
+        vertex_data_len,
+        range_markers,
     )
 
     # ── Decode delta-encoded indices via Faces5 state machine ───────────────
@@ -449,7 +499,7 @@ def _parse_csg_mesh_v5(encrypted_data: bytes, version: int) -> CSGMeshData:
     #   range_markers[0] = start of used range  (almost always 0)
     #   range_markers[1] = end of visual mesh
     #   range_markers[2] = end of all indices
-    marker_start  = range_markers[0] if len(range_markers) > 0 else 0
+    marker_start = range_markers[0] if len(range_markers) > 0 else 0
     marker_visual = range_markers[1] if len(range_markers) > 1 else len(all_indices)
     visual_indices = all_indices[marker_start:marker_visual]
 
@@ -457,7 +507,7 @@ def _parse_csg_mesh_v5(encrypted_data: bytes, version: int) -> CSGMeshData:
     # Each decoded value is a DIRECT index into the N attribute arrays
     # (positions, normals, colors, tex, tangents).  No modulo, no XOR needed.
     vertices: list[CSGVertex] = []
-    seen: dict[int, int] = {}    # position_index → vertex_buffer_index
+    seen: dict[int, int] = {}  # position_index → vertex_buffer_index
     indices: list[int] = []
     n_degenerate = 0
 
@@ -475,9 +525,11 @@ def _parse_csg_mesh_v5(encrypted_data: bytes, version: int) -> CSGMeshData:
             continue
 
         # Skip degenerate triangles
-        if (positions[ia] == positions[ib] or
-                positions[ib] == positions[ic] or
-                positions[ia] == positions[ic]):
+        if (
+            positions[ia] == positions[ib]
+            or positions[ib] == positions[ic]
+            or positions[ia] == positions[ic]
+        ):
             n_degenerate += 1
             continue
 
@@ -490,27 +542,57 @@ def _parse_csg_mesh_v5(encrypted_data: bytes, version: int) -> CSGMeshData:
                 us, vs = _attr(uv_studs, idx, (0.0, 0.0))
                 gen = _attr(extra_gen, idx, 0)
                 tx_, ty_, tz_ = _attr(tangents, idx, (1.0, 0.0, 0.0))
-                vertices.append(CSGVertex(
-                    px=px, py=py, pz=pz,
-                    nx=nx, ny=ny, nz=nz,
-                    cr=cr, cg=cg, cb=cb, ca=ca,
-                    extra_r=gen, extra_g=0, extra_b=0, extra_a=0,
-                    u=us, v=vs,
-                    u_studs=us, v_studs=vs,
-                    u_decal=0.0, v_decal=0.0,
-                    tx=tx_, ty=ty_, tz=tz_,
-                    ed0=0.0, ed1=0.0, ed2=0.0, ed3=0.0,
-                ))
+                vertices.append(
+                    CSGVertex(
+                        px=px,
+                        py=py,
+                        pz=pz,
+                        nx=nx,
+                        ny=ny,
+                        nz=nz,
+                        cr=cr,
+                        cg=cg,
+                        cb=cb,
+                        ca=ca,
+                        extra_r=gen,
+                        extra_g=0,
+                        extra_b=0,
+                        extra_a=0,
+                        u=us,
+                        v=vs,
+                        u_studs=us,
+                        v_studs=vs,
+                        u_decal=0.0,
+                        v_decal=0.0,
+                        tx=tx_,
+                        ty=ty_,
+                        tz=tz_,
+                        ed0=0.0,
+                        ed1=0.0,
+                        ed2=0.0,
+                        ed3=0.0,
+                    )
+                )
             indices.append(seen[idx])
 
     if n_degenerate:
-        log.debug('CSGMDL v%d: skipped %d degenerate/out-of-range triangles', version, n_degenerate)
+        log.debug(
+            'CSGMDL v%d: skipped %d degenerate/out-of-range triangles',
+            version,
+            n_degenerate,
+        )
 
     log.info(
         'CSGMDL v%d: N=%d → %d vertices, %d tris (%d degenerate skipped); '
         'visual_indices=%d/%d total range_markers=%s',
-        version, N, len(vertices), len(indices) // 3,
-        n_degenerate, len(visual_indices), len(all_indices), range_markers,
+        version,
+        N,
+        len(vertices),
+        len(indices) // 3,
+        n_degenerate,
+        len(visual_indices),
+        len(all_indices),
+        range_markers,
     )
 
     return CSGMeshData(
@@ -549,7 +631,12 @@ def parse_csg_mesh_full(encrypted_data: bytes) -> CSGMeshData:
     version = struct.unpack_from('<i', data, offset)[0]
     offset += 4
     if version < MIN_VERSION or version > MAX_VERSION:
-        log.warning('CSGMDL version %d (expected %d-%d), attempting to parse', version, MIN_VERSION, MAX_VERSION)
+        log.warning(
+            'CSGMDL version %d (expected %d-%d), attempting to parse',
+            version,
+            MIN_VERSION,
+            MAX_VERSION,
+        )
 
     # v5+ uses a completely different body layout (plaintext, no XOR on body).
     if version >= 5:
@@ -597,13 +684,9 @@ def parse_csg_mesh_full(encrypted_data: bytes) -> CSGMeshData:
     if version == 4 and remaining >= 4:
         boundary_count = struct.unpack_from('<I', data, offset)[0]
         boundary_bytes = boundary_count * 4
-        if (
-            boundary_count > 0
-            and boundary_bytes <= remaining - 4
-        ):
+        if boundary_count > 0 and boundary_bytes <= remaining - 4:
             boundaries = [
-                struct.unpack_from('<I', data, offset + 4 + i * 4)[0]
-                for i in range(boundary_count)
+                struct.unpack_from('<I', data, offset + 4 + i * 4)[0] for i in range(boundary_count)
             ]
             if (
                 boundaries
@@ -617,11 +700,17 @@ def parse_csg_mesh_full(encrypted_data: bytes) -> CSGMeshData:
                 submesh_boundaries = boundaries
                 log.info(
                     'CSGMDL v%d: %d range markers (boundaries: %s)',
-                    version, boundary_count, submesh_boundaries,
+                    version,
+                    boundary_count,
+                    submesh_boundaries,
                 )
                 offset += 4 + boundary_bytes
             else:
-                log.debug('CSGMDL v%d: ignored implausible v4 range list: %s', version, boundaries)
+                log.debug(
+                    'CSGMDL v%d: ignored implausible v4 range list: %s',
+                    version,
+                    boundaries,
+                )
 
     if not submesh_boundaries and remaining >= 20 and version >= 3:
         brep_ver = struct.unpack_from('<I', data, offset)[0]
@@ -636,7 +725,10 @@ def parse_csg_mesh_full(encrypted_data: bytes) -> CSGMeshData:
         submesh_boundaries.append(num_indices)  # always end with total
         log.info(
             'CSGMDL v%d: brepVersion=%d, %d sub-meshes (boundaries: %s)',
-            version, brep_ver, len(submesh_boundaries) - 1, submesh_boundaries,
+            version,
+            brep_ver,
+            len(submesh_boundaries) - 1,
+            submesh_boundaries,
         )
         offset += 20
 
@@ -716,9 +808,9 @@ def serialize_csg_mesh(
     buf = bytearray()
 
     # ── Header ──────────────────────────────────────────────────────────────
-    buf.extend(HEADER_TAG)                                    # b'CSGMDL'  6 B
-    buf.extend(struct.pack('<i', version))                    # version    4 B
-    buf.extend(bytes(HASH_SIZE + SALT_SIZE))                  # hash+salt 32 B (zeros; engine ignores on load)
+    buf.extend(HEADER_TAG)  # b'CSGMDL'  6 B
+    buf.extend(struct.pack('<i', version))  # version    4 B
+    buf.extend(bytes(HASH_SIZE + SALT_SIZE))  # hash+salt 32 B (zeros; engine ignores on load)
     buf.extend(struct.pack('<II', num_vertices, CSGVERTEX_SIZE))  # vtx_cnt + stride  8 B
 
     # ── Vertices (84 bytes each) ─────────────────────────────────────────────
@@ -733,14 +825,24 @@ def serialize_csg_mesh(
         buf.extend(struct.pack('<3f', v.nx, v.ny, v.nz))
         buf.extend(struct.pack('<4B', v.cr, v.cg, v.cb, v.ca))
         buf.extend(struct.pack('<4B', v.extra_r, v.extra_g, v.extra_b, v.extra_a))
-        buf.extend(struct.pack(
-            '<13f',
-            v.u, v.v,
-            v.u_studs, v.v_studs,
-            v.u_decal, v.v_decal,
-            v.tx, v.ty, v.tz,
-            v.ed0, v.ed1, v.ed2, v.ed3,
-        ))
+        buf.extend(
+            struct.pack(
+                '<13f',
+                v.u,
+                v.v,
+                v.u_studs,
+                v.v_studs,
+                v.u_decal,
+                v.v_decal,
+                v.tx,
+                v.ty,
+                v.tz,
+                v.ed0,
+                v.ed1,
+                v.ed2,
+                v.ed3,
+            )
+        )
 
     assert len(buf) == 6 + 4 + 32 + 8 + num_vertices * CSGVERTEX_SIZE, 'vertex block size mismatch'
 
@@ -760,7 +862,11 @@ def serialize_csg_mesh(
 
     log.info(
         'Serialized CSGMDL v%d: %d vertices, %d indices (%d triangles), %d bytes (before XOR)',
-        version, num_vertices, num_indices, num_indices // 3, len(buf),
+        version,
+        num_vertices,
+        num_indices,
+        num_indices // 3,
+        len(buf),
     )
 
     return xor_buffer(bytes(buf))
@@ -785,7 +891,7 @@ def _compute_normal_id(nx: float, ny: float, nz: float) -> int:
         return 1 if nx >= 0.0 else 4  # Right / Left
     if ay >= ax and ay >= az:
         return 2 if ny >= 0.0 else 5  # Top / Bottom
-    return 3 if nz >= 0.0 else 6      # Back / Front
+    return 3 if nz >= 0.0 else 6  # Back / Front
 
 
 def _encode_faces5(indices: list[int]) -> bytes:
@@ -803,8 +909,8 @@ def _encode_faces5(indices: list[int]) -> bytes:
     modular ring (range [-0x400000, 0x3FFFFF]).  Large out-of-range
     negative jumps wrap to a positive 23-bit value via ``% 0x800000``.
     """
-    _RING = 0x800000   # 2^23
-    _HALF = 0x400000   # 2^22
+    _RING = 0x800000  # 2^23
+    _HALF = 0x400000  # 2^22
 
     data = bytearray()
     index_out = 0
@@ -812,14 +918,14 @@ def _encode_faces5(indices: list[int]) -> bytes:
     for target in indices:
         # Shortest signed delta in the 23-bit modular ring
         raw = target - (index_out & 0x7FFFFF)
-        delta = ((raw + _HALF) % _RING) - _HALF   # → [-0x400000, 0x3FFFFF]
+        delta = ((raw + _HALF) % _RING) - _HALF  # → [-0x400000, 0x3FFFFF]
 
         if 0 <= delta <= 63:
             data.append(delta)
         elif -64 <= delta <= -1:
-            data.append(delta + 128)               # maps -64→64, -1→127
+            data.append(delta + 128)  # maps -64→64, -1→127
         else:
-            d = delta % _RING                      # unsigned 23-bit representation
+            d = delta % _RING  # unsigned 23-bit representation
             data.append(0x80 | ((d >> 16) & 0x7F))
             data.append((d >> 8) & 0xFF)
             data.append(d & 0xFF)
@@ -871,9 +977,7 @@ def serialize_csg_mesh_v5(
     if len(indices) % 3 != 0:
         raise ValueError(f'Index count {len(indices)} is not a multiple of 3')
     if indices and max(indices) >= len(vertices):
-        raise ValueError(
-            f'Max index {max(indices)} is out of range for {len(vertices)} vertices'
-        )
+        raise ValueError(f'Max index {max(indices)} is out of range for {len(vertices)} vertices')
 
     N = len(vertices)
     num_indices = len(indices)
@@ -888,8 +992,8 @@ def serialize_csg_mesh_v5(
         body += struct.pack('<3f', v.px, v.py, v.pz)
 
     # ── Normals: [uint16=N][uint32=N*6] N × int16×3 ──────────────────────────
-    body += struct.pack('<H', N)       # count
-    body += struct.pack('<I', N * 6)   # byte length
+    body += struct.pack('<H', N)  # count
+    body += struct.pack('<I', N * 6)  # byte length
     for v in vertices:
         body += struct.pack(
             '<3H',
@@ -899,13 +1003,13 @@ def serialize_csg_mesh_v5(
         )
 
     # ── Colors: [uint16=N] N × uint8×4 ───────────────────────────────────────
-    body += struct.pack('<H', N)       # count
+    body += struct.pack('<H', N)  # count
     for v in vertices:
         body += struct.pack('<4B', v.cr, v.cg, v.cb, v.ca)
 
     # ── NormalIds: [uint16=N] N × uint8 ──────────────────────────────────────
     # Each value is 1-6 (from extra_r if it was parsed from V5, else computed).
-    body += struct.pack('<H', N)       # count
+    body += struct.pack('<H', N)  # count
     for v in vertices:
         # Prefer the stored UV-gen type if it looks like a valid NormalId (1-6),
         # otherwise derive it fresh from the vertex normal direction.
@@ -913,13 +1017,13 @@ def serialize_csg_mesh_v5(
         body += struct.pack('<B', nid)
 
     # ── UV coords: [uint16=N] N × float32×2 ──────────────────────────────────
-    body += struct.pack('<H', N)       # count
+    body += struct.pack('<H', N)  # count
     for v in vertices:
         body += struct.pack('<2f', v.u, v.v)
 
     # ── Tangents: [uint16=N][uint32=N*6] N × int16×3 ─────────────────────────
-    body += struct.pack('<H', N)       # count
-    body += struct.pack('<I', N * 6)   # byte length
+    body += struct.pack('<H', N)  # count
+    body += struct.pack('<I', N * 6)  # byte length
     for v in vertices:
         body += struct.pack(
             '<3H',
@@ -930,26 +1034,30 @@ def serialize_csg_mesh_v5(
 
     # ── Faces5 block ─────────────────────────────────────────────────────────
     encoded_faces = _encode_faces5(indices)
-    body += struct.pack('<I', num_indices)          # vertex_count
-    body += struct.pack('<I', len(encoded_faces))   # vertex_data_len
-    body += encoded_faces                           # delta-encoded indices
+    body += struct.pack('<I', num_indices)  # vertex_count
+    body += struct.pack('<I', len(encoded_faces))  # vertex_data_len
+    body += encoded_faces  # delta-encoded indices
 
     # Two range markers: [start=0, end=num_indices]
     # This marks all decoded indices as the visual mesh with no collision overlay.
-    body += struct.pack('<B', 2)                    # range_marker_count
-    body += struct.pack('<I', 0)                    # range_markers[0] = start
-    body += struct.pack('<I', num_indices)          # range_markers[1] = end
+    body += struct.pack('<B', 2)  # range_marker_count
+    body += struct.pack('<I', 0)  # range_markers[0] = start
+    body += struct.pack('<I', num_indices)  # range_markers[1] = end
 
     # ── Header (XOR-encrypted) ────────────────────────────────────────────────
     # V5 uses the same 31-byte LcmRand XOR key as V2/V4, but only the
     # 10-byte header (magic + version) is encrypted; the body is plaintext.
     header_plain = HEADER_TAG + struct.pack('<i', 5)  # b'CSGMDL' + int32(5)
-    header_enc = xor_buffer(header_plain)             # xor_buffer XORs exactly len(input) bytes
+    header_enc = xor_buffer(header_plain)  # xor_buffer XORs exactly len(input) bytes
 
     log.info(
         'Serialized CSGMDL v5: %d vertices, %d indices (%d triangles), '
         '%d body bytes (%d encoded face bytes)',
-        N, num_indices, num_indices // 3, len(body), len(encoded_faces),
+        N,
+        num_indices,
+        num_indices // 3,
+        len(body),
+        len(encoded_faces),
     )
 
     return header_enc + bytes(body)
@@ -1047,16 +1155,25 @@ def export_obj(
                     orig_face_num = face_idx + (degenerate_count if face_idx > 0 else 0)
                     # Simple approach: just write all faces in order with group markers
                     i0, i1, i2 = valid_faces[face_idx]
-                    f.write(f'f {i0+1}/{i0+1}/{i0+1} {i1+1}/{i1+1}/{i1+1} {i2+1}/{i2+1}/{i2+1}\n')
+                    f.write(
+                        f'f {i0 + 1}/{i0 + 1}/{i0 + 1} {i1 + 1}/{i1 + 1}/{i1 + 1} {i2 + 1}/{i2 + 1}/{i2 + 1}\n'
+                    )
                     face_idx += 1
                     if face_idx >= sm_end:
                         break
         else:
             # No sub-mesh info — write all faces as one group
             for i0, i1, i2 in valid_faces:
-                f.write(f'f {i0+1}/{i0+1}/{i0+1} {i1+1}/{i1+1}/{i1+1} {i2+1}/{i2+1}/{i2+1}\n')
+                f.write(
+                    f'f {i0 + 1}/{i0 + 1}/{i0 + 1} {i1 + 1}/{i1 + 1}/{i1 + 1} {i2 + 1}/{i2 + 1}/{i2 + 1}\n'
+                )
 
-    log.info('Wrote OBJ: %s (%d vertices, %d faces)', output_path, len(vertices), len(valid_faces))
+    log.info(
+        'Wrote OBJ: %s (%d vertices, %d faces)',
+        output_path,
+        len(vertices),
+        len(valid_faces),
+    )
 
 
 @dataclass
@@ -1094,15 +1211,33 @@ def _transform_vertex(v: CSGVertex, cframe: dict) -> CSGVertex:
     nz = r20 * v.nx + r21 * v.ny + r22 * v.nz
 
     return CSGVertex(
-        px=px, py=py, pz=pz,
-        nx=nx, ny=ny, nz=nz,
-        cr=v.cr, cg=v.cg, cb=v.cb, ca=v.ca,
-        extra_r=v.extra_r, extra_g=v.extra_g, extra_b=v.extra_b, extra_a=v.extra_a,
-        u=v.u, v=v.v,
-        u_studs=v.u_studs, v_studs=v.v_studs,
-        u_decal=v.u_decal, v_decal=v.v_decal,
-        tx=v.tx, ty=v.ty, tz=v.tz,
-        ed0=v.ed0, ed1=v.ed1, ed2=v.ed2, ed3=v.ed3,
+        px=px,
+        py=py,
+        pz=pz,
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        cr=v.cr,
+        cg=v.cg,
+        cb=v.cb,
+        ca=v.ca,
+        extra_r=v.extra_r,
+        extra_g=v.extra_g,
+        extra_b=v.extra_b,
+        extra_a=v.extra_a,
+        u=v.u,
+        v=v.v,
+        u_studs=v.u_studs,
+        v_studs=v.v_studs,
+        u_decal=v.u_decal,
+        v_decal=v.v_decal,
+        tx=v.tx,
+        ty=v.ty,
+        tz=v.tz,
+        ed0=v.ed0,
+        ed1=v.ed1,
+        ed2=v.ed2,
+        ed3=v.ed3,
     )
 
 
@@ -1152,7 +1287,11 @@ def export_obj_multi(
             # Apply CFrame transform if available
             if part.cframe is not None:
                 transformed = [_transform_vertex(v, part.cframe) for v in part.vertices]
-                log.info('Applied CFrame transform to %s (%d vertices)', part.name, len(transformed))
+                log.info(
+                    'Applied CFrame transform to %s (%d vertices)',
+                    part.name,
+                    len(transformed),
+                )
             else:
                 transformed = part.vertices
 
@@ -1167,7 +1306,11 @@ def export_obj_multi(
                     valid_faces.append((i0, i1, i2))
 
             if degenerate_count > 0:
-                log.info('Filtered %d degenerate triangles from %s', degenerate_count, part.name)
+                log.info(
+                    'Filtered %d degenerate triangles from %s',
+                    degenerate_count,
+                    part.name,
+                )
 
             f.write(f'o {part.name}\n')
 
@@ -1203,5 +1346,8 @@ def export_obj_multi(
 
     log.info(
         'Wrote multi-object OBJ: %s (%d objects, %d total vertices, %d total faces)',
-        output_path, len(parts), total_verts, total_faces,
+        output_path,
+        len(parts),
+        total_verts,
+        total_faces,
     )

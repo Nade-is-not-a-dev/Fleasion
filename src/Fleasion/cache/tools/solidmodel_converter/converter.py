@@ -141,10 +141,14 @@ def _export_obj_from_doc(
                     result = parse_csg_mesh_full(mesh_bytes)
                     vertices = result.vertices
                     indices = result.indices
-                    
+
                     try:
                         from ....utils import log_buffer
-                        log_buffer.log('SolidModel', f'Detected SolidModel version: version {result.version}.00')
+
+                        log_buffer.log(
+                            'SolidModel',
+                            f'Detected SolidModel version: version {result.version}.00',
+                        )
                     except Exception:
                         pass
 
@@ -154,30 +158,47 @@ def _export_obj_from_doc(
                         indices = indices[:visual_end]
                         log.info(
                             '  %s (%s): %d vertices, %d/%d visual indices (%d visual, skipped %d auxiliary)',
-                            name, class_name, len(vertices), len(indices), total,
-                            len(indices) // 3, (total - len(indices)) // 3,
+                            name,
+                            class_name,
+                            len(vertices),
+                            len(indices),
+                            total,
+                            len(indices) // 3,
+                            (total - len(indices)) // 3,
                         )
                         try:
-                            log_buffer.log('SolidModel', f'SolidModel part decoded: {len(vertices):,} vertices, {len(indices) // 3:,} faces (visual)')
+                            log_buffer.log(
+                                'SolidModel',
+                                f'SolidModel part decoded: {len(vertices):,} vertices, {len(indices) // 3:,} faces (visual)',
+                            )
                         except Exception:
                             pass
                     else:
                         log.info(
                             '  %s (%s): %d vertices, %d indices (%d triangles)',
-                            name, class_name, len(vertices), len(indices), len(indices) // 3,
+                            name,
+                            class_name,
+                            len(vertices),
+                            len(indices),
+                            len(indices) // 3,
                         )
                         try:
-                            log_buffer.log('SolidModel', f'SolidModel part decoded: {len(vertices):,} vertices, {len(indices) // 3:,} faces')
+                            log_buffer.log(
+                                'SolidModel',
+                                f'SolidModel part decoded: {len(vertices):,} vertices, {len(indices) // 3:,} faces',
+                            )
                         except Exception:
                             pass
 
-                    obj_parts.append(ObjMeshPart(
-                        name=name,
-                        class_name=class_name,
-                        vertices=vertices,
-                        indices=indices,
-                        cframe=cframe,
-                    ))
+                    obj_parts.append(
+                        ObjMeshPart(
+                            name=name,
+                            class_name=class_name,
+                            vertices=vertices,
+                            indices=indices,
+                            cframe=cframe,
+                        )
+                    )
                 export_obj_multi(obj_parts, output_path)
                 return
 
@@ -190,9 +211,10 @@ def _export_obj_from_doc(
     result = parse_csg_mesh_full(mesh_data)
     vertices = result.vertices
     indices = result.indices
-    
+
     try:
         from ....utils import log_buffer
+
         log_buffer.log('SolidModel', f'Detected SolidModel version: version {result.version}.00')
     except Exception:
         pass
@@ -204,20 +226,31 @@ def _export_obj_from_doc(
         indices = indices[:visual_end]
         log.info(
             'Exporting pre-computed result: %d vertices, %d/%d visual indices (%d visual, skipped %d auxiliary)',
-            len(vertices), len(indices), total,
-            len(indices) // 3, (total - len(indices)) // 3,
+            len(vertices),
+            len(indices),
+            total,
+            len(indices) // 3,
+            (total - len(indices)) // 3,
         )
         try:
-            log_buffer.log('SolidModel', f'SolidModel decoded: {len(vertices):,} vertices, {len(indices) // 3:,} faces (visual)')
+            log_buffer.log(
+                'SolidModel',
+                f'SolidModel decoded: {len(vertices):,} vertices, {len(indices) // 3:,} faces (visual)',
+            )
         except Exception:
             pass
     else:
         log.info(
             'Exporting pre-computed result: %d vertices, %d indices (%d triangles)',
-            len(vertices), len(indices), len(indices) // 3,
+            len(vertices),
+            len(indices),
+            len(indices) // 3,
         )
         try:
-            log_buffer.log('SolidModel', f'SolidModel decoded: {len(vertices):,} vertices, {len(indices) // 3:,} faces')
+            log_buffer.log(
+                'SolidModel',
+                f'SolidModel decoded: {len(vertices):,} vertices, {len(indices) // 3:,} faces',
+            )
         except Exception:
             pass
 
@@ -251,11 +284,17 @@ def _collect_mesh_parts(
             continue
 
         name_prop = inst.properties.get('Name')
-        name = name_prop.value if name_prop and isinstance(name_prop.value, str) else inst.class_name
+        name = (
+            name_prop.value if name_prop and isinstance(name_prop.value, str) else inst.class_name
+        )
 
         # Extract CFrame for transform
         cframe_prop = inst.properties.get('CFrame')
-        cframe = cframe_prop.value if cframe_prop is not None and isinstance(cframe_prop.value, dict) else None
+        cframe = (
+            cframe_prop.value
+            if cframe_prop is not None and isinstance(cframe_prop.value, dict)
+            else None
+        )
 
         parts.append((name, inst.class_name, mesh_prop.value, cframe))
 
@@ -271,12 +310,20 @@ def _get_top_level_mesh_data(doc: RbxDocument) -> bytes | None:
     """Get the MeshData from the top-level PartOperationAsset."""
     for inst in doc.roots:
         mesh_prop = inst.properties.get('MeshData')
-        if mesh_prop is not None and isinstance(mesh_prop.value, bytes) and len(mesh_prop.value) > 0:
+        if (
+            mesh_prop is not None
+            and isinstance(mesh_prop.value, bytes)
+            and len(mesh_prop.value) > 0
+        ):
             return mesh_prop.value
     # Also check non-root instances
     for inst in doc.instances.values():
         mesh_prop = inst.properties.get('MeshData')
-        if mesh_prop is not None and isinstance(mesh_prop.value, bytes) and len(mesh_prop.value) > 0:
+        if (
+            mesh_prop is not None
+            and isinstance(mesh_prop.value, bytes)
+            and len(mesh_prop.value) > 0
+        ):
             return mesh_prop.value
     return None
 

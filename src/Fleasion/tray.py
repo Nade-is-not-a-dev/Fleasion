@@ -11,10 +11,34 @@ except ImportError:
 
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices, QIcon
-from PyQt6.QtWidgets import QApplication, QDialog, QHBoxLayout, QLabel, QMenu, QPushButton, QSystemTrayIcon, QVBoxLayout
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QSystemTrayIcon,
+    QVBoxLayout,
+)
 
-from .gui import AboutWindow, DeleteCacheWindow, LogsWindow, ReplacerConfigWindow, ThemeManager
-from .utils import APP_DISCORD, APP_NAME, APP_VERSION, LOGS_DIR, get_icon_path, log_buffer, open_folder, run_in_thread
+from .gui import (
+    AboutWindow,
+    DeleteCacheWindow,
+    LogsWindow,
+    ReplacerConfigWindow,
+    ThemeManager,
+)
+from .utils import (
+    APP_DISCORD,
+    APP_NAME,
+    APP_VERSION,
+    LOGS_DIR,
+    get_icon_path,
+    log_buffer,
+    open_folder,
+    run_in_thread,
+)
 
 APP_KOFI = 'ko-fi.com/fleasion'
 _NOTIFICATION_APP_ID = f'{APP_NAME}.Notifications'
@@ -37,7 +61,14 @@ def _run_on_boot_requires_admin() -> bool:
 class SystemTray:
     """System tray icon with menu."""
 
-    def __init__(self, app: QApplication, config_manager, proxy_master, mod_manager=None, roblox_monitor=None):
+    def __init__(
+        self,
+        app: QApplication,
+        config_manager,
+        proxy_master,
+        mod_manager=None,
+        roblox_monitor=None,
+    ):
         self.app = app
         self.config_manager = config_manager
         self.proxy_master = proxy_master
@@ -85,7 +116,9 @@ class SystemTray:
             self.tray.setIcon(QIcon(str(icon_path)))
         else:
             # Use a default icon if none is available
-            self.tray.setIcon(self.app.style().standardIcon(self.app.style().StandardPixmap.SP_ComputerIcon))
+            self.tray.setIcon(
+                self.app.style().standardIcon(self.app.style().StandardPixmap.SP_ComputerIcon)
+            )
 
     def _update_tooltip(self):
         """Update the tooltip text based on proxy status."""
@@ -264,7 +297,9 @@ class SystemTray:
         self.run_on_boot_action.triggered.connect(self._toggle_run_on_boot)
         convenience_menu.addAction(self.run_on_boot_action)
 
-        self.desktop_integration_action = QAction('Create desktop/start menu integration on boot', convenience_menu)
+        self.desktop_integration_action = QAction(
+            'Create desktop/start menu integration on boot', convenience_menu
+        )
         self.desktop_integration_action.setCheckable(True)
         self.desktop_integration_action.setChecked(self.config_manager.desktop_integration)
         self.desktop_integration_action.triggered.connect(self._toggle_desktop_integration)
@@ -306,25 +341,36 @@ class SystemTray:
         settings_menu.addMenu(scraper_menu)
 
         scraped_games_menu = QMenu('Scraped Games', settings_menu)
-        self.show_replacer_notifications_action = QAction('Show Replacer Notifications', scraped_games_menu)
+        self.show_replacer_notifications_action = QAction(
+            'Show Replacer Notifications', scraped_games_menu
+        )
         self.show_replacer_notifications_action.setCheckable(True)
-        self.show_replacer_notifications_action.setChecked(self.config_manager.show_replacer_notifications)
-        self.show_replacer_notifications_action.triggered.connect(self._toggle_show_replacer_notifications)
+        self.show_replacer_notifications_action.setChecked(
+            self.config_manager.show_replacer_notifications
+        )
+        self.show_replacer_notifications_action.triggered.connect(
+            self._toggle_show_replacer_notifications
+        )
         scraped_games_menu.addAction(self.show_replacer_notifications_action)
         self.close_viewer_on_replace_action = QAction('Close Viewer on Replace', scraped_games_menu)
         self.close_viewer_on_replace_action.setCheckable(True)
         self.close_viewer_on_replace_action.setChecked(self.config_manager.close_viewer_on_replace)
         self.close_viewer_on_replace_action.triggered.connect(self._toggle_close_viewer_on_replace)
         scraped_games_menu.addAction(self.close_viewer_on_replace_action)
-        self.close_scraped_games_menu_on_open_action = QAction('Close Scraped Games Menu on Open', scraped_games_menu)
+        self.close_scraped_games_menu_on_open_action = QAction(
+            'Close Scraped Games Menu on Open', scraped_games_menu
+        )
         self.close_scraped_games_menu_on_open_action.setCheckable(True)
-        self.close_scraped_games_menu_on_open_action.setChecked(self.config_manager.close_scraped_games_menu_on_open)
-        self.close_scraped_games_menu_on_open_action.triggered.connect(self._toggle_close_scraped_games_menu_on_open)
+        self.close_scraped_games_menu_on_open_action.setChecked(
+            self.config_manager.close_scraped_games_menu_on_open
+        )
+        self.close_scraped_games_menu_on_open_action.triggered.connect(
+            self._toggle_close_scraped_games_menu_on_open
+        )
         scraped_games_menu.addAction(self.close_scraped_games_menu_on_open_action)
         settings_menu.addMenu(scraped_games_menu)
 
         self.menu.addMenu(settings_menu)
-
 
     def _refresh_settings_tab(self):
         """Push current config state to the Settings tab if the dashboard is open."""
@@ -376,7 +422,10 @@ class SystemTray:
                         self.proxy_master.start()
                     else:
                         self.config_manager.proxy_features_enabled = False
-                        log_buffer.log('ProxyHelper', f'macOS proxy helper installation failed: {detail}')
+                        log_buffer.log(
+                            'ProxyHelper',
+                            f'macOS proxy helper installation failed: {detail}',
+                        )
                         enabled = False
             elif sys.platform.startswith('linux'):
                 self.proxy_master.start()
@@ -392,7 +441,10 @@ class SystemTray:
                     return
 
                 self.config_manager.proxy_features_enabled = False
-                log_buffer.log('Proxy', 'Administrator relaunch was cancelled; proxy features remain disabled')
+                log_buffer.log(
+                    'Proxy',
+                    'Administrator relaunch was cancelled; proxy features remain disabled',
+                )
                 enabled = False
         else:
             try:
@@ -432,6 +484,7 @@ class SystemTray:
 
         # Apply to all open windows (only if they're visible)
         from PyQt6.QtCore import Qt
+
         for window in self.open_windows:
             if window.isVisible():
                 flags = window.windowFlags()
@@ -462,8 +515,9 @@ class SystemTray:
         if _run_on_boot_requires_admin() and not _is_admin():
             self.run_on_boot_action.setChecked(not self.run_on_boot_action.isChecked())
             return
-        from .utils.autostart import sync_autostart
         from .utils import CONFIG_DIR
+        from .utils.autostart import sync_autostart
+
         checked = self.run_on_boot_action.isChecked()
         ok = sync_autostart(checked, CONFIG_DIR)
         if ok:
@@ -473,10 +527,14 @@ class SystemTray:
             # Revert UI state and show error dialog with detail
             self.run_on_boot_action.setChecked(not checked)
             from PyQt6.QtCore import Qt
-            from PyQt6.QtWidgets import QMessageBox, QApplication
+            from PyQt6.QtWidgets import QApplication, QMessageBox
+
             _top = QApplication.topLevelWidgets()
             _parent = next((w for w in _top if w.isVisible()), None)
-            _on_top = any(w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) for w in _top)
+            _on_top = any(
+                w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+                for w in _top
+            )
             _warn = QMessageBox(_parent)
             _warn.setWindowTitle('Run on Boot Failed')
             _warn.setIcon(QMessageBox.Icon.Warning)
@@ -499,10 +557,12 @@ class SystemTray:
         if ok:
             self.config_manager.desktop_integration = checked
             if sys.platform.startswith('linux') and self.config_manager.run_on_boot:
-                from .utils.autostart import sync_autostart
                 from .utils import CONFIG_DIR
+                from .utils.autostart import sync_autostart
+
                 if not sync_autostart(True, CONFIG_DIR):
-                    from PyQt6.QtWidgets import QMessageBox, QApplication
+                    from PyQt6.QtWidgets import QApplication, QMessageBox
+
                     _top = QApplication.topLevelWidgets()
                     _parent = next((w for w in _top if w.isVisible()), None)
                     _warn = QMessageBox(_parent)
@@ -517,10 +577,14 @@ class SystemTray:
             self._refresh_settings_tab()
         else:
             self.desktop_integration_action.setChecked(not checked)
-            from PyQt6.QtWidgets import QMessageBox, QApplication
+            from PyQt6.QtWidgets import QApplication, QMessageBox
+
             _top = QApplication.topLevelWidgets()
             _parent = next((w for w in _top if w.isVisible()), None)
-            _on_top = any(w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) for w in _top)
+            _on_top = any(
+                w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+                for w in _top
+            )
             _warn = QMessageBox(_parent)
             _warn.setWindowTitle('Desktop Integration Failed')
             _warn.setIcon(QMessageBox.Icon.Warning)
@@ -601,6 +665,7 @@ class SystemTray:
         """Apply always on top setting to a window."""
         if self.config_manager.always_on_top:
             from PyQt6.QtCore import Qt
+
             flags = window.windowFlags()
             flags |= Qt.WindowType.WindowStaysOnTopHint
             window.setWindowFlags(flags)
@@ -638,7 +703,14 @@ class SystemTray:
             return
 
         from PyQt6.QtCore import Qt
-        window = ReplacerConfigWindow(self.config_manager, self.proxy_master, self.mod_manager, self.roblox_monitor, system_tray=self)
+
+        window = ReplacerConfigWindow(
+            self.config_manager,
+            self.proxy_master,
+            self.mod_manager,
+            self.roblox_monitor,
+            system_tray=self,
+        )
         window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         window.destroyed.connect(self._on_dashboard_destroyed)
         self.dashboard_window = window
@@ -668,7 +740,10 @@ class SystemTray:
         """Keep the macOS dashboard visible when Fleasion loses focus."""
         if sys.platform != 'darwin':
             return
-        from .utils.platform_macos import set_application_foreground_mode, set_application_icon
+        from .utils.platform_macos import (
+            set_application_foreground_mode,
+            set_application_icon,
+        )
 
         if not set_application_foreground_mode(enabled):
             log_buffer.log('App', 'macOS dashboard activation-policy update was rejected')
@@ -736,7 +811,9 @@ class SystemTray:
         icon_path = get_icon_path()
 
         try:
-            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf'SOFTWARE\Classes\AppUserModelId\{app_id}')
+            key = winreg.CreateKey(
+                winreg.HKEY_CURRENT_USER, rf'SOFTWARE\Classes\AppUserModelId\{app_id}'
+            )
             winreg.SetValueEx(key, 'DisplayName', 0, winreg.REG_EXPAND_SZ, APP_NAME)
             winreg.SetValueEx(key, 'IconBackgroundColor', 0, winreg.REG_SZ, '00000000')
             if icon_path is not None:
@@ -778,7 +855,11 @@ class SystemTray:
 
     def _open_discord_server(self):
         """Open the Discord server invite in the default browser."""
-        discord_url = APP_DISCORD if APP_DISCORD.startswith(('http://', 'https://')) else f'https://{APP_DISCORD}'
+        discord_url = (
+            APP_DISCORD
+            if APP_DISCORD.startswith(('http://', 'https://'))
+            else f'https://{APP_DISCORD}'
+        )
         QDesktopServices.openUrl(QUrl(discord_url))
 
     def _show_macos_beta_warning(self):
@@ -792,7 +873,10 @@ class SystemTray:
 
         _top = QApplication.topLevelWidgets()
         _parent = next((w for w in _top if w.isVisible()), self.dashboard_window)
-        _on_top = any(w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) for w in _top)
+        _on_top = any(
+            w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+            for w in _top
+        )
 
         dialog = QDialog(_parent)
         if _on_top:
@@ -838,13 +922,16 @@ class SystemTray:
     def _copy_discord(self):
         """Copy Discord invite to clipboard."""
         from PyQt6.QtCore import Qt
-        from PyQt6.QtWidgets import QMessageBox, QApplication
+        from PyQt6.QtWidgets import QApplication, QMessageBox
 
         QApplication.clipboard().setText(f'https://{APP_DISCORD}')
 
         _top = QApplication.topLevelWidgets()
         _parent = next((w for w in _top if w.isVisible()), None)
-        _on_top = any(w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) for w in _top)
+        _on_top = any(
+            w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+            for w in _top
+        )
         msg_box = QMessageBox(_parent)
         if _on_top:
             msg_box.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
@@ -854,12 +941,14 @@ class SystemTray:
         msg_box.setIcon(QMessageBox.Icon.Information)
         if icon_path := get_icon_path():
             from PyQt6.QtGui import QIcon
+
             msg_box.setWindowIcon(QIcon(str(icon_path)))
         msg_box.exec()
 
     def _open_kofi(self):
         """Open Ko-fi page in browser."""
         import webbrowser
+
         webbrowser.open(f'https://{APP_KOFI}')
 
     def _exit_app(self):

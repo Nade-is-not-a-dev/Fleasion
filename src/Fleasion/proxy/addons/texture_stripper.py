@@ -5,9 +5,9 @@ threading.Lock so it is safely shared across all MITM thread-pool workers.
 """
 
 import gzip
+import hashlib
 import io
 import json
-import hashlib
 import logging
 from pathlib import Path
 from threading import Lock
@@ -21,15 +21,20 @@ from ..roblox_metadata import strip_roblox_metadata
 # Use orjson when available (2-3x faster JSON parse)
 try:
     import orjson
+
     def _loads(data: bytes):
         return orjson.loads(data)
+
     def _dumps(obj) -> bytes:
         return orjson.dumps(obj)
 except ImportError:
+
     def _loads(data: bytes):
         return json.loads(data)
+
     def _dumps(obj) -> bytes:
         return json.dumps(obj, separators=(',', ':')).encode()
+
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +61,7 @@ def _short_value(value, limit: int = 120) -> str:
     text = str(value)
     if len(text) <= limit:
         return text
-    return text[:limit - 3] + '...'
+    return text[: limit - 3] + '...'
 
 
 def _file_value(value) -> str:
@@ -73,6 +78,7 @@ def _file_value(value) -> str:
 
 def _b64decode_padded(value: str) -> bytes:
     import base64 as _b64
+
     raw = str(value).encode('ascii', errors='ignore')
     raw += b'=' * (-len(raw) % 4)
     return _b64.urlsafe_b64decode(raw)
@@ -105,8 +111,12 @@ def _texpack_slot_from_build_type(value) -> int | None:
     if any(token in normalized for token in ('normal', 'bump')):
         return 1
     if (
-        'metal' in normalized or 'rough' in normalized or 'emiss' in normalized
-        or 'height' in normalized or 'displace' in normalized or normalized == 'orm'
+        'metal' in normalized
+        or 'rough' in normalized
+        or 'emiss' in normalized
+        or 'height' in normalized
+        or 'displace' in normalized
+        or normalized == 'orm'
     ):
         return 2
     return None
@@ -114,8 +124,12 @@ def _texpack_slot_from_build_type(value) -> int | None:
 
 def _texpack_slot_from_request(e: dict) -> int | None:
     for key in (
-        'requestedBuildType', 'buildType', 'textureType',
-        'textureMap', 'mapType', 'contentType',
+        'requestedBuildType',
+        'buildType',
+        'textureType',
+        'textureMap',
+        'mapType',
+        'contentType',
     ):
         slot = _texpack_slot_from_build_type(e.get(key))
         if slot is not None:
@@ -125,8 +139,12 @@ def _texpack_slot_from_request(e: dict) -> int | None:
 
 def _texpack_build_key(e: dict):
     for key in (
-        'requestedBuildType', 'buildType', 'textureType',
-        'textureMap', 'mapType', 'contentType',
+        'requestedBuildType',
+        'buildType',
+        'textureType',
+        'textureMap',
+        'mapType',
+        'contentType',
     ):
         value = _normalized_build_type(e.get(key))
         if value is not None:
@@ -136,8 +154,13 @@ def _texpack_build_key(e: dict):
 
 def _representation_matches_requested(representation: dict, requested) -> bool:
     for key in (
-        'requestedBuildType', 'buildType', 'contentType',
-        'type', 'format', 'name', 'representationType',
+        'requestedBuildType',
+        'buildType',
+        'contentType',
+        'type',
+        'format',
+        'name',
+        'representationType',
     ):
         if _normalized_build_type(representation.get(key)) == requested:
             return True
@@ -158,7 +181,9 @@ def _select_content_representation(e: dict) -> Optional[dict]:
     requested = _normalized_build_type(e.get('requestedBuildType'))
     if requested is not None:
         for representation in decoded:
-            if isinstance(representation, dict) and _representation_matches_requested(representation, requested):
+            if isinstance(representation, dict) and _representation_matches_requested(
+                representation, requested
+            ):
                 return representation
         if isinstance(requested, int) and 0 <= requested < len(decoded):
             representation = decoded[requested]
@@ -205,6 +230,7 @@ def _decode_selected_representation_slot_quality(e: dict) -> tuple[int, int] | N
 def _decompress_cdn_response(data: bytes) -> bytes:
     if data[:4] == _ZSTD_MAGIC:
         import zstandard
+
         data = zstandard.ZstdDecompressor().decompress(data, max_output_size=64 * 1024 * 1024)
         log_buffer.log('CDN', f'Decompressed zstd CDN payload: {len(data)} bytes')
     elif data[:2] == _GZIP_MAGIC:
@@ -214,15 +240,20 @@ def _decompress_cdn_response(data: bytes) -> bytes:
 
 
 def _inject_obj_into_solidmodel(bin_data: bytes, obj_path: Path, prefer_v3: bool = False) -> bytes:
-    from ...cache.tools.solidmodel_converter.obj_to_csg import export_csg_mesh
     from ...cache.tools.solidmodel_converter.converter import deserialize_rbxm
-    from ...cache.tools.solidmodel_converter.rbxm.serializer import write_rbxm
-    from ...cache.tools.solidmodel_converter.rbxm.types import PropertyFormat, RbxProperty
     from ...cache.tools.solidmodel_converter.csg_mesh import _detect_csgmdl_version
+    from ...cache.tools.solidmodel_converter.obj_to_csg import export_csg_mesh
+    from ...cache.tools.solidmodel_converter.rbxm.serializer import write_rbxm
+    from ...cache.tools.solidmodel_converter.rbxm.types import (
+        PropertyFormat,
+        RbxProperty,
+    )
 
     bin_data = _decompress_cdn_response(bin_data)
     doc = deserialize_rbxm(bin_data)
-    _INJECTABLE = frozenset({'PartOperationAsset', 'UnionOperation', 'NegateOperation', 'PartOperation'})
+    _INJECTABLE = frozenset(
+        {'PartOperationAsset', 'UnionOperation', 'NegateOperation', 'PartOperation'}
+    )
 
     csg_version = 3
     if prefer_v3:
@@ -232,7 +263,11 @@ def _inject_obj_into_solidmodel(bin_data: bytes, obj_path: Path, prefer_v3: bool
             if inst.class_name in _INJECTABLE:
                 prop = inst.properties.get('MeshData')
                 if prop is not None and prop.value:
-                    mesh_bytes = prop.value if isinstance(prop.value, bytes) else bytes(prop.value, 'latin-1')
+                    mesh_bytes = (
+                        prop.value
+                        if isinstance(prop.value, bytes)
+                        else bytes(prop.value, 'latin-1')
+                    )
                     detected = _detect_csgmdl_version(mesh_bytes)
                     if detected is not None:
                         csg_version = detected
@@ -244,10 +279,13 @@ def _inject_obj_into_solidmodel(bin_data: bytes, obj_path: Path, prefer_v3: bool
     for inst in doc.roots:
         if inst.class_name in _INJECTABLE:
             inst.properties['MeshData'] = RbxProperty(
-                name='MeshData', fmt=PropertyFormat.STRING, value=csg_bytes,
+                name='MeshData',
+                fmt=PropertyFormat.STRING,
+                value=csg_bytes,
             )
             inst.properties['Color'] = RbxProperty(
-                name='Color', fmt=PropertyFormat.COLOR3UINT8,
+                name='Color',
+                fmt=PropertyFormat.COLOR3UINT8,
                 value={'R': 255, 'G': 255, 'B': 255},
             )
             injected += 1
@@ -260,7 +298,10 @@ def _inject_obj_into_solidmodel(bin_data: bytes, obj_path: Path, prefer_v3: bool
 
 def _try_mesh_to_obj(path: Path, ctx: str) -> Optional[Path]:
     try:
-        from ...cache.tools.solidmodel_converter.mesh_intermediary import mesh_file_to_cached_obj
+        from ...cache.tools.solidmodel_converter.mesh_intermediary import (
+            mesh_file_to_cached_obj,
+        )
+
         return mesh_file_to_cached_obj(path)
     except Exception as exc:
         log_buffer.log('Intermediary', f'{ctx}: .mesh->OBJ failed: {exc}')
@@ -269,7 +310,7 @@ def _try_mesh_to_obj(path: Path, ctx: str) -> Optional[Path]:
 
 def _is_csgmdl_bin(path: Path) -> bool:
     """Check if a .bin file is actually a CSGMDL by looking for RBXM header and MeshData.
-    
+
     Returns True only if:
     1. The file is a valid binary RBXM
     2. It contains an injectable root (PartOperationAsset, etc.)
@@ -281,27 +322,39 @@ def _is_csgmdl_bin(path: Path) -> bool:
         data = raw
         if raw[:4] == b'\x28\xb5\x2f\xfd':  # zstd
             import zstandard
+
             data = zstandard.ZstdDecompressor().decompress(raw, max_output_size=64 * 1024 * 1024)
         elif raw[:2] == b'\x1f\x8b':  # gzip
             data = gzip.decompress(raw)
-        
+
         # Check if it's a valid binary RBXM
         from ...cache.tools.solidmodel_converter.mesh_intermediary import is_binary_rbxm
+
         if not is_binary_rbxm(data):
             return False
-        
+
         # Try to deserialize and find injectable roots with MeshData
         from ...cache.tools.solidmodel_converter.converter import deserialize_rbxm
+
         doc = deserialize_rbxm(data)
-        _INJECTABLE = frozenset({'PartOperationAsset', 'UnionOperation', 'NegateOperation', 'PartOperation'})
-        
+        _INJECTABLE = frozenset(
+            {'PartOperationAsset', 'UnionOperation', 'NegateOperation', 'PartOperation'}
+        )
+
         for inst in doc.roots:
             if inst.class_name in _INJECTABLE:
                 prop = inst.properties.get('MeshData')
                 if prop is not None and prop.value:
                     # Check if MeshData looks like CSGMDL
-                    from ...cache.tools.solidmodel_converter.csg_mesh import _detect_csgmdl_version
-                    mesh_bytes = prop.value if isinstance(prop.value, bytes) else bytes(prop.value, 'latin-1')
+                    from ...cache.tools.solidmodel_converter.csg_mesh import (
+                        _detect_csgmdl_version,
+                    )
+
+                    mesh_bytes = (
+                        prop.value
+                        if isinstance(prop.value, bytes)
+                        else bytes(prop.value, 'latin-1')
+                    )
                     if _detect_csgmdl_version(mesh_bytes) is not None:
                         return True
         return False
@@ -311,7 +364,10 @@ def _is_csgmdl_bin(path: Path) -> bool:
 
 def _try_bin_to_obj(path: Path, ctx: str) -> Optional[Path]:
     try:
-        from ...cache.tools.solidmodel_converter.mesh_intermediary import bin_file_to_cached_obj
+        from ...cache.tools.solidmodel_converter.mesh_intermediary import (
+            bin_file_to_cached_obj,
+        )
+
         return bin_file_to_cached_obj(path)
     except Exception as exc:
         log_buffer.log('Intermediary', f'{ctx}: .bin->OBJ failed: {exc}')
@@ -320,7 +376,10 @@ def _try_bin_to_obj(path: Path, ctx: str) -> Optional[Path]:
 
 def _try_rbxmx_to_obj(path: Path, ctx: str) -> Optional[Path]:
     try:
-        from ...cache.tools.solidmodel_converter.mesh_intermediary import rbxmx_file_to_cached_obj
+        from ...cache.tools.solidmodel_converter.mesh_intermediary import (
+            rbxmx_file_to_cached_obj,
+        )
+
         return rbxmx_file_to_cached_obj(path)
     except Exception as exc:
         log_buffer.log('Intermediary', f'{ctx}: .rbxmx->OBJ failed: {exc}')
@@ -333,13 +392,18 @@ def _download_remote_file(url: str, dest: Path, label: str) -> bool:
         if dest.exists():
             return True
         log_buffer.log('Downloader', f'Downloading remote {label}: {url}')
-        http_download_to(url, dest, timeout=30, headers={
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/120.0.0.0 Safari/537.36'
-            )
-        })
+        http_download_to(
+            url,
+            dest,
+            timeout=30,
+            headers={
+                'User-Agent': (
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/120.0.0.0 Safari/537.36'
+                )
+            },
+        )
         log_buffer.log('Downloader', f'Saved {label}: {dest.name}')
         return True
     except Exception as exc:
@@ -352,35 +416,87 @@ class TextureStripper:
 
     # ── Shared singleton state (class-level) ──────────────────────────────
     _lock: Lock = Lock()
-    _pending: Dict[str, Tuple[str, str]] = {}       # requestId -> (kind, value)
-    _cdn_redirects: Dict[str, str] = {}              # base_cdn_url -> redirect_url
-    _local_redirects: Dict[str, str] = {}            # base_cdn_url -> local_path
-    _solidmodel_injections: Dict[str, str] = {}      # base_cdn_url -> obj_path
-    _solidmodel_force_v3: set = set()                # base_cdn_url values that should force v3 CSG export
+    _pending: Dict[str, Tuple[str, str]] = {}  # requestId -> (kind, value)
+    _cdn_redirects: Dict[str, str] = {}  # base_cdn_url -> redirect_url
+    _local_redirects: Dict[str, str] = {}  # base_cdn_url -> local_path
+    _solidmodel_injections: Dict[str, str] = {}  # base_cdn_url -> obj_path
+    _solidmodel_force_v3: set = set()  # base_cdn_url values that should force v3 CSG export
     # ─────────────────────────────────────────────────────────────────────
 
     ASSET_TYPES: Dict[int, str] = {
-        1: 'Image', 2: 'TShirt', 3: 'Audio', 4: 'Mesh', 5: 'Lua',
-        6: 'HTML', 7: 'Text', 8: 'Hat', 9: 'Place', 10: 'Model',
-        11: 'Shirt', 12: 'Pants', 13: 'Decal', 16: 'Avatar', 17: 'Head',
-        18: 'Face', 19: 'Gear', 21: 'Badge', 22: 'GroupEmblem',
-        24: 'Animation', 25: 'Arms', 26: 'Legs', 27: 'Torso',
-        28: 'RightArm', 29: 'LeftArm', 30: 'LeftLeg', 31: 'RightLeg',
-        32: 'Package', 33: 'YouTubeVideo', 34: 'GamePass', 35: 'App',
-        37: 'Code', 38: 'Plugin', 39: 'SolidModel', 40: 'MeshPart',
-        41: 'HairAccessory', 42: 'FaceAccessory', 43: 'NeckAccessory',
-        44: 'ShoulderAccessory', 45: 'FrontAccessory', 46: 'BackAccessory',
-        47: 'WaistAccessory', 48: 'ClimbAnimation', 49: 'DeathAnimation',
-        50: 'FallAnimation', 51: 'IdleAnimation', 52: 'JumpAnimation',
-        53: 'RunAnimation', 54: 'SwimAnimation', 55: 'WalkAnimation',
-        56: 'PoseAnimation', 57: 'EarAccessory', 58: 'EyeAccessory',
-        59: 'LocalizationTableManifest', 61: 'EmoteAnimation', 62: 'Video',
-        63: 'TexturePack', 64: 'TShirtAccessory', 65: 'ShirtAccessory',
-        66: 'PantsAccessory', 67: 'JacketAccessory', 68: 'SweaterAccessory',
-        69: 'ShortsAccessory', 70: 'LeftShoeAccessory', 71: 'RightShoeAccessory',
-        72: 'DressSkirtAccessory', 73: 'FontFamily', 74: 'FontFace',
-        75: 'MeshHiddenSurfaceRemoval', 76: 'EyebrowAccessory',
-        77: 'EyelashAccessory', 78: 'MoodAnimation', 79: 'DynamicHead',
+        1: 'Image',
+        2: 'TShirt',
+        3: 'Audio',
+        4: 'Mesh',
+        5: 'Lua',
+        6: 'HTML',
+        7: 'Text',
+        8: 'Hat',
+        9: 'Place',
+        10: 'Model',
+        11: 'Shirt',
+        12: 'Pants',
+        13: 'Decal',
+        16: 'Avatar',
+        17: 'Head',
+        18: 'Face',
+        19: 'Gear',
+        21: 'Badge',
+        22: 'GroupEmblem',
+        24: 'Animation',
+        25: 'Arms',
+        26: 'Legs',
+        27: 'Torso',
+        28: 'RightArm',
+        29: 'LeftArm',
+        30: 'LeftLeg',
+        31: 'RightLeg',
+        32: 'Package',
+        33: 'YouTubeVideo',
+        34: 'GamePass',
+        35: 'App',
+        37: 'Code',
+        38: 'Plugin',
+        39: 'SolidModel',
+        40: 'MeshPart',
+        41: 'HairAccessory',
+        42: 'FaceAccessory',
+        43: 'NeckAccessory',
+        44: 'ShoulderAccessory',
+        45: 'FrontAccessory',
+        46: 'BackAccessory',
+        47: 'WaistAccessory',
+        48: 'ClimbAnimation',
+        49: 'DeathAnimation',
+        50: 'FallAnimation',
+        51: 'IdleAnimation',
+        52: 'JumpAnimation',
+        53: 'RunAnimation',
+        54: 'SwimAnimation',
+        55: 'WalkAnimation',
+        56: 'PoseAnimation',
+        57: 'EarAccessory',
+        58: 'EyeAccessory',
+        59: 'LocalizationTableManifest',
+        61: 'EmoteAnimation',
+        62: 'Video',
+        63: 'TexturePack',
+        64: 'TShirtAccessory',
+        65: 'ShirtAccessory',
+        66: 'PantsAccessory',
+        67: 'JacketAccessory',
+        68: 'SweaterAccessory',
+        69: 'ShortsAccessory',
+        70: 'LeftShoeAccessory',
+        71: 'RightShoeAccessory',
+        72: 'DressSkirtAccessory',
+        73: 'FontFamily',
+        74: 'FontFace',
+        75: 'MeshHiddenSurfaceRemoval',
+        76: 'EyebrowAccessory',
+        77: 'EyelashAccessory',
+        78: 'MoodAnimation',
+        79: 'DynamicHead',
         80: 'CodeSnippet',
     }
     _REVERSE: Dict[str, int] = {name.lower(): tid for tid, name in ASSET_TYPES.items()}
@@ -409,8 +525,8 @@ class TextureStripper:
 
     # Virtual rig-filter type keys -> required original rig ('R6', 'R15', 'unknown')
     _VIRTUAL_ANIM_RIG: Dict[str, str] = {
-        'R6Animation':        'R6',
-        'R15Animation':       'R15',
+        'R6Animation': 'R6',
+        'R15Animation': 'R15',
         'NonPlayerAnimation': 'unknown',
     }
 
@@ -422,7 +538,7 @@ class TextureStripper:
     # Populated by process_batch_response; checked by check_cdn_request.
     # These do NOT short-circuit - upstream response is read to detect original rig.
     # Value: (local_path, required_rig) where required_rig is 'R6'|'R15'|'unknown'|'any'
-    _anim_rig_local: Dict[str, Tuple[str, str]] = {}   # base_cdn_url -> (local_path, required_rig)
+    _anim_rig_local: Dict[str, Tuple[str, str]] = {}  # base_cdn_url -> (local_path, required_rig)
     # pending_key -> (local_path, required_rig)
     _anim_local_pending: Dict[str, Tuple[str, str]] = {}
     # separate lock for rig-conversion state (avoids holding _lock during file I/O)
@@ -459,7 +575,10 @@ class TextureStripper:
         if not unique_targets:
             return
         self._precheck_pending.update(unique_targets)
-        log_buffer.log('Replacer', f'Pre-checking {format_count(unique_targets, "replacement asset")}...')
+        log_buffer.log(
+            'Replacer',
+            f'Pre-checking {format_count(unique_targets, "replacement asset")}...',
+        )
 
         self._PREDOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -504,7 +623,10 @@ class TextureStripper:
                     try:
                         local_path.write_bytes(_data)
                         self._predownloaded[int(target_id)] = str(local_path)
-                        log_buffer.log('Replacer', f'Cached public animation {target_id} for rig conversion ({len(_data)} bytes)')
+                        log_buffer.log(
+                            'Replacer',
+                            f'Cached public animation {target_id} for rig conversion ({len(_data)} bytes)',
+                        )
                     except Exception:
                         self._checked_public.add(int(target_id))
                 else:
@@ -514,12 +636,18 @@ class TextureStripper:
                 continue
 
             if status == 404:
-                log_buffer.log('Replacer', f'Replacement asset {target_id} not found (404) — skipping')
+                log_buffer.log(
+                    'Replacer',
+                    f'Replacement asset {target_id} not found (404) — skipping',
+                )
                 failed_count += 1
                 continue
 
             if status != 403:
-                log_buffer.log('Replacer', f'Replacement asset {target_id} returned status {status} — skipping')
+                log_buffer.log(
+                    'Replacer',
+                    f'Replacement asset {target_id} returned status {status} — skipping',
+                )
                 failed_count += 1
                 continue
 
@@ -529,26 +657,41 @@ class TextureStripper:
                 private_count += 1
                 log_buffer.log('Replacer', f'Reusing cached private pre-download for {target_id}')
                 continue
-            log_buffer.log('Replacer', f'Replacement asset {target_id} is private, pre-downloading...')
+            log_buffer.log(
+                'Replacer',
+                f'Replacement asset {target_id} is private, pre-downloading...',
+            )
             data, dl_status = scraper._fetch_asset_with_place_id_retry(
-                str(target_id), extra_headers=dict(extra) if extra else None,
+                str(target_id),
+                extra_headers=dict(extra) if extra else None,
             )
             if data:
                 try:
                     local_path.write_bytes(data)
                     self._predownloaded[int(target_id)] = str(local_path)
                     private_count += 1
-                    log_buffer.log('Replacer', f'Pre-downloaded private asset {target_id} ({len(data)} bytes)')
+                    log_buffer.log(
+                        'Replacer',
+                        f'Pre-downloaded private asset {target_id} ({len(data)} bytes)',
+                    )
                 except Exception as exc:
-                    log_buffer.log('Replacer', f'Failed to save pre-download for {target_id}: {exc}')
+                    log_buffer.log(
+                        'Replacer',
+                        f'Failed to save pre-download for {target_id}: {exc}',
+                    )
                     failed_count += 1
             else:
-                log_buffer.log('Replacer', f'Could not pre-download private asset {target_id} (status {dl_status})')
+                log_buffer.log(
+                    'Replacer',
+                    f'Could not pre-download private asset {target_id} (status {dl_status})',
+                )
                 failed_count += 1
 
         self._precheck_pending -= unique_targets
-        log_buffer.log('Replacer',
-                       f'Pre-check complete: {public_count} public, {private_count} private (pre-downloaded), {failed_count} failed')
+        log_buffer.log(
+            'Replacer',
+            f'Pre-check complete: {public_count} public, {private_count} private (pre-downloaded), {failed_count} failed',
+        )
 
     def _precheck_texpack_layouts(self, replacements_tuple: tuple) -> None:
         """Pre-fetch layouts for pack-specific ORM slot keys in any replacement mode."""
@@ -564,8 +707,10 @@ class TextureStripper:
         }
         parent_ids: set[int] = set()
         for key in (
-            set(replacements.keys()) | set(cdn_replacements.keys()) |
-            set(local_replacements.keys()) | set(removals)
+            set(replacements.keys())
+            | set(cdn_replacements.keys())
+            | set(local_replacements.keys())
+            | set(removals)
         ):
             if not isinstance(key, str) or ':' not in key:
                 continue
@@ -599,6 +744,7 @@ class TextureStripper:
             )
             if data:
                 import json as _json
+
                 info = _json.loads(data)
                 return int(info.get('AssetTypeId', -1)) in self._ANIM_TYPE_IDS
         except Exception:
@@ -620,7 +766,7 @@ class TextureStripper:
         # Numeric asset ID — look up via economy API
         try:
             aid = int(key)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return False
         return self._is_anim_asset_id(aid)
 
@@ -645,8 +791,7 @@ class TextureStripper:
             local_path = str(local_path)
             if local_path in paths_to_process:
                 continue
-            if (Path(local_path).suffix.lower() in _ANIM_EXTS
-                    or self._is_anim_replacement_key(key)):
+            if Path(local_path).suffix.lower() in _ANIM_EXTS or self._is_anim_replacement_key(key):
                 paths_to_process.append(local_path)
 
         # Predownloaded ID-to-ID replacements: check replacement asset ID via API,
@@ -663,15 +808,17 @@ class TextureStripper:
                 if self._is_anim_asset_id(int(repl_id)):
                     paths_to_process.append(local_path)
                     continue
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 pass
             # Last resort: peek at magic bytes for .dat / extensionless files
             try:
                 path = Path(local_path)
                 head = strip_roblox_metadata(path, path.read_bytes())[:64]
-                if (head.startswith(b'<roblox!')
-                        or b'KeyframeSequence' in head
-                        or b'CurveAnimation' in head):
+                if (
+                    head.startswith(b'<roblox!')
+                    or b'KeyframeSequence' in head
+                    or b'CurveAnimation' in head
+                ):
                     paths_to_process.append(local_path)
             except Exception:
                 pass
@@ -706,10 +853,14 @@ class TextureStripper:
                 self._get_or_create_converted_curve(local_path, target_rig, data=data)
             converted += 1
 
-        log_buffer.log('AnimConv', f'Pre-conversion complete: {format_count(converted, "animation")} processed')
+        log_buffer.log(
+            'AnimConv',
+            f'Pre-conversion complete: {format_count(converted, "animation")} processed',
+        )
 
-    def _get_or_create_converted(self, local_path: str, target_rig: str,
-                                  data: bytes | None = None) -> Optional[str]:
+    def _get_or_create_converted(
+        self, local_path: str, target_rig: str, data: bytes | None = None
+    ) -> Optional[str]:
         """Return path to a rig-converted copy of local_path, creating it if needed."""
         import xml.etree.ElementTree as ET
 
@@ -744,6 +895,7 @@ class TextureStripper:
 
             # Convert binary .rbxm to XML if needed
             from ...utils.anim_converter import rbxm_to_rbxmx
+
             if data[:8] == b'<roblox!':
                 xml_data = rbxm_to_rbxmx(data)
             else:
@@ -752,12 +904,16 @@ class TextureStripper:
             # If it's a CurveAnimation, convert to KeyframeSequence first
             if b'CurveAnimation' in xml_data:
                 from ...utils.r15_to_r6 import curve_anim_to_keyframe_xml
+
                 xml_data = curve_anim_to_keyframe_xml(xml_data)
 
             # Use the same conversion logic as the misc tab
-            from ...utils.r15_to_r6 import (convert_keyframe_r15_to_r6,
-                                             convert_keyframe_r6_to_r15, sanitize_xml)
-            from ...utils.rig_data import R6_PARTS, R6_JOINTS, R15_PARTS, R15_JOINTS
+            from ...utils.r15_to_r6 import (
+                convert_keyframe_r6_to_r15,
+                convert_keyframe_r15_to_r6,
+                sanitize_xml,
+            )
+            from ...utils.rig_data import R6_JOINTS, R6_PARTS, R15_JOINTS, R15_PARTS
 
             root = ET.fromstring(sanitize_xml(xml_data))
             etree = ET.ElementTree(root)
@@ -785,8 +941,9 @@ class TextureStripper:
             log_buffer.log('AnimConv', f'Conversion failed for {p.name} -> {target_rig}: {exc}')
             return None
 
-    def _get_or_create_converted_curve(self, local_path: str, target_rig: str,
-                                        data: bytes | None = None) -> Optional[str]:
+    def _get_or_create_converted_curve(
+        self, local_path: str, target_rig: str, data: bytes | None = None
+    ) -> Optional[str]:
         """Return path to a rig-converted CurveAnimation copy of local_path, creating it if needed.
 
         Pipeline: source -> XML (if binary) -> KeyframeSequence (if CurveAnimation)
@@ -821,19 +978,25 @@ class TextureStripper:
             self._CONV_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
             # Step 1: Convert binary .rbxm -> XML if needed
-            from ...utils.anim_converter import rbxm_to_rbxmx, detect_rig
+            from ...utils.anim_converter import detect_rig, rbxm_to_rbxmx
+
             xml_data = rbxm_to_rbxmx(data) if data[:10].startswith(b'<roblox!\x89\xff') else data
 
             # Step 2: Convert CurveAnimation -> KeyframeSequence if needed
             if b'CurveAnimation' in xml_data:
                 from ...utils.r15_to_r6 import curve_anim_to_keyframe_xml
+
                 xml_data = curve_anim_to_keyframe_xml(xml_data)
 
             # Step 3: Rig-convert if source rig differs from target rig
             import xml.etree.ElementTree as ET
-            from ...utils.r15_to_r6 import (convert_keyframe_r15_to_r6,
-                                             convert_keyframe_r6_to_r15, sanitize_xml)
-            from ...utils.rig_data import R6_PARTS, R6_JOINTS, R15_PARTS, R15_JOINTS
+
+            from ...utils.r15_to_r6 import (
+                convert_keyframe_r6_to_r15,
+                convert_keyframe_r15_to_r6,
+                sanitize_xml,
+            )
+            from ...utils.rig_data import R6_JOINTS, R6_PARTS, R15_JOINTS, R15_PARTS
 
             src_rig = detect_rig(xml_data)
             if src_rig != 'unknown' and src_rig != target_rig:
@@ -856,15 +1019,22 @@ class TextureStripper:
 
             # Step 4: Convert KeyframeSequence -> CurveAnimation
             from ...utils.r15_to_r6 import keyframe_to_curve_anim
+
             curve_data = keyframe_to_curve_anim(xml_data)
 
             out_path.write_bytes(curve_data)
             with self._anim_lock:
                 self._anim_conv_paths[cache_key] = str(out_path)
-            log_buffer.log('AnimConv', f'Created {target_rig} CurveAnimation version: {out_path.name}')
+            log_buffer.log(
+                'AnimConv',
+                f'Created {target_rig} CurveAnimation version: {out_path.name}',
+            )
             return str(out_path)
         except Exception as exc:
-            log_buffer.log('AnimConv', f'CurveAnim conversion failed for {p.name} -> {target_rig}: {exc}')
+            log_buffer.log(
+                'AnimConv',
+                f'CurveAnim conversion failed for {p.name} -> {target_rig}: {exc}',
+            )
             return None
 
     def _detect_repl_rig(self, local_path: str) -> str:
@@ -874,6 +1044,7 @@ class TextureStripper:
                 return self._anim_repl_rig[local_path]
         try:
             from ...utils.anim_converter import detect_rig
+
             path = Path(local_path)
             rig = detect_rig(strip_roblox_metadata(path, path.read_bytes()))
         except Exception:
@@ -895,7 +1066,13 @@ class TextureStripper:
     # Batch request (called from server MITM thread)
     # ------------------------------------------------------------------
 
-    def process_batch_request(self, body: bytes, req_headers: dict, replacements_tuple: tuple, batch_id: str = '') -> tuple[bytes, bytes]:
+    def process_batch_request(
+        self,
+        body: bytes,
+        req_headers: dict,
+        replacements_tuple: tuple,
+        batch_id: str = '',
+    ) -> tuple[bytes, bytes]:
         """Modify batch JSON: removals, ID replacements, CDN/local routing.
 
         Returns ``(modified_body, scraper_body)`` where *scraper_body* has
@@ -946,11 +1123,15 @@ class TextureStripper:
         if self._cache_scraper is not None:
             lookup = getattr(self._cache_scraper, '_texpack_subasset_lookup', {})
             if lookup:
-                all_src_ids = (set(replacements.keys()) | set(cdn_replacements.keys()) |
-                               set(local_replacements.keys()) | removals)
+                all_src_ids = (
+                    set(replacements.keys())
+                    | set(cdn_replacements.keys())
+                    | set(local_replacements.keys())
+                    | removals
+                )
                 needs_resolve = all_src_ids & set(lookup.keys())
                 if needs_resolve:
-                    replacements     = dict(replacements)
+                    replacements = dict(replacements)
                     cdn_replacements = dict(cdn_replacements)
                     local_replacements = dict(local_replacements)
                     removals = set(removals)
@@ -970,18 +1151,26 @@ class TextureStripper:
         # If any replacement targets are newly added (not yet checked),
         # trigger a background precheck so the next batch can serve them locally.
         if replacements and self._cache_scraper is not None:
-            unknown = {int(v) for v in replacements.values()
-                       if int(v) not in self._predownloaded and int(v) not in self._checked_public
-                       and int(v) not in self._precheck_pending}
+            unknown = {
+                int(v)
+                for v in replacements.values()
+                if int(v) not in self._predownloaded
+                and int(v) not in self._checked_public
+                and int(v) not in self._precheck_pending
+            }
             if unknown:
                 import threading as _thr
-                _thr.Thread(target=self.precheck_replacements,
-                            name='ReplacementPrecheck', daemon=True).start()
+
+                _thr.Thread(
+                    target=self.precheck_replacements,
+                    name='ReplacementPrecheck',
+                    daemon=True,
+                ).start()
 
         modified = False
         # Track original IDs for items that undergo ID replacement so the
         # scraper body can be built with original IDs after the loop.
-        id_swapped: dict[int, int] = {}   # index → original_aid
+        id_swapped: dict[int, int] = {}  # index → original_aid
 
         # Convert TexturePack slot removals to blank-placeholder local routes.
         # Dropping a slot from the batch breaks the entire TexturePack in Roblox;
@@ -990,10 +1179,14 @@ class TextureStripper:
         synthetic_slot_removals: set[int | str] = set()
         if removals:
             tp_slot_removals = {
-                r for r in removals
-                if (isinstance(r, str) and ':' in r
+                r
+                for r in removals
+                if (
+                    isinstance(r, str)
+                    and ':' in r
                     and r.split(':', 1)[1].isdigit()
-                    and (r.split(':', 1)[0].isdigit() or r.split(':', 1)[0] == 'TexturePack'))
+                    and (r.split(':', 1)[0].isdigit() or r.split(':', 1)[0] == 'TexturePack')
+                )
             }
             if tp_slot_removals:
                 blank = self._get_blank_ktx2_path()
@@ -1006,12 +1199,17 @@ class TextureStripper:
                         if r not in local_replacements:
                             local_replacements[r] = blank
                             synthetic_slot_removals.add(r)
-                    log_buffer.log('TexPack', f'Routing {format_count(tp_slot_removals, "slot removal")} to blank placeholder')
+                    log_buffer.log(
+                        'TexPack',
+                        f'Routing {format_count(tp_slot_removals, "slot removal")} to blank placeholder',
+                    )
 
         _slot_target_ids: set[int] = set()
         _all_texpack_rule_keys = (
-            set(replacements.keys()) | set(cdn_replacements.keys()) |
-            set(local_replacements.keys()) | set(removals)
+            set(replacements.keys())
+            | set(cdn_replacements.keys())
+            | set(local_replacements.keys())
+            | set(removals)
         )
         for _key in _all_texpack_rule_keys:
             if isinstance(_key, str) and ':' in _key:
@@ -1039,9 +1237,8 @@ class TextureStripper:
             if self._is_anim_entry(e):
                 replacement_keys += [k for k in self._VIRTUAL_ANIM_RIG]
             has_replacement = any(
-                key in source and not (
-                    source is local_replacements and key in synthetic_slot_removals
-                )
+                key in source
+                and not (source is local_replacements and key in synthetic_slot_removals)
                 for key in replacement_keys
                 for source in (replacements, cdn_replacements, local_replacements)
             )
@@ -1064,7 +1261,12 @@ class TextureStripper:
         # All route through the ORM compositor targeting Roblox fidelity slot 2
         # (the combined ORM CDN request).  The mapping is GLOBAL and FIXED —
         # it does NOT depend on the per-asset XML tag ordering.
-        _GLOBAL_INDEX_CHANNEL = {2: 'metalness', 3: 'roughness', 4: 'emissive', 5: 'height'}
+        _GLOBAL_INDEX_CHANNEL = {
+            2: 'metalness',
+            3: 'roughness',
+            4: 'emissive',
+            5: 'height',
+        }
         # _orm_overrides: pack_id_or_'TexturePack' -> {channel_name: local_path}
         _orm_overrides: dict[int | str, dict[str, str | None]] = {}
         # Scan both cdn_replacements and local_replacements for GI≥2 keys.
@@ -1121,24 +1323,30 @@ class TextureStripper:
             )
             winning_keys = next(
                 (
-                    keys for keys in replacement_key_groups
-                    if any(key in source for key in keys
-                           for source in (replacements, cdn_replacements, local_replacements))
+                    keys
+                    for keys in replacement_key_groups
+                    if any(
+                        key in source
+                        for key in keys
+                        for source in (
+                            replacements,
+                            cdn_replacements,
+                            local_replacements,
+                        )
+                    )
                 ),
                 [],
             )
             winning_local_key = next(
                 (key for key in winning_keys if key in local_replacements), None
             )
-            winning_cdn_key = next(
-                (key for key in winning_keys if key in cdn_replacements), None
-            )
+            winning_cdn_key = next((key for key in winning_keys if key in cdn_replacements), None)
             matched = None
             if winning_local_key is None and winning_cdn_key is None:
                 matched = next((key for key in winning_keys if key in replacements), None)
             if matched is not None:
                 replacement_id = replacements[matched]
-                
+
                 # Only a slot/sub-asset rule represents a single image that
                 # needs downloading and KTX2 conversion.  Whole TexturePack
                 # ID/type rules must keep the normal parent-ID swap below so
@@ -1157,25 +1365,36 @@ class TextureStripper:
                             dl_path = APP_CACHE_DIR / f'predownloaded/{replacement_id}.dat'
                             dl_path.parent.mkdir(parents=True, exist_ok=True)
                             if not dl_path.exists():
-                                log_buffer.log('Replacer', f'Downloading asset {replacement_id} for KTX2 conversion...')
+                                log_buffer.log(
+                                    'Replacer',
+                                    f'Downloading asset {replacement_id} for KTX2 conversion...',
+                                )
                                 extra_hdrs = {}
                                 cookie = scraper._get_roblosecurity()
                                 if cookie:
                                     extra_hdrs['Cookie'] = f'.ROBLOSECURITY={cookie};'
-                                scraped_data, dl_status = scraper._fetch_asset_with_place_id_retry(str(replacement_id), extra_headers=extra_hdrs or None)
+                                scraped_data, dl_status = scraper._fetch_asset_with_place_id_retry(
+                                    str(replacement_id),
+                                    extra_headers=extra_hdrs or None,
+                                )
                                 if scraped_data:
                                     dl_path.write_bytes(scraped_data)
                             if dl_path.exists():
                                 local_tgt = str(dl_path)
-                        
+
                         if local_tgt is not None:
                             # Instead of pushing the ID to Roblox, we route it as a local file, prompting conversion
                             self._route_local(
-                                f'{batch_id}_{req_id}', aid, local_tgt, is_solidmodel,
-                                is_texpack=True, source_key=matched, map_index=map_index,
+                                f'{batch_id}_{req_id}',
+                                aid,
+                                local_tgt,
+                                is_solidmodel,
+                                is_texpack=True,
+                                source_key=matched,
+                                map_index=map_index,
                             )
                             modified = True
-                            continue # Skip the usual e['assetId'] = replacement_id logic
+                            continue  # Skip the usual e['assetId'] = replacement_id logic
 
                 e['assetId'] = replacement_id
                 id_swapped[idx] = aid_raw
@@ -1201,7 +1420,10 @@ class TextureStripper:
                         _comp = self._build_orm_composite(aid, _orm_chs)
                         if _comp:
                             self._route_local(
-                                f'{batch_id}_{req_id}', aid, _comp, is_solidmodel,
+                                f'{batch_id}_{req_id}',
+                                aid,
+                                _comp,
+                                is_solidmodel,
                                 is_texpack=True,
                                 source_key=f'ORM[{", ".join(sorted(_orm_chs))}]',
                                 map_index=map_index,
@@ -1224,25 +1446,33 @@ class TextureStripper:
                 # from removal rules. A synthesized route is only a fallback
                 # when no replacement of any kind matched this asset.
                 local_key = (
-                    winning_local_key
-                    if winning_local_key not in synthetic_slot_removals
-                    else None
+                    winning_local_key if winning_local_key not in synthetic_slot_removals else None
                 )
                 if local_key is None and matched is None and cdn_key is None:
                     local_key = next(
-                        (k for k in all_keys
-                         if k in local_replacements and k in synthetic_slot_removals),
+                        (
+                            k
+                            for k in all_keys
+                            if k in local_replacements and k in synthetic_slot_removals
+                        ),
                         None,
                     )
                 if local_key is not None:
                     # Check if this replacement specifically targets a TexturePack slot or type
-                    is_texpack = (':' in str(local_key)) or (e.get('assetTypeId') == 63) or (
-                        self._REVERSE.get(str(e.get('assetType', '')).lower()) == 63
+                    is_texpack = (
+                        (':' in str(local_key))
+                        or (e.get('assetTypeId') == 63)
+                        or (self._REVERSE.get(str(e.get('assetType', '')).lower()) == 63)
                     )
                     _repl_local_path = local_replacements[local_key]
                     self._route_local(
-                        f'{batch_id}_{req_id}', aid, _repl_local_path, is_solidmodel, is_texpack,
-                        source_key=local_key, map_index=map_index,
+                        f'{batch_id}_{req_id}',
+                        aid,
+                        _repl_local_path,
+                        is_solidmodel,
+                        is_texpack,
+                        source_key=local_key,
+                        map_index=map_index,
                     )
                     # Tag animation replacements for upstream rig detection.
                     # Determine required_rig from virtual type keys, or 'any' for normal types.
@@ -1255,16 +1485,29 @@ class TextureStripper:
                                 for vk in self._VIRTUAL_ANIM_RIG
                                 if local_replacements.get(vk) == _repl_local_path
                             )
-                            _required_rig = 'any' if _covered >= {'R6', 'R15', 'unknown'} else _covered
+                            _required_rig = (
+                                'any' if _covered >= {'R6', 'R15', 'unknown'} else _covered
+                            )
                         else:
                             _required_rig = 'any'
                         with self._anim_lock:
-                            self._anim_local_pending[f'{batch_id}_{req_id}'] = (str(_repl_local_path), _required_rig)
+                            self._anim_local_pending[f'{batch_id}_{req_id}'] = (
+                                str(_repl_local_path),
+                                _required_rig,
+                            )
                 elif cdn_key is not None:
-                    is_texpack_cdn = (':' in str(cdn_key)) or (e.get('assetTypeId') == 63) or (
-                        self._REVERSE.get(str(e.get('assetType', '')).lower()) == 63
+                    is_texpack_cdn = (
+                        (':' in str(cdn_key))
+                        or (e.get('assetTypeId') == 63)
+                        or (self._REVERSE.get(str(e.get('assetType', '')).lower()) == 63)
                     )
-                    self._route_cdn(f'{batch_id}_{req_id}', aid, cdn_replacements[cdn_key], is_solidmodel, is_texpack_cdn)
+                    self._route_cdn(
+                        f'{batch_id}_{req_id}',
+                        aid,
+                        cdn_replacements[cdn_key],
+                        is_solidmodel,
+                        is_texpack_cdn,
+                    )
 
         if modified:
             result = _dumps(data)
@@ -1283,7 +1526,9 @@ class TextureStripper:
     # Batch response (called from server MITM thread)
     # ------------------------------------------------------------------
 
-    def process_batch_response(self, req_body: bytes, resp_body: bytes, req_headers: dict, batch_id: str = '') -> None:
+    def process_batch_response(
+        self, req_body: bytes, resp_body: bytes, req_headers: dict, batch_id: str = ''
+    ) -> None:
         """Commit CDN URL -> redirect/local/solid mappings from batch response."""
         if not resp_body:
             return
@@ -1314,7 +1559,12 @@ class TextureStripper:
                 req_ids_by_index = []
 
         _, _, cdn_replacements, local_replacements = self.config_manager.get_all_replacements()
-        _GLOBAL_INDEX_CHANNEL = {2: 'metalness', 3: 'roughness', 4: 'emissive', 5: 'height'}
+        _GLOBAL_INDEX_CHANNEL = {
+            2: 'metalness',
+            3: 'roughness',
+            4: 'emissive',
+            5: 'height',
+        }
         _orm_overrides: dict[int | str, dict[str, str | None]] = {}
         for _ck, _cv in {**cdn_replacements, **local_replacements}.items():
             if not isinstance(_ck, str) or ':' not in _ck:
@@ -1362,7 +1612,9 @@ class TextureStripper:
                     if by_request_index in self._pending:
                         pending_key = by_request_index
 
-                req_item = req_data[idx] if idx < len(req_data) and isinstance(req_data[idx], dict) else {}
+                req_item = (
+                    req_data[idx] if idx < len(req_data) and isinstance(req_data[idx], dict) else {}
+                )
                 aid = self._normalize_asset_id(req_item.get('assetId'))
                 map_index = _texpack_request_slots.get(idx)
 
@@ -1380,7 +1632,7 @@ class TextureStripper:
                                     log_buffer.log(
                                         'Local',
                                         f'Will serve local for {base_loc[:60]}... '
-                                        f'(key=ORM[{", ".join(sorted(_orm_chs))}], slot={map_index}, file={Path(_comp).name})'
+                                        f'(key=ORM[{", ".join(sorted(_orm_chs))}], slot={map_index}, file={Path(_comp).name})',
                                     )
                                     continue
 
@@ -1398,12 +1650,15 @@ class TextureStripper:
                             log_buffer.log(
                                 'Local',
                                 f'Will serve local for {base_loc[:60]}... '
-                                f'(key={local_key}, slot={map_index}, file={Path(local_path).name})'
+                                f'(key={local_key}, slot={map_index}, file={Path(local_path).name})',
                             )
                             continue
                         if cdn_key is not None:
                             self._cdn_redirects[base_loc] = cdn_replacements[cdn_key]
-                            log_buffer.log('CDN', f'Will redirect {base_loc[:60]}... (key={cdn_key}, slot={map_index})')
+                            log_buffer.log(
+                                'CDN',
+                                f'Will redirect {base_loc[:60]}... (key={cdn_key}, slot={map_index})',
+                            )
                             continue
 
                 if not location or not pending_key:
@@ -1503,7 +1758,13 @@ class TextureStripper:
     # SolidModel response injection (called from server MITM thread)
     # ------------------------------------------------------------------
 
-    def process_solidmodel_response(self, resp_body: bytes, obj_path_str: str, cdn_url: str = '', prefer_v3: bool = False) -> bytes:
+    def process_solidmodel_response(
+        self,
+        resp_body: bytes,
+        obj_path_str: str,
+        cdn_url: str = '',
+        prefer_v3: bool = False,
+    ) -> bytes:
         # Pop ONLY this specific CDN URL, not every URL mapped to the same obj.
         # Popping all-by-value was the root cause of the SolidModel partial-replacement
         # bug: SolidModel A's injection would pop entries for B, C, D, E (same .obj),
@@ -1549,8 +1810,14 @@ class TextureStripper:
             log_buffer.log('TexPackTrace', f'Local TexturePack map already KTX: file={path.name}')
             return local_path
         try:
-            from ...cache.tools.image_to_ktx2.converter import get_or_create_ktx2_from_image
-            log_buffer.log('TexPackTrace', f'Converting local TexturePack map to KTX2: input={path.name}')
+            from ...cache.tools.image_to_ktx2.converter import (
+                get_or_create_ktx2_from_image,
+            )
+
+            log_buffer.log(
+                'TexPackTrace',
+                f'Converting local TexturePack map to KTX2: input={path.name}',
+            )
             converted_path = get_or_create_ktx2_from_image(path)
             if converted_path:
                 converted_path = TextureStripper._normalize_rgba8_ktx2(converted_path)
@@ -1561,7 +1828,10 @@ class TextureStripper:
                 return str(converted_path)
         except Exception as exc:
             log_buffer.log('Local', f'Failed to convert {path.name} to KTX2: {exc}')
-            log_buffer.log('TexPackTrace', f'Local TexturePack KTX2 conversion failed for {path.name}: {exc}')
+            log_buffer.log(
+                'TexPackTrace',
+                f'Local TexturePack KTX2 conversion failed for {path.name}: {exc}',
+            )
         return local_path
 
     @staticmethod
@@ -1569,6 +1839,7 @@ class TextureStripper:
         """Rewrite simple RGBA8 KTX2 files through Fleasion's libktx-compatible writer."""
         try:
             from ...cache.tools.rgba_ktx2 import read_rgba8_ktx2, write_rgba8_ktx2
+
             data = path.read_bytes()
             parsed = read_rgba8_ktx2(data)
             if parsed is None:
@@ -1580,10 +1851,20 @@ class TextureStripper:
                 write_rgba8_ktx2(rgba, width, height, out_path)
             return out_path
         except Exception as exc:
-            log_buffer.log('TexPackTrace', f'RGBA8 KTX2 normalization skipped for {path.name}: {exc}')
+            log_buffer.log(
+                'TexPackTrace',
+                f'RGBA8 KTX2 normalization skipped for {path.name}: {exc}',
+            )
             return path
 
-    def _route_cdn(self, req_id: str, aid, cdn_url: str, is_solidmodel: bool, is_texpack: bool = False) -> None:
+    def _route_cdn(
+        self,
+        req_id: str,
+        aid,
+        cdn_url: str,
+        is_solidmodel: bool,
+        is_texpack: bool = False,
+    ) -> None:
         parsed = urlparse(str(cdn_url))
         ext = Path(parsed.path).suffix.lower()
         url_hash = hashlib.md5(str(cdn_url).encode()).hexdigest()
@@ -1683,11 +1964,14 @@ class TextureStripper:
                 f'Queue local TexturePack route req={req_id} aid={aid} key={source_key} '
                 f'slot={_texpack_slot_label(map_index)} input={path.name} ext={ext or "none"}',
             )
-        
+
         # Isolate KTX2 explicit conversion only to TexturePack image replacements
         if is_texpack and ext != '.ktx2' and ext != '.ktx':
             try:
-                from ...cache.tools.image_to_ktx2.converter import get_or_create_ktx2_from_image
+                from ...cache.tools.image_to_ktx2.converter import (
+                    get_or_create_ktx2_from_image,
+                )
+
                 converted_path = get_or_create_ktx2_from_image(path)
                 if converted_path:
                     converted_path = self._normalize_rgba8_ktx2(converted_path)
@@ -1701,7 +1985,10 @@ class TextureStripper:
                     )
             except Exception as e:
                 log_buffer.log('Local', f'Failed to convert {path.name} to KTX2: {e}')
-                log_buffer.log('TexPackTrace', f'Local TexturePack conversion failed for {path.name}: {e}')
+                log_buffer.log(
+                    'TexPackTrace',
+                    f'Local TexturePack conversion failed for {path.name}: {e}',
+                )
         elif is_texpack and ext == '.ktx2':
             normalized = self._normalize_rgba8_ktx2(path)
             if normalized != path:
@@ -1777,7 +2064,9 @@ class TextureStripper:
                 _log_local_queued()
 
     def _build_orm_composite(
-        self, parent_id, channel_pngs: dict[str, str | None],
+        self,
+        parent_id,
+        channel_pngs: dict[str, str | None],
     ) -> Optional[str]:
         """Build (or retrieve from cache) a composite ORM KTX2 from per-channel PNGs.
 
@@ -1788,19 +2077,25 @@ class TextureStripper:
         """
         try:
             from ...cache.tools.orm_compositor import composite_orm
+
             # Resolve CDN URLs to local cached files before compositing.
             # On download failure the channel is omitted so the baseline KTX2
             # value shows through, as if the user never replaced that channel.
             resolved: dict[str, str | None] = {}
             for _ch, _val in channel_pngs.items():
-                if _val is not None and (str(_val).startswith('http://') or str(_val).startswith('https://')):
+                if _val is not None and (
+                    str(_val).startswith('http://') or str(_val).startswith('https://')
+                ):
                     _url_hash = hashlib.md5(_val.encode()).hexdigest()[:16]
                     _ext = Path(urlparse(_val).path).suffix.lower() or '.png'
                     _cdn_cache = APP_CACHE_DIR / 'orm_cdn_cache' / f'{_url_hash}{_ext}'
                     _cdn_cache.parent.mkdir(parents=True, exist_ok=True)
                     if not _cdn_cache.exists():
                         if not _download_remote_file(_val, _cdn_cache, f'ORM channel {_ch}'):
-                            log_buffer.log('ORM', f'CDN download failed for channel {_ch} — using original')
+                            log_buffer.log(
+                                'ORM',
+                                f'CDN download failed for channel {_ch} — using original',
+                            )
                             continue  # skip channel; baseline value preserved
                     resolved[_ch] = str(_cdn_cache)
                 else:
@@ -1848,7 +2143,10 @@ class TextureStripper:
             if not isinstance(aid, int):
                 continue
             asset_counts[aid] = asset_counts.get(aid, 0) + 1
-            if item.get('assetTypeId') == 63 or self._REVERSE.get(str(item.get('assetType', '')).lower()) == 63:
+            if (
+                item.get('assetTypeId') == 63
+                or self._REVERSE.get(str(item.get('assetType', '')).lower()) == 63
+            ):
                 texpack_ids.add(aid)
 
         if infer_repeated_assets:
@@ -1929,24 +2227,35 @@ class TextureStripper:
         TexturePack slots that the user has set to "Nothing" so the rest of
         the pack keeps loading normally.
         """
-        import struct as _struct, zlib as _zl
+        import struct as _struct
+        import zlib as _zl
+
         png_path = APP_CACHE_DIR / '_blank_texpack.png'
         if not png_path.exists():
             try:
+
                 def _chunk(ctype: bytes, data: bytes) -> bytes:
                     body = ctype + data
-                    return _struct.pack('>I', len(data)) + body + _struct.pack('>I', _zl.crc32(body) & 0xFFFFFFFF)
-                sig   = b'\x89PNG\r\n\x1a\n'
-                ihdr  = _chunk(b'IHDR', _struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0))  # 1×1 RGBA
-                idat  = _chunk(b'IDAT', _zl.compress(b'\x00\xff\xff\xff\xff', 9))        # white, opaque
-                iend  = _chunk(b'IEND', b'')
+                    return (
+                        _struct.pack('>I', len(data))
+                        + body
+                        + _struct.pack('>I', _zl.crc32(body) & 0xFFFFFFFF)
+                    )
+
+                sig = b'\x89PNG\r\n\x1a\n'
+                ihdr = _chunk(b'IHDR', _struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0))  # 1×1 RGBA
+                idat = _chunk(b'IDAT', _zl.compress(b'\x00\xff\xff\xff\xff', 9))  # white, opaque
+                iend = _chunk(b'IEND', b'')
                 png_path.write_bytes(sig + ihdr + idat + iend)
                 log_buffer.log('TexPack', 'Created blank 1×1 placeholder PNG')
             except Exception as exc:
                 log_buffer.log('TexPack', f'Failed to create blank placeholder PNG: {exc}')
                 return None
         try:
-            from ...cache.tools.image_to_ktx2.converter import get_or_create_ktx2_from_image
+            from ...cache.tools.image_to_ktx2.converter import (
+                get_or_create_ktx2_from_image,
+            )
+
             ktx_path = get_or_create_ktx2_from_image(png_path)
             if ktx_path and ktx_path.exists():
                 return str(ktx_path)

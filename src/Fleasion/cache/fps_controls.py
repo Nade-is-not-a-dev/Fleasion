@@ -5,7 +5,6 @@ from typing import Literal
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeyEvent
 
-
 MovementKey = Literal[
     'forward',
     'left',

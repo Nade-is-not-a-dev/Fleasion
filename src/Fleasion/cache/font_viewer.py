@@ -4,18 +4,18 @@ import io
 import tempfile
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer, QSize
+from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QFont, QFontDatabase, QPalette
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
+    QScrollArea,
     QSlider,
     QTextEdit,
-    QScrollArea,
-    QGroupBox,
-    QMessageBox,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..utils import log_buffer
@@ -35,8 +35,8 @@ class FontViewerWidget(QWidget):
         super().__init__(parent)
         self.font_data = font_data
         self.font_id = -1
-        self.font_family = "Unknown"
-        
+        self.font_family = 'Unknown'
+
         self._load_font()
         self._setup_ui()
 
@@ -63,7 +63,7 @@ class FontViewerWidget(QWidget):
 
             # Register font with Qt
             self.font_id = QFontDatabase.addApplicationFont(str(temp_file))
-            
+
             if self.font_id >= 0:
                 families = QFontDatabase.applicationFontFamilies(self.font_id)
                 if families:
@@ -84,27 +84,27 @@ class FontViewerWidget(QWidget):
         layout.setSpacing(8)
 
         # Font info section
-        info_group = QGroupBox("Font Information")
+        info_group = QGroupBox('Font Information')
         info_layout = QVBoxLayout()
-        
+
         escaped_family = self.font_family.replace('&', '&amp;')
-        family_label = QLabel(f"<b>Family:</b> {escaped_family}")
+        family_label = QLabel(f'<b>Family:</b> {escaped_family}')
         family_label.setWordWrap(True)
         info_layout.addWidget(family_label)
-        
+
         # Check if font loaded successfully
         if self.font_id < 0:
-            error_label = QLabel("⚠ Font could not be loaded for preview")
-            error_label.setStyleSheet("color: #c90;")
+            error_label = QLabel('⚠ Font could not be loaded for preview')
+            error_label.setStyleSheet('color: #c90;')
             info_layout.addWidget(error_label)
-        
+
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
 
         # Font size slider
         size_layout = QHBoxLayout()
-        size_layout.addWidget(QLabel("Size:"))
-        
+        size_layout.addWidget(QLabel('Size:'))
+
         self.size_slider = QSlider(Qt.Orientation.Horizontal)
         self.size_slider.setRange(8, 72)
         self.size_slider.setValue(24)
@@ -112,61 +112,58 @@ class FontViewerWidget(QWidget):
         self.size_slider.setTickInterval(8)
         self.size_slider.valueChanged.connect(self._update_preview)
         size_layout.addWidget(self.size_slider)
-        
-        self.size_label = QLabel("24 pt")
+
+        self.size_label = QLabel('24 pt')
         self.size_label.setFixedWidth(50)
         size_layout.addWidget(self.size_label)
-        
+
         layout.addLayout(size_layout)
 
         # Preview text editor
-        preview_group = QGroupBox("Preview")
+        preview_group = QGroupBox('Preview')
         preview_layout = QVBoxLayout()
-        
+
         self.preview_text = QTextEdit()
         self.preview_text.setPlainText(
-            "The Quick Brown Fox\n"
-            "Jumps Over The Lazy Dog\n\n"
-            "0123456789\n"
-            "!@#$%^&*()"
+            'The Quick Brown Fox\nJumps Over The Lazy Dog\n\n0123456789\n!@#$%^&*()'
         )
         self.preview_text.setMinimumHeight(200)
-        
+
         # Use the loaded font for preview
         if self.font_id >= 0:
             preview_font = QFont(self.font_family)
             preview_font.setPointSize(self.size_slider.value())
             self.preview_text.setFont(preview_font)
-        
+
         self.preview_text.textChanged.connect(self._on_preview_text_changed)
         preview_layout.addWidget(self.preview_text)
-        
+
         preview_group.setLayout(preview_layout)
         layout.addWidget(preview_group)
 
         # Sample text section
-        samples_group = QGroupBox("Common Samples")
+        samples_group = QGroupBox('Common Samples')
         samples_layout = QVBoxLayout()
-        
+
         # Create a scrollable area for samples
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        
+
         samples_container = QWidget()
         samples_container_layout = QVBoxLayout()
         samples_container_layout.setContentsMargins(0, 0, 0, 0)
         samples_container_layout.setSpacing(4)
-        
+
         samples = [
-            "Abcdefghijklmnopqrstuvwxyz",
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-            "0123456789",
+            'Abcdefghijklmnopqrstuvwxyz',
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+            '0123456789',
             "!@#$%^&&*()_+-=[]{}|;:',.<>?/`~",
-            "The quick brown fox jumps over the lazy dog",
-            "Pack my box with five dozen liquor jugs",
-            "How vexingly quick daft zebras jump",
+            'The quick brown fox jumps over the lazy dog',
+            'Pack my box with five dozen liquor jugs',
+            'How vexingly quick daft zebras jump',
         ]
-        
+
         for sample_text in samples:
             sample_label = QLabel(sample_text)
             if self.font_id >= 0:
@@ -175,11 +172,11 @@ class FontViewerWidget(QWidget):
                 sample_label.setFont(sample_font)
             sample_label.setWordWrap(True)
             samples_container_layout.addWidget(sample_label)
-        
+
         samples_container_layout.addStretch()
         samples_container.setLayout(samples_container_layout)
         scroll.setWidget(samples_container)
-        
+
         samples_layout.addWidget(scroll)
         samples_group.setLayout(samples_layout)
         layout.addWidget(samples_group)
@@ -189,8 +186,8 @@ class FontViewerWidget(QWidget):
     def _update_preview(self):
         """Update preview text size based on slider."""
         size = self.size_slider.value()
-        self.size_label.setText(f"{size} pt")
-        
+        self.size_label.setText(f'{size} pt')
+
         if self.font_id >= 0:
             preview_font = QFont(self.font_family)
             preview_font.setPointSize(size)

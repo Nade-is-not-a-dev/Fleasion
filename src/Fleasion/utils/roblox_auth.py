@@ -23,11 +23,15 @@ except Exception:
 if sys.platform == 'darwin':
     ROBLOX_COOKIES_PATH = USER_HOME / 'Library' / 'Roblox' / 'RobloxCookies.dat'
 elif sys.platform.startswith('linux'):
-    ROBLOX_COOKIES_PATH = USER_HOME / '.var' / 'app' / 'org.vinegarhq.Sober' / 'data' / 'sober' / 'cookies'
+    ROBLOX_COOKIES_PATH = (
+        USER_HOME / '.var' / 'app' / 'org.vinegarhq.Sober' / 'data' / 'sober' / 'cookies'
+    )
 else:
     ROBLOX_COOKIES_PATH = LOCAL_APPDATA / 'Roblox' / 'LocalStorage' / 'RobloxCookies.dat'
 _LOGGED_AUTH_FAILURES: set[str] = set()
-_ROBLOX_COOKIE_RELATIVE_PATH = Path('AppData') / 'Local' / 'Roblox' / 'LocalStorage' / 'RobloxCookies.dat'
+_ROBLOX_COOKIE_RELATIVE_PATH = (
+    Path('AppData') / 'Local' / 'Roblox' / 'LocalStorage' / 'RobloxCookies.dat'
+)
 _MACOS_COOKIE_CANDIDATES = (
     Path('Library') / 'Roblox' / 'RobloxCookies.dat',
     Path('Library') / 'Roblox' / 'LocalStorage' / 'RobloxCookies.dat',
@@ -43,16 +47,38 @@ _BROWSER_AUTO_DISCOVERY_ATTEMPTED = False
 _BROWSER_DISCOVERY_LOCK = threading.Lock()
 _BROWSER_AUTH_CACHE_FILE = CONFIG_DIR / 'browser_auth_cache.json'
 _BROWSER_AUTH_CACHE_KEY_FILE = CONFIG_DIR / 'browser_auth_cache.key'
-_PERSISTENT_BROWSER_AUTH_SOURCES = {'Chrome', 'Brave', 'Edge', 'Chromium', 'Opera', 'Vivaldi'}
+_PERSISTENT_BROWSER_AUTH_SOURCES = {
+    'Chrome',
+    'Brave',
+    'Edge',
+    'Chromium',
+    'Opera',
+    'Vivaldi',
+}
 _BROWSER_AUTH_CACHE_BLOCKS_AUTOMATIC_IMPORT = False
 _LAST_BROWSER_AUTH_VALIDATION_DETAIL = ''
 _LAST_BROWSER_AUTH_ERROR_DETAILS: dict[str, object] = {}
 _MANUAL_AUTH_TOKEN_FILE = CONFIG_DIR / 'manual_auth_token.json'
 _MANUAL_AUTH_TOKEN_KEY_FILE = CONFIG_DIR / 'manual_auth_token.key'
-_MACOS_AUTH_BROWSER_NAMES = ('Chrome', 'Safari', 'Firefox', 'Brave', 'Edge', 'Chromium', 'Opera', 'Vivaldi')
+_MACOS_AUTH_BROWSER_NAMES = (
+    'Chrome',
+    'Safari',
+    'Firefox',
+    'Brave',
+    'Edge',
+    'Chromium',
+    'Opera',
+    'Vivaldi',
+)
 _MACOS_SAFARI_COOKIE_FILES = (
     Path('Library') / 'Cookies' / 'Cookies.binarycookies',
-    Path('Library') / 'Containers' / 'com.apple.Safari' / 'Data' / 'Library' / 'Cookies' / 'Cookies.binarycookies',
+    Path('Library')
+    / 'Containers'
+    / 'com.apple.Safari'
+    / 'Data'
+    / 'Library'
+    / 'Cookies'
+    / 'Cookies.binarycookies',
 )
 _MACOS_FIREFOX_PROFILE_DIR = Path('Library') / 'Application Support' / 'Firefox' / 'Profiles'
 _MACOS_CHROMIUM_BROWSER_DIRS = {
@@ -75,17 +101,13 @@ _MACOS_CHROMIUM_BROWSER_DIRS = {
         Path('Library') / 'Application Support' / 'Microsoft Edge Dev',
         Path('Library') / 'Application Support' / 'Microsoft Edge Canary',
     ),
-    'Chromium': (
-        Path('Library') / 'Application Support' / 'Chromium',
-    ),
+    'Chromium': (Path('Library') / 'Application Support' / 'Chromium',),
     'Opera': (
         Path('Library') / 'Application Support' / 'com.operasoftware.Opera',
         Path('Library') / 'Application Support' / 'com.operasoftware.OperaNext',
         Path('Library') / 'Application Support' / 'com.operasoftware.OperaDeveloper',
     ),
-    'Vivaldi': (
-        Path('Library') / 'Application Support' / 'Vivaldi',
-    ),
+    'Vivaldi': (Path('Library') / 'Application Support' / 'Vivaldi',),
 }
 _AUTH_READY_CONDITION = threading.Condition()
 _AUTH_READY_COOKIE: str | None = None
@@ -129,7 +151,7 @@ def _replace_roblosecurity(cookie_text: str, cookie: str) -> tuple[str, int]:
         new_text, count = re.subn(pattern, lambda m: m.group(1) + cookie, cookie_text, count=1)
         if count:
             return new_text, count
-    return cookie_text.rstrip() + f"\n.ROBLOSECURITY\t{cookie}", 0
+    return cookie_text.rstrip() + f'\n.ROBLOSECURITY\t{cookie}', 0
 
 
 def _safe_resolve(path: Path) -> Path:
@@ -173,7 +195,9 @@ def _path_exists(path: Path) -> bool:
         return False
 
 
-def _add_candidate(candidates: list[tuple[str, Path]], seen: set[str], source: str, path: Path) -> None:
+def _add_candidate(
+    candidates: list[tuple[str, Path]], seen: set[str], source: str, path: Path
+) -> None:
     key = _normalise_key(path)
     if key in seen:
         return
@@ -199,7 +223,12 @@ def _iter_user_profile_cookie_candidates() -> list[tuple[str, Path]]:
 
     userprofile = os.environ.get('USERPROFILE')
     if userprofile:
-        _add_candidate(candidates, seen, 'USERPROFILE', Path(userprofile) / _ROBLOX_COOKIE_RELATIVE_PATH)
+        _add_candidate(
+            candidates,
+            seen,
+            'USERPROFILE',
+            Path(userprofile) / _ROBLOX_COOKIE_RELATIVE_PATH,
+        )
 
     home = Path.home()
     if home:
@@ -218,7 +247,12 @@ def _iter_user_profile_cookie_candidates() -> list[tuple[str, Path]]:
                         continue
                 except OSError:
                     continue
-                _add_candidate(candidates, seen, 'all-users', Path(entry.path) / _ROBLOX_COOKIE_RELATIVE_PATH)
+                _add_candidate(
+                    candidates,
+                    seen,
+                    'all-users',
+                    Path(entry.path) / _ROBLOX_COOKIE_RELATIVE_PATH,
+                )
     except OSError as exc:
         _log_auth_failure(
             f'user-scan:{users_root}:{type(exc).__name__}',
@@ -348,7 +382,9 @@ def notify_auth_source_changed() -> None:
         _AUTH_READY_CONDITION.notify_all()
 
 
-def wait_for_roblosecurity(*, include_keychain_browsers: bool = True, retry_interval: float = 2.0) -> str | None:
+def wait_for_roblosecurity(
+    *, include_keychain_browsers: bool = True, retry_interval: float = 2.0
+) -> str | None:
     """Wait until a usable Roblox token is available."""
     if sys.platform != 'darwin':
         return get_roblosecurity(include_keychain_browsers=include_keychain_browsers)
@@ -381,9 +417,7 @@ def _get_macos_browser_auth_cipher(create: bool = True):
             key_path.parent.mkdir(parents=True, exist_ok=True)
             key = Fernet.generate_key()
             flags = (
-                getattr(os, 'O_WRONLY', 1)
-                | getattr(os, 'O_CREAT', 64)
-                | getattr(os, 'O_EXCL', 128)
+                getattr(os, 'O_WRONLY', 1) | getattr(os, 'O_CREAT', 64) | getattr(os, 'O_EXCL', 128)
             )
             fd = os.open(key_path, flags, 0o600)
             with os.fdopen(fd, 'wb') as f:
@@ -454,7 +488,9 @@ def get_last_browser_auth_error_details() -> dict[str, object]:
     return dict(_LAST_BROWSER_AUTH_ERROR_DETAILS)
 
 
-def _set_browser_auth_error_details(source: str, exc: Exception, *, cookie_file: Path | str | None = None) -> None:
+def _set_browser_auth_error_details(
+    source: str, exc: Exception, *, cookie_file: Path | str | None = None
+) -> None:
     global _LAST_BROWSER_AUTH_ERROR_DETAILS
 
     permission_error = isinstance(exc, PermissionError)
@@ -534,7 +570,9 @@ def _delete_cached_browser_roblosecurity() -> None:
         pass
 
 
-def _log_browser_auth_cache_state(state: str, message: str, *, block_automatic_import: bool = False) -> None:
+def _log_browser_auth_cache_state(
+    state: str, message: str, *, block_automatic_import: bool = False
+) -> None:
     global _BROWSER_AUTH_CACHE_BLOCKS_AUTOMATIC_IMPORT
 
     _BROWSER_AUTH_CACHE_BLOCKS_AUTOMATIC_IMPORT = block_automatic_import
@@ -688,7 +726,11 @@ def _macos_browser_cookie_files(source: str) -> list[Path]:
         return []
 
     if source == 'Safari':
-        return [USER_HOME / relative for relative in _MACOS_SAFARI_COOKIE_FILES if _path_exists(USER_HOME / relative)]
+        return [
+            USER_HOME / relative
+            for relative in _MACOS_SAFARI_COOKIE_FILES
+            if _path_exists(USER_HOME / relative)
+        ]
 
     if source == 'Firefox':
         profiles_dir = USER_HOME / _MACOS_FIREFOX_PROFILE_DIR
@@ -767,7 +809,10 @@ def _make_browser_cookie_loader(source: str, loader):
 
         if first_error is not None:
             if len(errors) > 1:
-                log_buffer.log('Auth', f'{source} browser cookie candidates failed: {"; ".join(errors[:3])}')
+                log_buffer.log(
+                    'Auth',
+                    f'{source} browser cookie candidates failed: {"; ".join(errors[:3])}',
+                )
             raise first_error
         return loader(**kwargs)
 
@@ -833,10 +878,16 @@ def discover_browser_roblosecurity(
         return None, ''
 
     with _BROWSER_DISCOVERY_LOCK:
-        if not explicit_import and _BROWSER_COOKIE_CACHE and (not browser or browser == _BROWSER_COOKIE_SOURCE):
+        if (
+            not explicit_import
+            and _BROWSER_COOKIE_CACHE
+            and (not browser or browser == _BROWSER_COOKIE_SOURCE)
+        ):
             return _BROWSER_COOKIE_CACHE, _BROWSER_COOKIE_SOURCE
         if not explicit_import:
-            cached_cookie, cached_source = _read_cached_browser_roblosecurity(delete_invalid=include_keychain)
+            cached_cookie, cached_source = _read_cached_browser_roblosecurity(
+                delete_invalid=include_keychain
+            )
             if cached_cookie and (not browser or browser == cached_source):
                 _BROWSER_COOKIE_CACHE = cached_cookie
                 _BROWSER_COOKIE_SOURCE = cached_source
@@ -879,23 +930,36 @@ def discover_browser_roblosecurity(
             if not candidates:
                 continue
             for cookie in candidates:
-                if sys.platform == 'darwin' or source in _PERSISTENT_BROWSER_AUTH_SOURCES or explicit_import or browser:
+                if (
+                    sys.platform == 'darwin'
+                    or source in _PERSISTENT_BROWSER_AUTH_SOURCES
+                    or explicit_import
+                    or browser
+                ):
                     validation = _validate_roblosecurity(cookie)
                     if validation is not True:
                         detail = _LAST_BROWSER_AUTH_VALIDATION_DETAIL or 'invalid'
-                        log_buffer.log('Auth', f'Browser login discovered from {source} was not valid ({detail}); skipping')
+                        log_buffer.log(
+                            'Auth',
+                            f'Browser login discovered from {source} was not valid ({detail}); skipping',
+                        )
                         continue
                 _BROWSER_COOKIE_CACHE = cookie
                 _BROWSER_COOKIE_SOURCE = source
                 _LAST_AUTH_FAILURE_DETAILS.clear()
-                log_buffer.log('Auth', f'Using domain-scoped Roblox browser login discovered from {source}')
+                log_buffer.log(
+                    'Auth',
+                    f'Using domain-scoped Roblox browser login discovered from {source}',
+                )
                 _write_cached_browser_roblosecurity(cookie, source)
                 return cookie, source
 
     return None, ''
 
 
-def get_roblosecurity(path: Path | None = None, *, include_keychain_browsers: bool = False) -> str | None:
+def get_roblosecurity(
+    path: Path | None = None, *, include_keychain_browsers: bool = False
+) -> str | None:
     """Return the .ROBLOSECURITY cookie value from a Roblox cookie store.
 
     On Windows, uses DPAPI (win32crypt) to decrypt the stored cookie data. On
@@ -934,7 +998,7 @@ def get_roblosecurity(path: Path | None = None, *, include_keychain_browsers: bo
                 _log_auth_failure(
                     f'fallback-success:{cookie_path}',
                     f'Using Roblox auth cookie discovered from {source}: {cookie_path}',
-            )
+                )
             _LAST_AUTH_FAILURE_DETAILS = {}
             _mark_auth_cookie_available(cookie)
             return cookie
@@ -950,7 +1014,10 @@ def get_roblosecurity(path: Path | None = None, *, include_keychain_browsers: bo
                     _LAST_AUTH_FAILURE_DETAILS = {}
                     _mark_auth_cookie_available(manual_cookie)
                     return manual_cookie
-                log_buffer.log('Auth', f'Manual Roblox token was not valid ({detail}); not using it')
+                log_buffer.log(
+                    'Auth',
+                    f'Manual Roblox token was not valid ({detail}); not using it',
+                )
         elif auth_source:
             browser_cookie, browser_source = discover_browser_roblosecurity(
                 include_keychain=include_keychain_browsers,

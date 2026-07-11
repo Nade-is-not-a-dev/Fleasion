@@ -58,7 +58,9 @@ class LogBuffer:
             if not self._pending_notifications:
                 self._pending_notifications = True
                 # Use timer to batch notifications (reduces UI callback overhead)
-                self._batch_timer = threading.Timer(0.05, self._notify_callbacks)  # 50ms batch window
+                self._batch_timer = threading.Timer(
+                    0.05, self._notify_callbacks
+                )  # 50ms batch window
                 self._batch_timer.daemon = True
                 self._batch_timer.start()
 

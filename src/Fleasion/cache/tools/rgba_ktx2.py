@@ -49,14 +49,14 @@ def write_rgba8_ktx2(rgba: bytes, width: int, height: int, out_path: Path) -> No
         + struct.pack(
             '<9I',
             VK_FORMAT_R8G8B8A8_UNORM,
-            1,      # typeSize
+            1,  # typeSize
             width,
             height,
-            0,      # pixelDepth
-            0,      # layerCount: 0 means not an array texture
-            1,      # faceCount
-            1,      # levelCount
-            0,      # supercompressionScheme: none
+            0,  # pixelDepth
+            0,  # layerCount: 0 means not an array texture
+            1,  # faceCount
+            1,  # levelCount
+            0,  # supercompressionScheme: none
         )
         + struct.pack(
             '<IIIIQQ',
@@ -64,8 +64,8 @@ def write_rgba8_ktx2(rgba: bytes, width: int, height: int, out_path: Path) -> No
             len(dfd),
             kvd_offset,
             len(kvd),
-            0,      # sgdByteOffset
-            0,      # sgdByteLength
+            0,  # sgdByteOffset
+            0,  # sgdByteLength
         )
         + struct.pack('<QQQ', level_offset, expected_size, expected_size)
     )
@@ -114,7 +114,7 @@ def read_rgba8_ktx2(data: bytes) -> tuple[bytes, int, int] | None:
     ):
         return None
 
-    return bytes(data[level_offset:level_offset + byte_length]), width, height
+    return bytes(data[level_offset : level_offset + byte_length]), width, height
 
 
 def _make_rgba8_dfd() -> bytes:
@@ -129,32 +129,39 @@ def _make_rgba8_dfd() -> bytes:
     )
     descriptor_block_size = 24 + len(samples)
     dfd_total_size = 4 + descriptor_block_size
-    return b''.join((
-        struct.pack('<I', dfd_total_size),
-        struct.pack('<I', 0),  # vendorId + descriptorType
-        struct.pack('<HH', 2, descriptor_block_size),
-        bytes((
-            _DFD_RGBSDA,
-            _DFD_PRIMARIES_BT709,
-            _DFD_TRANSFER_LINEAR,
-            _DFD_FLAGS_ALPHA_STRAIGHT,
-        )),
-        bytes((0, 0, 0, 0)),  # texelBlockDimension[0-3], stored as dimension-1
-        bytes((4, 0, 0, 0)),  # bytesPlane[0-3]
-        bytes((0, 0, 0, 0)),  # bytesPlane[4-7]
-        samples,
-    ))
+    return b''.join(
+        (
+            struct.pack('<I', dfd_total_size),
+            struct.pack('<I', 0),  # vendorId + descriptorType
+            struct.pack('<HH', 2, descriptor_block_size),
+            bytes(
+                (
+                    _DFD_RGBSDA,
+                    _DFD_PRIMARIES_BT709,
+                    _DFD_TRANSFER_LINEAR,
+                    _DFD_FLAGS_ALPHA_STRAIGHT,
+                )
+            ),
+            bytes((0, 0, 0, 0)),  # texelBlockDimension[0-3], stored as dimension-1
+            bytes((4, 0, 0, 0)),  # bytesPlane[0-3]
+            bytes((0, 0, 0, 0)),  # bytesPlane[4-7]
+            samples,
+        )
+    )
 
 
 def _make_sample(bit_offset: int, channel_type: int) -> bytes:
     return struct.pack(
         '<HBB4BII',
         bit_offset,
-        7,             # bitLength is stored as length-1
+        7,  # bitLength is stored as length-1
         channel_type,
-        0, 0, 0, 0,    # samplePosition[0-3]
-        0,             # sampleLower
-        255,           # sampleUpper
+        0,
+        0,
+        0,
+        0,  # samplePosition[0-3]
+        0,  # sampleLower
+        255,  # sampleUpper
     )
 
 

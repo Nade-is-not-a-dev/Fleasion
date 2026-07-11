@@ -29,9 +29,7 @@ def _get_fernet_cipher(key_file: Path, *, create: bool = True):
             key_file.parent.mkdir(parents=True, exist_ok=True)
             key = Fernet.generate_key()
             flags = (
-                getattr(os, 'O_WRONLY', 1)
-                | getattr(os, 'O_CREAT', 64)
-                | getattr(os, 'O_EXCL', 128)
+                getattr(os, 'O_WRONLY', 1) | getattr(os, 'O_CREAT', 64) | getattr(os, 'O_EXCL', 128)
             )
             fd = os.open(key_file, flags, 0o600)
             with os.fdopen(fd, 'wb') as f:
@@ -71,13 +69,13 @@ def decrypt_token(stored: str, key_file: Path) -> str | None:
         if stored.startswith('dpapi:'):
             if win32crypt is None:
                 return None
-            encrypted = base64.b64decode(stored[len('dpapi:'):])
+            encrypted = base64.b64decode(stored[len('dpapi:') :])
             return win32crypt.CryptUnprotectData(encrypted, None, None, None, 0)[1].decode('utf-8')
         if stored.startswith('fernet:'):
             cipher = _get_fernet_cipher(key_file, create=False)
             if cipher is None:
                 return None
-            encrypted = stored[len('fernet:'):].encode('ascii')
+            encrypted = stored[len('fernet:') :].encode('ascii')
             return cipher.decrypt(encrypted).decode('utf-8')
 
         encrypted = base64.b64decode(stored)

@@ -2,13 +2,24 @@
 
 import math
 import time
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSizePolicy, QMessageBox, QMenu
+
+import numpy as np
+from OpenGL.GL import *
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QGuiApplication
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
-import numpy as np
-from OpenGL.GL import *
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
+from ..utils.logging import log_buffer
 from .fps_controls import (
     KEY_BACKWARD,
     KEY_DOWN,
@@ -24,7 +35,6 @@ from .fps_controls import (
     movement_key_from_event,
 )
 from .gl_format import legacy_gl_format, set_perspective
-from ..utils.logging import log_buffer
 
 
 class ObjViewerWidget(QOpenGLWidget):
@@ -47,7 +57,7 @@ class ObjViewerWidget(QOpenGLWidget):
         self.face_normals = []
 
         # Camera state (orbit) - Default to a nice 3/4 isometric-style view
-        self.camera_mode = 'orbit' # 'orbit' or 'fps'
+        self.camera_mode = 'orbit'  # 'orbit' or 'fps'
         self.rotation_x = 20.0
         self.rotation_y = -30.0
         self.zoom = -5.0
@@ -123,7 +133,7 @@ class ObjViewerWidget(QOpenGLWidget):
                 if len(parts) >= 7:
                     self.colors.append([float(parts[4]), float(parts[5]), float(parts[6])])
                 else:
-                    self.colors.append([1.0, 1.0, 1.0]) # Default white color fallback
+                    self.colors.append([1.0, 1.0, 1.0])  # Default white color fallback
             elif parts[0] == 'vn':
                 self.normals.append([float(parts[1]), float(parts[2]), float(parts[3])])
             elif parts[0] == 'f':
@@ -181,7 +191,9 @@ class ObjViewerWidget(QOpenGLWidget):
             v_indices = face.get('v', [])
             if len(v_indices) >= 3:
                 # ensure the first three indices are valid integers within range
-                if any((not isinstance(idx, int)) or idx < 0 or idx >= v_count for idx in v_indices[:3]):
+                if any(
+                    (not isinstance(idx, int)) or idx < 0 or idx >= v_count for idx in v_indices[:3]
+                ):
                     # invalid face. append a default normal and skip detailed compute.
                     self.face_normals.append([0.0, 1.0, 0.0])
                     continue
@@ -244,13 +256,13 @@ class ObjViewerWidget(QOpenGLWidget):
         self._log_gl_context_once()
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_LIGHTING)
-        glEnable(GL_LIGHT0) # Key Light
-        glEnable(GL_LIGHT1) # Fill Light
-        glEnable(GL_LIGHT2) # Rim Light
+        glEnable(GL_LIGHT0)  # Key Light
+        glEnable(GL_LIGHT1)  # Fill Light
+        glEnable(GL_LIGHT2)  # Rim Light
         glEnable(GL_COLOR_MATERIAL)
         glEnable(GL_NORMALIZE)
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
-        glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE) # Better inside shading
+        glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE)  # Better inside shading
 
         # 1. Main Key Light (Warm, strong)
         glLightfv(GL_LIGHT0, GL_POSITION, [1.0, 1.0, 1.0, 0.0])
@@ -307,7 +319,7 @@ class ObjViewerWidget(QOpenGLWidget):
         glLoadIdentity()
         aspect = w / h if h > 0 else 1.0
         set_perspective(45.0, aspect, 0.1, 100.0)
-        glMatrixMode(GL_MODELVIEW)  
+        glMatrixMode(GL_MODELVIEW)
 
     def paintGL(self):
         """Render the scene using cached display list."""
@@ -370,7 +382,7 @@ class ObjViewerWidget(QOpenGLWidget):
                     try:
                         glLineWidth(0.5)
                     except Exception:
-                        pass # Some drivers don't support width < 1.0
+                        pass  # Some drivers don't support width < 1.0
 
                     glCallList(self.mesh_display_list)
 
@@ -426,7 +438,7 @@ class ObjViewerWidget(QOpenGLWidget):
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-        glColor4f(1.0, 1.0, 1.0, 0.08) # Very subtle white lines
+        glColor4f(1.0, 1.0, 1.0, 0.08)  # Very subtle white lines
         glLineWidth(1.0)
 
         grid_size = 2.0
@@ -440,7 +452,7 @@ class ObjViewerWidget(QOpenGLWidget):
         while val <= grid_size + 0.001:
             # Lines parallel to Z
             if abs(val) < 0.01:
-                glColor4f(1.0, 0.2, 0.2, 0.15) # X axis highlight
+                glColor4f(1.0, 0.2, 0.2, 0.15)  # X axis highlight
             else:
                 glColor4f(1.0, 1.0, 1.0, 0.08)
             glVertex3f(val, bottom_y, -grid_size)
@@ -448,7 +460,7 @@ class ObjViewerWidget(QOpenGLWidget):
 
             # Lines parallel to X
             if abs(val) < 0.01:
-                glColor4f(0.2, 0.4, 1.0, 0.15) # Z axis highlight
+                glColor4f(0.2, 0.4, 1.0, 0.15)  # Z axis highlight
             else:
                 glColor4f(1.0, 1.0, 1.0, 0.08)
             glVertex3f(-grid_size, bottom_y, val)
@@ -522,7 +534,12 @@ class ObjViewerWidget(QOpenGLWidget):
         glPopAttrib()
 
         # Safely restore the exact viewport OpenGL was using
-        glViewport(current_viewport[0], current_viewport[1], current_viewport[2], current_viewport[3])
+        glViewport(
+            current_viewport[0],
+            current_viewport[1],
+            current_viewport[2],
+            current_viewport[3],
+        )
 
     def _is_movement_pressed(self, movement_key: MovementKey) -> bool:
         """Check if a normalized movement key is currently held."""
@@ -591,11 +608,13 @@ class ObjViewerWidget(QOpenGLWidget):
             pitch = math.radians(self.cam_pitch)
 
             # Mathematical inverse calculation from camera to world directional vectors
-            forward = np.array([
-                math.cos(pitch) * math.sin(yaw),
-                -math.sin(pitch),
-                -math.cos(pitch) * math.cos(yaw)
-            ])
+            forward = np.array(
+                [
+                    math.cos(pitch) * math.sin(yaw),
+                    -math.sin(pitch),
+                    -math.cos(pitch) * math.cos(yaw),
+                ]
+            )
             self.cam_pos += forward * speed
 
         self.update()
@@ -608,7 +627,8 @@ class ObjViewerWidget(QOpenGLWidget):
 
     def _transition_to_fps(self):
         """Seamlessly convert Orbit camera transformations into FPS transformations."""
-        if self.camera_mode == 'fps': return
+        if self.camera_mode == 'fps':
+            return
         self.camera_mode = 'fps'
         self.auto_rotate = False
 
@@ -640,7 +660,8 @@ class ObjViewerWidget(QOpenGLWidget):
         current_time = time.time()
         dt = current_time - self.last_tick_time
         self.last_tick_time = current_time
-        if dt > 0.1: dt = 0.016
+        if dt > 0.1:
+            dt = 0.016
 
         if self.camera_mode == 'orbit':
             if self.auto_rotate:
@@ -660,16 +681,14 @@ class ObjViewerWidget(QOpenGLWidget):
             pitch = math.radians(self.cam_pitch)
 
             # Properly transposed camera vectors allows Unity-style flycam controls
-            forward = np.array([
-                math.cos(pitch) * math.sin(yaw),
-                -math.sin(pitch),
-                -math.cos(pitch) * math.cos(yaw)
-            ])
-            right = np.array([
-                math.cos(yaw),
-                0.0,
-                math.sin(yaw)
-            ])
+            forward = np.array(
+                [
+                    math.cos(pitch) * math.sin(yaw),
+                    -math.sin(pitch),
+                    -math.cos(pitch) * math.cos(yaw),
+                ]
+            )
+            right = np.array([math.cos(yaw), 0.0, math.sin(yaw)])
             up = np.array([0.0, 1.0, 0.0])  # Native World Up
 
             if self._is_movement_pressed(KEY_FORWARD):
@@ -690,9 +709,14 @@ class ObjViewerWidget(QOpenGLWidget):
             if self._is_movement_pressed(KEY_DOWN):
                 # Only fly down if no extension keys (Ctrl, Alt, Win) are held
                 mods = QGuiApplication.keyboardModifiers()
-                if not (mods & (Qt.KeyboardModifier.ControlModifier |
-                                Qt.KeyboardModifier.AltModifier |
-                                Qt.KeyboardModifier.MetaModifier)):
+                if not (
+                    mods
+                    & (
+                        Qt.KeyboardModifier.ControlModifier
+                        | Qt.KeyboardModifier.AltModifier
+                        | Qt.KeyboardModifier.MetaModifier
+                    )
+                ):
                     self.cam_pos -= up * speed
                     moved = True
 
@@ -786,7 +810,9 @@ class ObjViewerPanel(QWidget):
             if updated:
                 self.config_manager.save()
 
-            self.viewer.show_wireframe = self.config_manager.settings.get('obj_show_wireframe', False)
+            self.viewer.show_wireframe = self.config_manager.settings.get(
+                'obj_show_wireframe', False
+            )
             self.viewer.show_grid = self.config_manager.settings.get('obj_show_grid', True)
         layout.addWidget(self.viewer, stretch=1)
 
@@ -826,8 +852,8 @@ class ObjViewerPanel(QWidget):
 
         # Clean native Help Button AFTER the stats
         self.help_btn = QPushButton('?')
-        self.help_btn.setMaximumWidth(30) # Keep it perfectly square/small but native height
-        self.help_btn.setToolTip("View Camera Controls")
+        self.help_btn.setMaximumWidth(30)  # Keep it perfectly square/small but native height
+        self.help_btn.setToolTip('View Camera Controls')
         self.help_btn.clicked.connect(self.show_help)
         controls_layout.addWidget(self.help_btn)
 
@@ -837,22 +863,22 @@ class ObjViewerPanel(QWidget):
     def show_help(self):
         """Show a cleanly formatted message box with controls."""
         msg = QMessageBox(self)
-        msg.setWindowTitle("Camera Controls")
+        msg.setWindowTitle('Camera Controls')
         msg.setText(
-            "<h3>Orbit Mode (Default)</h3>"
-            "<ul>"
-            "<li><b>Click + Drag:</b> Rotate model</li>"
-            "<li><b>Scroll Wheel:</b> Zoom in/out</li>"
-            "</ul>"
-            "<h3>FPS Mode</h3>"
-            "<p><i>Pressing WASD at any time smoothly transitions you into FPS Mode.</i></p>"
-            "<ul>"
-            "<li><b>W/A/S/D:</b> Move forward/left/back/right</li>"
-            "<li><b>Space / Shift:</b> Move Up / Down</li>"
-            "<li><b>Click + Drag:</b> Look around freely</li>"
-            "<li><b>Scroll Wheel:</b> Move in/out</li>"
-            "<li><b>Hold Q / E:</b> Move slower / faster</li>"
-            "</ul>"
+            '<h3>Orbit Mode (Default)</h3>'
+            '<ul>'
+            '<li><b>Click + Drag:</b> Rotate model</li>'
+            '<li><b>Scroll Wheel:</b> Zoom in/out</li>'
+            '</ul>'
+            '<h3>FPS Mode</h3>'
+            '<p><i>Pressing WASD at any time smoothly transitions you into FPS Mode.</i></p>'
+            '<ul>'
+            '<li><b>W/A/S/D:</b> Move forward/left/back/right</li>'
+            '<li><b>Space / Shift:</b> Move Up / Down</li>'
+            '<li><b>Click + Drag:</b> Look around freely</li>'
+            '<li><b>Scroll Wheel:</b> Move in/out</li>'
+            '<li><b>Hold Q / E:</b> Move slower / faster</li>'
+            '</ul>'
         )
         msg.exec()
 

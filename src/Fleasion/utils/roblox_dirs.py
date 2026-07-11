@@ -95,7 +95,7 @@ def load_saved_roblox_dirs() -> list[Path]:
     try:
         with ROBLOX_DIRS_FILE.open('r', encoding='utf-8') as f:
             payload = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return []
 
     raw_dirs = payload.get('roblox_dirs', []) if isinstance(payload, dict) else []

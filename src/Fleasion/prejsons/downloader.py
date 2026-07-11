@@ -31,9 +31,7 @@ def download_prejsons():
                 except (urllib.error.URLError, OSError) as e:
                     log_buffer.log('PreJsons', f'Failed original {game_name}: {e}')
 
-            replacement_url = game_config.get('replacement') or game_config.get(
-                'Replacement'
-            )
+            replacement_url = game_config.get('replacement') or game_config.get('Replacement')
             if replacement_url:
                 try:
                     content = http_get(replacement_url, timeout=15)

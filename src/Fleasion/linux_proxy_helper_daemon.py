@@ -18,7 +18,6 @@ import sys
 import time
 from pathlib import Path
 
-
 HOSTS_FILE = Path('/etc/hosts')
 HOSTS_MARKER = '# Fleasion proxy entry'
 BUFFER_SIZE = 256 * 1024
@@ -30,13 +29,15 @@ HELPER_STOP_NAME = 'linux_proxy_helper.stop'
 HELPER_HOSTS_NAME = 'linux_proxy_helper.hosts.json'
 PROXY_CA_RELATIVE = Path('proxy_ca') / 'ca.crt'
 PROFILE_API_HOST = 'apis.roblox.com'
-ALLOWED_PROXY_HOSTS = frozenset({
-    'apis.roblox.com',
-    'assetdelivery.roblox.com',
-    'contentdelivery.roblox.com',
-    'fts.rbxcdn.com',
-    'gamejoin.roblox.com',
-})
+ALLOWED_PROXY_HOSTS = frozenset(
+    {
+        'apis.roblox.com',
+        'assetdelivery.roblox.com',
+        'contentdelivery.roblox.com',
+        'fts.rbxcdn.com',
+        'gamejoin.roblox.com',
+    }
+)
 SYSTEM_CA_NAME = 'fleasion-proxy-ca.crt'
 SYSTEM_CA_DIRS = (
     Path('/usr/local/share/ca-certificates'),
@@ -46,13 +47,17 @@ BOOT_GUARD_SERVICE = 'fleasion-hosts-restore.service'
 BOOT_GUARD_PATH = Path('/etc/systemd/system') / BOOT_GUARD_SERVICE
 INSTALLED_HELPER_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper')
 INSTALLED_HELPER_SCRIPT_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper.py')
-INSTALLED_HELPER_METADATA_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper.metadata.json')
+INSTALLED_HELPER_METADATA_PATH = Path(
+    '/usr/local/libexec/fleasion-linux-proxy-helper.metadata.json'
+)
 HELPER_METADATA_VERSION = 1
 POLKIT_ACTION_NAMESPACE = 'com.fleasion.proxy-helper'
 POLKIT_RUN_ACTION_ID = f'{POLKIT_ACTION_NAMESPACE}.run'
 POLKIT_INSTALL_CA_ACTION_ID = f'{POLKIT_ACTION_NAMESPACE}.install-system-ca'
 POLKIT_POLICY_PATH = Path('/usr/share/polkit-1/actions') / f'{POLKIT_ACTION_NAMESPACE}.policy'
-LEGACY_POLKIT_POLICY_PATH = Path('/usr/local/share/polkit-1/actions') / f'{POLKIT_ACTION_NAMESPACE}.policy'
+LEGACY_POLKIT_POLICY_PATH = (
+    Path('/usr/local/share/polkit-1/actions') / f'{POLKIT_ACTION_NAMESPACE}.policy'
+)
 POLKIT_PROMPTLESS_RULE_PATH = Path('/etc/polkit-1/rules.d/49-fleasion-proxy-helper.rules')
 
 
@@ -71,7 +76,8 @@ def _host_subprocess_env() -> dict[str, str]:
     library_path = env.get('LD_LIBRARY_PATH')
     if bundle_root and library_path:
         entries = [
-            entry for entry in library_path.split(os.pathsep)
+            entry
+            for entry in library_path.split(os.pathsep)
             if entry and Path(entry).resolve() != Path(bundle_root).resolve()
         ]
         if entries:
@@ -313,7 +319,9 @@ def _validate_user_context(args: argparse.Namespace) -> tuple[int, int, Path]:
 def _validate_config_paths(args: argparse.Namespace, user_home: Path) -> Path:
     config_dir = Path(args.config_dir).resolve(strict=False)
     if config_dir.name != CONFIG_DIR_NAME or not _path_is_within(config_dir, user_home):
-        raise RuntimeError(f'config dir must be the invoking user Fleasion config dir: {config_dir}')
+        raise RuntimeError(
+            f'config dir must be the invoking user Fleasion config dir: {config_dir}'
+        )
     if config_dir.exists() and (not config_dir.is_dir() or config_dir.is_symlink()):
         raise RuntimeError(f'config dir must be a real directory: {config_dir}')
 
@@ -325,7 +333,9 @@ def _validate_config_paths(args: argparse.Namespace, user_home: Path) -> Path:
     provided_paths = {
         'ready file': Path(args.ready_file).resolve(strict=False),
         'stop file': Path(args.stop_file).resolve(strict=False),
-        'hosts update file': Path(args.hosts_file).resolve(strict=False) if getattr(args, 'hosts_file', None) else None,
+        'hosts update file': Path(args.hosts_file).resolve(strict=False)
+        if getattr(args, 'hosts_file', None)
+        else None,
     }
     for label, expected in expected_paths.items():
         provided = provided_paths[label]
@@ -414,7 +424,11 @@ def _validate_fleasion_ca_certificate(ca_path: Path) -> None:
     org_attrs = cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)
     common_name = cn_attrs[0].value if cn_attrs else ''
     organization = org_attrs[0].value if org_attrs else ''
-    if cert.subject != cert.issuer or common_name != 'Fleasion Proxy CA' or organization != 'Fleasion':
+    if (
+        cert.subject != cert.issuer
+        or common_name != 'Fleasion Proxy CA'
+        or organization != 'Fleasion'
+    ):
         raise RuntimeError('CA certificate is not Fleasion Proxy CA')
 
     try:
@@ -452,10 +466,7 @@ def _read_hosts_update(path: Path) -> set[str]:
 
 
 def _clean_hosts_content(content: str) -> str:
-    return ''.join(
-        line for line in content.splitlines(keepends=True)
-        if HOSTS_MARKER not in line
-    )
+    return ''.join(line for line in content.splitlines(keepends=True) if HOSTS_MARKER not in line)
 
 
 def _hosts_content_has_loopback_entries(content: str, hosts: set[str]) -> bool:
@@ -522,15 +533,17 @@ def _host_failure_payload(args: argparse.Namespace, exc: BaseException) -> dict:
         'hosts_path': str(HOSTS_FILE),
     }
     if _is_read_only_filesystem_error(exc):
-        payload.update({
-            'code': 'linux_hosts_read_only',
-            'system_read_only': _system_hosts_path_is_read_only(),
-            'hosts': sorted(
-                host.strip().lower()
-                for host in str(getattr(args, 'hosts', '') or '').split(',')
-                if host.strip()
-            ),
-        })
+        payload.update(
+            {
+                'code': 'linux_hosts_read_only',
+                'system_read_only': _system_hosts_path_is_read_only(),
+                'hosts': sorted(
+                    host.strip().lower()
+                    for host in str(getattr(args, 'hosts', '') or '').split(',')
+                    if host.strip()
+                ),
+            }
+        )
     return payload
 
 
@@ -558,8 +571,8 @@ def _boot_guard_command() -> str:
     unit_path = shlex.quote(str(BOOT_GUARD_PATH))
     return (
         'tmp=$(mktemp) && '
-        f"grep -vF -- {marker} {hosts_file} > \"$tmp\" || true; "
-        f"cat \"$tmp\" > {hosts_file}; "
+        f'grep -vF -- {marker} {hosts_file} > "$tmp" || true; '
+        f'cat "$tmp" > {hosts_file}; '
         'rm -f "$tmp"; '
         f'systemctl disable {service} >/dev/null 2>&1 || true; '
         f'rm -f {unit_path}; '
@@ -590,7 +603,10 @@ WantedBy=multi-user.target
     try:
         BOOT_GUARD_PATH.write_text(unit, encoding='utf-8')
         BOOT_GUARD_PATH.chmod(0o644)
-        for cmd in ([systemctl, 'daemon-reload'], [systemctl, 'enable', BOOT_GUARD_SERVICE]):
+        for cmd in (
+            [systemctl, 'daemon-reload'],
+            [systemctl, 'enable', BOOT_GUARD_SERVICE],
+        ):
             result = _run_host_command(
                 cmd,
                 capture_output=True,
@@ -746,7 +762,8 @@ def _install_system_ca(ca_cert: Path) -> dict:
             if ok:
                 stores.append(
                     'update-ca-certificates:already-current'
-                    if already_current else 'update-ca-certificates'
+                    if already_current
+                    else 'update-ca-certificates'
                 )
             else:
                 failures.append({'store': 'update-ca-certificates', 'error': err})
@@ -762,8 +779,7 @@ def _install_system_ca(ca_cert: Path) -> dict:
             ok, err = _run_trust_update([update_ca_trust, 'extract'])
             if ok:
                 stores.append(
-                    'update-ca-trust:already-current'
-                    if already_current else 'update-ca-trust'
+                    'update-ca-trust:already-current' if already_current else 'update-ca-trust'
                 )
             else:
                 failures.append({'store': 'update-ca-trust', 'error': err})
@@ -780,11 +796,15 @@ def _install_system_ca(ca_cert: Path) -> dict:
 def _system_ca_is_current(ca_cert: Path) -> bool:
     return any(
         target.is_file() and _target_has_ca(ca_cert, target)
-        for target in (directory / SYSTEM_CA_NAME for directory in SYSTEM_CA_DIRS if directory.is_dir())
+        for target in (
+            directory / SYSTEM_CA_NAME for directory in SYSTEM_CA_DIRS if directory.is_dir()
+        )
     )
 
 
-def _ensure_system_ca_for_hosts(hosts: set[str], ca_cert: str | None, *, install: bool = False) -> dict | None:
+def _ensure_system_ca_for_hosts(
+    hosts: set[str], ca_cert: str | None, *, install: bool = False
+) -> dict | None:
     """Install/verify system trust when WebKit-visible API hosts are requested."""
     if PROFILE_API_HOST not in hosts:
         return None
@@ -809,7 +829,10 @@ def _repair_config_ownership(config_dir: Path, uid: int, gid: int) -> None:
         _log(f'Skipped config ownership repair: {exc}')
         return
 
-    if user_home == Path('/') or user_home not in (config_resolved, *config_resolved.parents):
+    if user_home == Path('/') or user_home not in (
+        config_resolved,
+        *config_resolved.parents,
+    ):
         _log(f'Skipped config ownership repair outside user home: {config_resolved}')
         return
 
@@ -904,7 +927,9 @@ async def _relay_client(
 
 async def _serve(args: argparse.Namespace) -> int:
     owner_uid, owner_gid = _validate_runtime_args(args)
-    hosts = _validate_hosts({host.strip().lower() for host in args.hosts.split(',') if host.strip()})
+    hosts = _validate_hosts(
+        {host.strip().lower() for host in args.hosts.split(',') if host.strip()}
+    )
 
     stop_file = Path(args.stop_file)
     ready_file = Path(args.ready_file)
@@ -937,7 +962,11 @@ async def _serve(args: argparse.Namespace) -> int:
 
     read_only_hosts_mode = _apply_hosts_or_use_existing_read_only(hosts)
     _flush_dns()
-    ready_payload = {'ok': True, 'pid': os.getpid(), 'read_only_hosts_mode': read_only_hosts_mode}
+    ready_payload = {
+        'ok': True,
+        'pid': os.getpid(),
+        'read_only_hosts_mode': read_only_hosts_mode,
+    }
     if system_ca_details is not None:
         ready_payload['system_ca'] = system_ca_details
     _safe_write_user_file(ready_file, json.dumps(ready_payload), owner_uid, owner_gid)
@@ -967,7 +996,7 @@ async def _serve(args: argparse.Namespace) -> int:
                                 install=False,
                             )
                             if update_ca_details is not None and not update_ca_details.get('ok'):
-                                error = update_ca_details.get("error") or update_ca_details
+                                error = update_ca_details.get('error') or update_ca_details
                                 if args.require_system_ca:
                                     _log(
                                         'Skipped Linux hosts update because system trust-store '
@@ -978,7 +1007,9 @@ async def _serve(args: argparse.Namespace) -> int:
                                     'Continuing Linux hosts update without confirmed system trust-store '
                                     f'install: {error}'
                                 )
-                            update_read_only_hosts_mode = _apply_hosts_or_use_existing_read_only(updated_hosts)
+                            update_read_only_hosts_mode = _apply_hosts_or_use_existing_read_only(
+                                updated_hosts
+                            )
                             _flush_dns()
                             current_hosts = set(updated_hosts)
                             read_only_hosts_mode = update_read_only_hosts_mode

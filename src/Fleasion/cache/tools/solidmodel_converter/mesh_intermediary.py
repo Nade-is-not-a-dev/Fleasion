@@ -26,16 +26,15 @@ from ....utils import APP_CACHE_DIR, log_buffer
 
 # ── Compression detection ──────────────────────────────────────────────────
 _ZSTD_MAGIC = b'\x28\xb5\x2f\xfd'
-_GZIP_MAGIC  = b'\x1f\x8b'
+_GZIP_MAGIC = b'\x1f\x8b'
 
 
 def _decompress(data: bytes) -> bytes:
     """Strip zstd or gzip application-level wrapping if present."""
     if data[:4] == _ZSTD_MAGIC:
         import zstandard  # type: ignore[import-untyped]
-        data = zstandard.ZstdDecompressor().decompress(
-            data, max_output_size=64 * 1024 * 1024
-        )
+
+        data = zstandard.ZstdDecompressor().decompress(data, max_output_size=64 * 1024 * 1024)
     elif data[:2] == _GZIP_MAGIC:
         data = gzip.decompress(data)
     return data
@@ -54,6 +53,7 @@ def is_binary_rbxm(data: bytes) -> bool:
 
 # ── Cache path helper ──────────────────────────────────────────────────────
 
+
 def _cache_obj_path(source: Path) -> Path:
     """Return a deterministic APP_CACHE_DIR OBJ path for *source*."""
     h = hashlib.md5(str(source.resolve()).encode('utf-8')).hexdigest()
@@ -66,6 +66,7 @@ def _is_cache_fresh(source: Path, cached: Path) -> bool:
 
 
 # ── .mesh → cached OBJ ────────────────────────────────────────────────────
+
 
 def mesh_file_to_cached_obj(mesh_path: Path) -> Path:
     """Convert a Roblox ``.mesh`` file to a cached Wavefront OBJ.
@@ -126,6 +127,7 @@ def mesh_file_to_cached_obj(mesh_path: Path) -> Path:
 
 # ── CSGVertex list → OBJ text ──────────────────────────────────────────────
 
+
 def _csg_vertices_to_obj(vertices, indices: list[int]) -> str:
     """Serialise a ``(CSGVertex list, flat index list)`` pair as OBJ text.
 
@@ -148,9 +150,7 @@ def _csg_vertices_to_obj(vertices, indices: list[int]) -> str:
         r = v.cr / 255.0
         g = v.cg / 255.0
         b = v.cb / 255.0
-        lines.append(
-            f'v {v.px:.6f} {v.py:.6f} {v.pz:.6f} {r:.6f} {g:.6f} {b:.6f}\n'
-        )
+        lines.append(f'v {v.px:.6f} {v.py:.6f} {v.pz:.6f} {r:.6f} {g:.6f} {b:.6f}\n')
 
     lines.append('\n')
 
@@ -168,7 +168,7 @@ def _csg_vertices_to_obj(vertices, indices: list[int]) -> str:
 
     # Faces (convert 0-based indices to 1-based OBJ)
     for i in range(0, len(indices), 3):
-        a = indices[i]     + 1
+        a = indices[i] + 1
         b = indices[i + 1] + 1
         c = indices[i + 2] + 1
         lines.append(f'f {a}/{a}/{a} {b}/{b}/{b} {c}/{c}/{c}\n')
@@ -179,12 +179,14 @@ def _csg_vertices_to_obj(vertices, indices: list[int]) -> str:
 # ── .bin (binary CSG RBXM) → cached OBJ ───────────────────────────────────
 
 #: Instance class names that carry a MeshData property inside a CSG RBXM.
-_INJECTABLE = frozenset({
-    'PartOperationAsset',
-    'UnionOperation',
-    'NegateOperation',
-    'PartOperation',
-})
+_INJECTABLE = frozenset(
+    {
+        'PartOperationAsset',
+        'UnionOperation',
+        'NegateOperation',
+        'PartOperation',
+    }
+)
 
 
 def bin_file_to_cached_obj(bin_path: Path) -> Path:
@@ -243,8 +245,7 @@ def bin_file_to_cached_obj(bin_path: Path) -> Path:
 
     if not is_binary_rbxm(data):
         raise ValueError(
-            f'.bin file does not look like a binary RBXM (got header '
-            f'{data[:8]!r}): {bin_path}'
+            f'.bin file does not look like a binary RBXM (got header {data[:8]!r}): {bin_path}'
         )
 
     doc = deserialize_rbxm(data)
@@ -273,18 +274,19 @@ def bin_file_to_cached_obj(bin_path: Path) -> Path:
 
     log_buffer.log(
         'Intermediary',
-        f'.bin → OBJ done: {cached_obj.name} '
-        f'({len(vertices)} verts, {len(indices) // 3} tris)',
+        f'.bin → OBJ done: {cached_obj.name} ({len(vertices)} verts, {len(indices) // 3} tris)',
     )
     return cached_obj
 
 
 # .rbxmx (XML SolidModel export) -> cached OBJ
 
+
 def rbxmx_file_to_cached_obj(rbxmx_path: Path) -> Path:
     """Parse MeshData from an RBXMX SolidModel export and convert to a cached OBJ."""
     import base64
     from xml.etree.ElementTree import parse as _xml_parse
+
     from .csg_mesh import parse_csg_mesh
 
     rbxmx_path = Path(rbxmx_path).resolve()
@@ -331,7 +333,6 @@ def rbxmx_file_to_cached_obj(rbxmx_path: Path) -> Path:
 
     log_buffer.log(
         'Intermediary',
-        f'.rbxmx -> OBJ done: {cached_obj.name} '
-        f'({len(vertices)} verts, {len(indices) // 3} tris)',
+        f'.rbxmx -> OBJ done: {cached_obj.name} ({len(vertices)} verts, {len(indices) // 3} tris)',
     )
     return cached_obj

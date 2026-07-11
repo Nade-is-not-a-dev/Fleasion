@@ -1,6 +1,12 @@
 from .deserializer import RbxmDeserializer
 from .serializer import write_rbxm
-from .types import RbxDocument, RbxInstance, RbxProperty, RbxRawChunk, RbxRawPropertyChunk
+from .types import (
+    RbxDocument,
+    RbxInstance,
+    RbxProperty,
+    RbxRawChunk,
+    RbxRawPropertyChunk,
+)
 from .xml_writer import write_rbxmx
 
 __all__ = [

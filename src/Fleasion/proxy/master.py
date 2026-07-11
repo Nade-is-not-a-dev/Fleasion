@@ -21,7 +21,6 @@ VPN compatibility:
 
 import asyncio
 import base64
-import hashlib
 import csv
 import ctypes
 import hashlib
@@ -49,6 +48,7 @@ try:
 except ImportError:  # pragma: no cover - Windows-only module
     winreg = None
 
+from ..cache.cache_manager import CacheManager
 from ..utils import (
     LOCAL_APPDATA,
     MACOS_PROXY_BACKEND_PORT,
@@ -58,30 +58,42 @@ from ..utils import (
     ROBLOX_STUDIO_PROCESS,
     STORAGE_DB,
     STORAGE_DB_GDK,
+    delete_cache,
     format_count,
     log_buffer,
+    run_in_thread,
     terminate_roblox,
     wait_for_roblox_exit,
     wait_for_roblox_window,
-    delete_cache,
-    run_in_thread,
+)
+from ..utils.certs import (
+    generate_ca,
+    generate_host_cert,
+    generate_multi_host_cert,
+    get_ca_pem,
+)
+from ..utils.roblox_dirs import (
+    is_roblox_studio_resource_dir,
+    load_saved_roblox_dirs,
+    save_saved_roblox_dirs,
+)
+from ..utils.windows import (
+    get_roblox_player_exe_path,
+    get_roblox_studio_exe_path,
+    launch_as_standard_user,
 )
 from .addons import CacheScraper, TextureStripper, UsernameSpoofer
 from .server import (
-    BASE_INTERCEPT_HOSTS,
     ASSET_DELIVERY_HOST,
+    BASE_INTERCEPT_HOSTS,
     CDN_HOSTS,
-    FleasionProxy,
     GAMEJOIN_HOST,
     INTERCEPT_HOSTS,
     USERNAME_SPOOFER_INTERCEPT_HOSTS,
+    FleasionProxy,
 )
 from .upstream import HttpProxyConfig, Socks5ProxyConfig, UpstreamEndpoint, UpstreamMode
 from .windows_proxy import WindowsProxyInfo, detect_windows_proxy, detected_http_proxy
-from ..cache.cache_manager import CacheManager
-from ..utils.certs import generate_ca, generate_host_cert, generate_multi_host_cert, get_ca_pem
-from ..utils.roblox_dirs import is_roblox_studio_resource_dir, load_saved_roblox_dirs, save_saved_roblox_dirs
-from ..utils.windows import get_roblox_player_exe_path, get_roblox_studio_exe_path, launch_as_standard_user
 
 logger = logging.getLogger(__name__)
 
@@ -94,12 +106,14 @@ if IS_MACOS or IS_LINUX:
     HOSTS_FILE = Path('/etc/hosts')
     _PLATFORM_TEMP_DIR = Path(tempfile.gettempdir())
 else:
-    HOSTS_FILE = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32' / 'drivers' / 'etc' / 'hosts'
+    HOSTS_FILE = (
+        Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32' / 'drivers' / 'etc' / 'hosts'
+    )
     _PLATFORM_TEMP_DIR = Path(os.environ.get('TEMP', r'C:\Windows\Temp'))
 _HOSTS_MARKER = '# Fleasion proxy entry'
 
 # Registry key used by Windows to replace files on next reboot
-_PENDING_RENAME_KEY   = r'SYSTEM\CurrentControlSet\Control\Session Manager'
+_PENDING_RENAME_KEY = r'SYSTEM\CurrentControlSet\Control\Session Manager'
 _PENDING_RENAME_VALUE = 'PendingFileRenameOperations'
 # Temp file that will replace the hosts file on next boot after a crash
 _TEMP_CLEAN_HOSTS = _PLATFORM_TEMP_DIR / 'fleasion_hosts_restore.txt'
@@ -125,9 +139,9 @@ _PROXY_OWNER_PID_FILE = _PLATFORM_TEMP_DIR / 'fleasion_proxy_owner.pid'
 
 _WATCHDOG_TASK_NAME = 'Fleasion-HostsWatchdog'
 _WATCHDOG_LOOKAHEAD = 30  # seconds ahead the task is scheduled
-_WATCHDOG_INTERVAL  = 10  # seconds between watchdog refreshes
+_WATCHDOG_INTERVAL = 10  # seconds between watchdog refreshes
 _WATCHDOG_SCHTASKS_TIMEOUT = 20
-_WATCHDOG_TASK_XML  = _PLATFORM_TEMP_DIR / 'fleasion_watchdog_task.xml'
+_WATCHDOG_TASK_XML = _PLATFORM_TEMP_DIR / 'fleasion_watchdog_task.xml'
 _SCHTASKS_EXE = str(Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32' / 'schtasks.exe')
 _CERTUTIL_EXE = str(Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32' / 'certutil.exe')
 
@@ -206,8 +220,15 @@ def _upsert_watchdog_task() -> None:
         xml = _build_watchdog_xml(run_at)
         _WATCHDOG_TASK_XML.write_text(xml, encoding='utf-16')
         cmd = [
-            _SCHTASKS_EXE, '/create', '/TN', _WATCHDOG_TASK_NAME,
-            '/XML', str(_WATCHDOG_TASK_XML), '/RU', 'SYSTEM', '/F',
+            _SCHTASKS_EXE,
+            '/create',
+            '/TN',
+            _WATCHDOG_TASK_NAME,
+            '/XML',
+            str(_WATCHDOG_TASK_XML),
+            '/RU',
+            'SYSTEM',
+            '/F',
         ]
         result = subprocess.run(
             cmd,
@@ -250,7 +271,6 @@ def _delete_watchdog_task() -> None:
         pass
 
 
-
 def _is_routable_public_ip(ip: str) -> bool:
     """Return True only if *ip* is a publicly routable IP address.
 
@@ -263,6 +283,7 @@ def _is_routable_public_ip(ip: str) -> bool:
       - Reserved / bogon  0.0.0.0/8, 240.0.0.0/4, 255.255.255.255, etc.
     """
     import ipaddress as _ipaddress
+
     try:
         addr = _ipaddress.ip_address(ip)
         return not (
@@ -277,7 +298,9 @@ def _is_routable_public_ip(ip: str) -> bool:
         return False
 
 
-def _dns_query_udp(hostname: str, server: str, port: int = 53, timeout: float = 3.0, qtype: int = 1) -> list:
+def _dns_query_udp(
+    hostname: str, server: str, port: int = 53, timeout: float = 3.0, qtype: int = 1
+) -> list:
     """Send a raw DNS A/AAAA-record query over UDP to *server*, bypassing the OS
     resolver stack entirely.
 
@@ -359,15 +382,15 @@ def _dns_query_udp(hostname: str, server: str, port: int = 53, timeout: float = 
             pos += 1
         if pos + 10 > len(response):
             break
-        rtype, _, _, rdlength = _struct.unpack('!HHIH', response[pos:pos + 10])
+        rtype, _, _, rdlength = _struct.unpack('!HHIH', response[pos : pos + 10])
         pos += 10
         if rtype == 1 and rdlength == 4:  # A record
-            ip = '.'.join(str(b) for b in response[pos:pos + 4])
+            ip = '.'.join(str(b) for b in response[pos : pos + 4])
             if _is_routable_public_ip(ip):
                 ips.append(ip)
         elif rtype == 28 and rdlength == 16:  # AAAA record
             try:
-                ip = _socket.inet_ntop(_socket.AF_INET6, response[pos:pos + 16])
+                ip = _socket.inet_ntop(_socket.AF_INET6, response[pos : pos + 16])
             except OSError:
                 ip = ''
             if ip and _is_routable_public_ip(ip):
@@ -409,6 +432,7 @@ def _resolve_real_endpoints(hosts: set[str]) -> dict[str, list[UpstreamEndpoint]
     OS/VPN resolver.
     """
     import socket
+
     real_endpoints: dict[str, list[UpstreamEndpoint]] = {}
     for host in sorted(hosts):
         endpoints: list[UpstreamEndpoint] = []
@@ -422,11 +446,7 @@ def _resolve_real_endpoints(hosts: set[str]) -> dict[str, list[UpstreamEndpoint]
                     continue
                 ip = sockaddr[0]
                 key = (family, ip)
-                if (
-                    isinstance(ip, str)
-                    and key not in seen
-                    and _is_routable_public_ip(ip)
-                ):
+                if isinstance(ip, str) and key not in seen and _is_routable_public_ip(ip):
                     seen.add(key)
                     endpoints.append(UpstreamEndpoint(host=host, ip=ip, family=family))
         except Exception as exc:
@@ -477,10 +497,7 @@ def _resolve_real_endpoints(hosts: set[str]) -> dict[str, list[UpstreamEndpoint]
 def _resolve_real_ips(hosts: set[str]) -> dict[str, list[str]]:
     """Compatibility wrapper for older code that expects string IP lists."""
     endpoints = _resolve_real_endpoints(hosts)
-    return {
-        host: [ep.ip for ep in eps if ep.ip]
-        for host, eps in endpoints.items()
-    }
+    return {host: [ep.ip for ep in eps if ep.ip] for host, eps in endpoints.items()}
 
 
 def _log_upstream_ip_coverage(hosts: set[str], real_endpoints: dict) -> None:
@@ -497,12 +514,10 @@ def _log_upstream_ip_coverage(hosts: set[str], real_endpoints: dict) -> None:
             log_buffer.log('Proxy', f'Upstream IP coverage: {host} -> NO ROUTABLE IPS')
 
 
-def _first_endpoint_ips(real_endpoints: dict[str, list[UpstreamEndpoint]]) -> dict[str, str]:
-    return {
-        host: eps[0].ip
-        for host, eps in real_endpoints.items()
-        if eps and eps[0].ip
-    }
+def _first_endpoint_ips(
+    real_endpoints: dict[str, list[UpstreamEndpoint]],
+) -> dict[str, str]:
+    return {host: eps[0].ip for host, eps in real_endpoints.items() if eps and eps[0].ip}
 
 
 def _log_system_proxy_info(info: WindowsProxyInfo, system_proxy: Optional[HttpProxyConfig]) -> None:
@@ -560,16 +575,17 @@ def _log_upstream_transport_settings(
     if effective_mode != configured_mode:
         override = f' effective={effective_mode}'
     system_state = (
-        f'{system_proxy.host}:{system_proxy.port}'
-        if system_proxy is not None else 'not detected'
+        f'{system_proxy.host}:{system_proxy.port}' if system_proxy is not None else 'not detected'
     )
     manual_http_state = (
         f'{manual_http_proxy.host}:{manual_http_proxy.port}'
-        if manual_http_proxy is not None else 'not configured'
+        if manual_http_proxy is not None
+        else 'not configured'
     )
     manual_socks5_state = (
         f'{manual_socks5_proxy.host}:{manual_socks5_proxy.port}'
-        if manual_socks5_proxy is not None else 'not configured'
+        if manual_socks5_proxy is not None
+        else 'not configured'
     )
     log_buffer.log(
         'ProxyDiag',
@@ -621,7 +637,9 @@ def _cert_dict_san_hosts(cert: dict) -> set[str]:
     return names
 
 
-def _run_tls_self_test_sync(hosts: set[str], ca_cert_path: Path, port: int) -> tuple[bool, list[str]]:
+def _run_tls_self_test_sync(
+    hosts: set[str], ca_cert_path: Path, port: int
+) -> tuple[bool, list[str]]:
     failures: list[str] = []
     for host in sorted(hosts):
         try:
@@ -651,7 +669,10 @@ async def _run_tls_self_test(hosts: set[str], ca_cert_path: Path, port: int) -> 
         port,
     )
     if ok:
-        log_buffer.log('TLS', f'Startup TLS self-test passed for {format_count(hosts, "intercept host")}')
+        log_buffer.log(
+            'TLS',
+            f'Startup TLS self-test passed for {format_count(hosts, "intercept host")}',
+        )
         return True
     for failure in failures:
         log_buffer.log('TLS', f'Startup TLS self-test failed: {failure}')
@@ -703,7 +724,6 @@ def _is_macos_studio_bundle_path(exe_path: Path) -> bool:
     return any(parent.name == 'RobloxStudio.app' for parent in resolved.parents)
 
 
-
 def _flush_dns() -> None:
     """Flush the OS DNS cache so hosts-file changes take effect immediately.
 
@@ -719,7 +739,10 @@ def _flush_dns() -> None:
             # apply/clear operation. Avoid a failing killall attempt here.
             return
         flushed = False
-        for cmd in (['dscacheutil', '-flushcache'], ['killall', '-HUP', 'mDNSResponder']):
+        for cmd in (
+            ['dscacheutil', '-flushcache'],
+            ['killall', '-HUP', 'mDNSResponder'],
+        ):
             try:
                 subprocess.run(cmd, capture_output=True, timeout=5)
                 flushed = True
@@ -746,7 +769,10 @@ def _flush_dns() -> None:
         if flushed:
             log_buffer.log('Hosts', 'DNS cache flushed')
         else:
-            log_buffer.log('Hosts', 'DNS cache flush skipped: no supported Linux flush command succeeded')
+            log_buffer.log(
+                'Hosts',
+                'DNS cache flush skipped: no supported Linux flush command succeeded',
+            )
         return
 
     # Primary: in-process DLL call — fast, no subprocess, immune to AV process blocks.
@@ -774,6 +800,7 @@ def _flush_dns() -> None:
 # Reboot-time crash guard (PendingFileRenameOperations)
 # ---------------------------------------------------------------------------
 
+
 def _pid_is_alive(pid: int) -> bool:
     """Return True if the process with *pid* is still running."""
     if not IS_WINDOWS:
@@ -785,9 +812,7 @@ def _pid_is_alive(pid: int) -> bool:
 
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     STILL_ACTIVE = 259
-    handle = ctypes.windll.kernel32.OpenProcess(
-        PROCESS_QUERY_LIMITED_INFORMATION, False, pid
-    )
+    handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:
         return False
     try:
@@ -807,8 +832,9 @@ def _other_proxy_owner_alive() -> bool:
     try:
         pid = int(_PROXY_OWNER_PID_FILE.read_text().strip())
         return pid != os.getpid() and _pid_is_alive(pid)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return False
+
 
 def _nt_path(p: Path) -> str:
     """Return the NT namespace path required by PendingFileRenameOperations."""
@@ -832,8 +858,10 @@ def _schedule_hosts_cleanup_on_reboot() -> None:
         except OSError:
             original = ''
         clean_content = ''.join(
-            line for line in original.splitlines(keepends=True)
-            if _HOSTS_MARKER not in line and not _hosts_line_has_target_loopback(line, set(INTERCEPT_HOSTS))
+            line
+            for line in original.splitlines(keepends=True)
+            if _HOSTS_MARKER not in line
+            and not _hosts_line_has_target_loopback(line, set(INTERCEPT_HOSTS))
         )
         _TEMP_CLEAN_HOSTS.write_text(clean_content, encoding='utf-8')
 
@@ -841,7 +869,8 @@ def _schedule_hosts_cleanup_on_reboot() -> None:
         dst = _nt_path(HOSTS_FILE)
 
         with winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE, _PENDING_RENAME_KEY,
+            winreg.HKEY_LOCAL_MACHINE,
+            _PENDING_RENAME_KEY,
             access=winreg.KEY_ALL_ACCESS,
         ) as key:
             try:
@@ -885,7 +914,8 @@ def _cancel_hosts_cleanup_on_reboot() -> None:
     try:
         src = _nt_path(_TEMP_CLEAN_HOSTS)
         with winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE, _PENDING_RENAME_KEY,
+            winreg.HKEY_LOCAL_MACHINE,
+            _PENDING_RENAME_KEY,
             access=winreg.KEY_ALL_ACCESS,
         ) as key:
             try:
@@ -929,6 +959,7 @@ def _cancel_hosts_cleanup_on_reboot() -> None:
 # ---------------------------------------------------------------------------
 # Admin check
 # ---------------------------------------------------------------------------
+
 
 def _is_admin() -> bool:
     if IS_MACOS or IS_LINUX:
@@ -1038,16 +1069,16 @@ def _get_process_name_from_pid(pid: int) -> str:
 def _list_port_listeners_powershell(port: int) -> list[dict]:
     """Return listening process info for a TCP port via Get-NetTCPConnection."""
     ps_cmd = (
-        f"$rows=Get-NetTCPConnection -State Listen -LocalPort {port} -ErrorAction SilentlyContinue | "
-        "ForEach-Object { "
-        "$p=Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; "
-        "[PSCustomObject]@{ "
-        "LocalAddress=$_.LocalAddress; "
-        "PID=$_.OwningProcess; "
+        f'$rows=Get-NetTCPConnection -State Listen -LocalPort {port} -ErrorAction SilentlyContinue | '
+        'ForEach-Object { '
+        '$p=Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; '
+        '[PSCustomObject]@{ '
+        'LocalAddress=$_.LocalAddress; '
+        'PID=$_.OwningProcess; '
         "ProcessName=$(if($p){$p.ProcessName}else{'Unknown'}) "
-        "} "
-        "}; "
-        "if($rows){$rows | ConvertTo-Json -Compress}"
+        '} '
+        '}; '
+        'if($rows){$rows | ConvertTo-Json -Compress}'
     )
     try:
         result = subprocess.run(
@@ -1218,7 +1249,7 @@ def _list_port_listeners(port: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 _HOSTS_WRITE_RETRIES = 8
-_HOSTS_WRITE_DELAY   = 0.25  # seconds between direct-write retries
+_HOSTS_WRITE_DELAY = 0.25  # seconds between direct-write retries
 _HOSTS_IPV4_LOOPBACK = '127.0.0.1'
 _HOSTS_IPV6_LOOPBACK = '::1'
 _HOSTS_LOOPBACK_IPS = frozenset({_HOSTS_IPV4_LOOPBACK, _HOSTS_IPV6_LOOPBACK})
@@ -1234,7 +1265,9 @@ def _required_hosts_loopbacks() -> tuple[str, ...]:
     return (_HOSTS_IPV4_LOOPBACK,)
 
 
-def _set_active_hosts_loopbacks(loopbacks: tuple[str, ...] | list[str] | set[str] | None) -> None:
+def _set_active_hosts_loopbacks(
+    loopbacks: tuple[str, ...] | list[str] | set[str] | None,
+) -> None:
     global _HOSTS_ACTIVE_LOOPBACK_IPS
     if not loopbacks:
         _HOSTS_ACTIVE_LOOPBACK_IPS = None
@@ -1334,8 +1367,13 @@ def _verify_hosts_entries(hosts: Set[str], error_details: Optional[dict] = None)
                 missing.append(f'{host}->{ip}')
 
     if missing:
-        log_buffer.log('Hosts', f'Hosts verification failed: missing active mappings for {", ".join(missing)}')
-        _record_hosts_error(error_details, f'missing active hosts mappings for {", ".join(missing)}')
+        log_buffer.log(
+            'Hosts',
+            f'Hosts verification failed: missing active mappings for {", ".join(missing)}',
+        )
+        _record_hosts_error(
+            error_details, f'missing active hosts mappings for {", ".join(missing)}'
+        )
         return False
 
     log_buffer.log('Hosts', f'Hosts verification passed for: {", ".join(sorted(hosts))}')
@@ -1362,7 +1400,9 @@ def _hosts_file_loopback_hosts(hosts: Set[str]) -> set[str]:
     entries = _parse_active_hosts_entries(existing)
     present: set[str] = set()
     for host in sorted(hosts):
-        if any(_is_hosts_loopback_ip(entry.get('ip', '')) for entry in entries.get(host.lower(), [])):
+        if any(
+            _is_hosts_loopback_ip(entry.get('ip', '')) for entry in entries.get(host.lower(), [])
+        ):
             present.add(host)
     return present
 
@@ -1428,7 +1468,10 @@ def _write_hosts_file(content: str) -> None:
             with os.fdopen(fd, 'w', encoding='utf-8') as fh:
                 fh.write(content)
             os.replace(tmp_path, HOSTS_FILE)  # atomic on Windows (MoveFileExW)
-            log_buffer.log('Hosts', 'Hosts file updated via atomic rename (security software workaround)')
+            log_buffer.log(
+                'Hosts',
+                'Hosts file updated via atomic rename (security software workaround)',
+            )
             return
         except Exception:
             try:
@@ -1479,7 +1522,7 @@ def _add_hosts_entries(hosts: Set[str], error_details: Optional[dict] = None) ->
             '# space.\n'
             '#\n'
             '# Additionally, comments (such as these) may be inserted on individual\n'
-            '# lines or following the machine name denoted by a \'#\' symbol.\n'
+            "# lines or following the machine name denoted by a '#' symbol.\n"
             '#\n'
             '# For example:\n'
             '#\n'
@@ -1578,7 +1621,8 @@ def _remove_hosts_entries(hosts: Set[str], error_details: Optional[dict] = None)
 
     lines = existing.splitlines(keepends=True)
     filtered = [
-        line for line in lines
+        line
+        for line in lines
         if _HOSTS_MARKER not in line and not _hosts_line_has_target_loopback(line, hosts)
     ]
 
@@ -1598,6 +1642,7 @@ def _remove_hosts_entries(hosts: Set[str], error_details: Optional[dict] = None)
 # ---------------------------------------------------------------------------
 # Roblox CA installation
 # ---------------------------------------------------------------------------
+
 
 def _find_roblox_dirs() -> list:
     """Locate every RobloxPlayerBeta.exe and RobloxStudioBeta.exe installation.
@@ -1659,9 +1704,8 @@ def _find_roblox_dirs() -> list:
         results: list = []
 
         def _has_roblox_exe(path: Path) -> bool:
-            return (
-                os.path.isfile(os.path.join(path, ROBLOX_PROCESS))
-                or os.path.isfile(os.path.join(path, ROBLOX_STUDIO_PROCESS))
+            return os.path.isfile(os.path.join(path, ROBLOX_PROCESS)) or os.path.isfile(
+                os.path.join(path, ROBLOX_STUDIO_PROCESS)
             )
 
         if root.is_dir() and _has_roblox_exe(root):
@@ -1691,7 +1735,10 @@ def _find_roblox_dirs() -> list:
 
     def _check_player_path_key(key) -> None:
         nonlocal reg_found
-        for value_name, process_name in (('PlayerPath', ROBLOX_PROCESS), ('StudioPath', ROBLOX_STUDIO_PROCESS)):
+        for value_name, process_name in (
+            ('PlayerPath', ROBLOX_PROCESS),
+            ('StudioPath', ROBLOX_STUDIO_PROCESS),
+        ):
             try:
                 val, rtype = winreg.QueryValueEx(key, value_name)
             except OSError:
@@ -1718,7 +1765,8 @@ def _find_roblox_dirs() -> list:
             i = 0
             while True:
                 try:
-                    name = winreg.EnumKey(hkey, i); i += 1
+                    name = winreg.EnumKey(hkey, i)
+                    i += 1
                 except OSError:
                     break
                 try:
@@ -1727,19 +1775,23 @@ def _find_roblox_dirs() -> list:
                         j = 0
                         while True:
                             try:
-                                sub = winreg.EnumKey(sk, j); j += 1
+                                sub = winreg.EnumKey(sk, j)
+                                j += 1
                             except OSError:
                                 break
                             try:
                                 with winreg.OpenKey(sk, sub) as ssk:
                                     _check_player_path_key(ssk)
-                            except (OSError, ValueError):
+                            except OSError, ValueError:
                                 pass
                 except OSError:
                     pass
     except OSError:
         pass
-    log_buffer.log('Certificate', f'  Registry PlayerPath: {int((time.perf_counter() - t) * 1000)} ms ({reg_found} found)')
+    log_buffer.log(
+        'Certificate',
+        f'  Registry PlayerPath: {int((time.perf_counter() - t) * 1000)} ms ({reg_found} found)',
+    )
 
     # ── 2. MS Store Version ──────────────────────────────────────────────
     # C:\XboxGames\Roblox, up to two layers deep.
@@ -1748,7 +1800,10 @@ def _find_roblox_dirs() -> list:
     for d in _scan_for_exe(Path(r'C:\XboxGames\Roblox'), 2):
         xbox_found += 1
         _add(d)
-    log_buffer.log('Certificate', f'  XboxGames\\Roblox: {int((time.perf_counter() - t) * 1000)} ms ({xbox_found} found)')
+    log_buffer.log(
+        'Certificate',
+        f'  XboxGames\\Roblox: {int((time.perf_counter() - t) * 1000)} ms ({xbox_found} found)',
+    )
 
     # ── 3. Active Roblox ─────────────────────────────────────────────────
     # Read HKCU\...\roblox-player\shell\open\command (Default); parse the exe
@@ -1769,11 +1824,14 @@ def _find_roblox_dirs() -> list:
                         for d in _scan_for_exe(exe_dir, 2):
                             active_found += 1
                             _add(d)
-            except (OSError, ValueError):
+            except OSError, ValueError:
                 pass
     except OSError:
         pass
-    log_buffer.log('Certificate', f'  Active Roblox (registry): {int((time.perf_counter() - t) * 1000)} ms ({active_found} found)')
+    log_buffer.log(
+        'Certificate',
+        f'  Active Roblox (registry): {int((time.perf_counter() - t) * 1000)} ms ({active_found} found)',
+    )
 
     # ── 4. Program Files (x86) Roblox ────────────────────────────────────
     t = time.perf_counter()
@@ -1781,7 +1839,10 @@ def _find_roblox_dirs() -> list:
     for d in _scan_for_exe(Path(r'C:\Program Files (x86)\Roblox\Versions'), 2):
         program_files_found += 1
         _add(d)
-    log_buffer.log('Certificate', f'  Program Files (x86) Roblox\\Versions: {int((time.perf_counter() - t) * 1000)} ms ({program_files_found} found)')
+    log_buffer.log(
+        'Certificate',
+        f'  Program Files (x86) Roblox\\Versions: {int((time.perf_counter() - t) * 1000)} ms ({program_files_found} found)',
+    )
 
     # ── 5. Regular Roblox ────────────────────────────────────────────────
     # %LocalAppData%\Roblox\Versions — one layer down.
@@ -1790,7 +1851,10 @@ def _find_roblox_dirs() -> list:
     for d in _scan_for_exe(LOCAL_APPDATA / 'Roblox' / 'Versions', 1):
         roblox_found += 1
         _add(d)
-    log_buffer.log('Certificate', f'  AppData Roblox\\Versions: {int((time.perf_counter() - t) * 1000)} ms ({roblox_found} found)')
+    log_buffer.log(
+        'Certificate',
+        f'  AppData Roblox\\Versions: {int((time.perf_counter() - t) * 1000)} ms ({roblox_found} found)',
+    )
 
     # ── 6. Active Studio ─────────────────────────────────────────────────
     # Read HKCU\...\roblox-studio\shell\open\command (Default); parse the exe
@@ -1811,11 +1875,14 @@ def _find_roblox_dirs() -> list:
                         for d in _scan_for_exe(exe_dir, 2):
                             studio_found += 1
                             _add(d)
-            except (OSError, ValueError):
+            except OSError, ValueError:
                 pass
     except OSError:
         pass
-    log_buffer.log('Certificate', f'  Active Studio (registry): {int((time.perf_counter() - t) * 1000)} ms ({studio_found} found)')
+    log_buffer.log(
+        'Certificate',
+        f'  Active Studio (registry): {int((time.perf_counter() - t) * 1000)} ms ({studio_found} found)',
+    )
 
     # ── 7. Running process install paths ─────────────────────────────────
     t = time.perf_counter()
@@ -1825,7 +1892,10 @@ def _find_roblox_dirs() -> list:
             continue
         if _add(running_exe.parent):
             running_found += 1
-    log_buffer.log('Certificate', f'  Running Roblox process path: {int((time.perf_counter() - t) * 1000)} ms ({running_found} found)')
+    log_buffer.log(
+        'Certificate',
+        f'  Running Roblox process path: {int((time.perf_counter() - t) * 1000)} ms ({running_found} found)',
+    )
 
     for cached_dir in load_saved_roblox_dirs():
         _add(cached_dir)
@@ -1852,7 +1922,7 @@ def _normalize_newlines(text: str) -> str:
 
 def _normalize_pem_block(pem_block: str) -> str:
     """Return a canonical PEM block representation (LF + trailing newline)."""
-    return f"{_normalize_newlines(pem_block).strip()}\n"
+    return f'{_normalize_newlines(pem_block).strip()}\n'
 
 
 def _is_fleasion_ca_cert_block(pem_block: str) -> bool:
@@ -1873,11 +1943,7 @@ def _is_fleasion_ca_cert_block(pem_block: str) -> bool:
         org_attrs = cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)
         cn = cn_attrs[0].value if cn_attrs else ''
         org = org_attrs[0].value if org_attrs else ''
-        return (
-            cert.subject == cert.issuer
-            and cn == 'Fleasion Proxy CA'
-            and org == 'Fleasion'
-        )
+        return cert.subject == cert.issuer and cn == 'Fleasion Proxy CA' and org == 'Fleasion'
     except Exception:
         return False
 
@@ -1893,7 +1959,7 @@ def _analyze_and_strip_fleasion_cas(pem_bundle: str, current_ca_pem: str) -> tup
     current_count = 0
 
     for match in _PEM_CERT_BLOCK_RE.finditer(normalized_bundle):
-        parts.append(normalized_bundle[last_end:match.start()])
+        parts.append(normalized_bundle[last_end : match.start()])
         block = match.group(0)
 
         if _is_fleasion_ca_cert_block(block):
@@ -1923,7 +1989,9 @@ def _describe_cacert_state(ca_file: Path, ca_pem: str) -> dict:
     """Return a stable diagnostic snapshot for a Roblox cacert.pem bundle."""
     state = {
         'path': str(ca_file),
-        'install': ca_file.parent.parent.name if ca_file.parent.name == 'ssl' else ca_file.parent.name,
+        'install': ca_file.parent.parent.name
+        if ca_file.parent.name == 'ssl'
+        else ca_file.parent.name,
         'exists': False,
         'size': 0,
         'mtime_ns': 0,
@@ -1960,16 +2028,18 @@ def _describe_cacert_state(ca_file: Path, ca_pem: str) -> dict:
         and current_count == 1
     )
 
-    state.update({
-        'exists': True,
-        'size': stat.st_size,
-        'mtime_ns': stat.st_mtime_ns,
-        'sha256': hashlib.sha256(raw).hexdigest(),
-        'total_certs': total_count,
-        'fleasion_certs': fleasion_count,
-        'current_fleasion_certs': current_count,
-        'healthy': healthy,
-    })
+    state.update(
+        {
+            'exists': True,
+            'size': stat.st_size,
+            'mtime_ns': stat.st_mtime_ns,
+            'sha256': hashlib.sha256(raw).hexdigest(),
+            'total_certs': total_count,
+            'fleasion_certs': fleasion_count,
+            'current_fleasion_certs': current_count,
+            'healthy': healthy,
+        }
+    )
     return state
 
 
@@ -1979,21 +2049,21 @@ def _format_cacert_state(state: dict) -> str:
     error = state.get('error') or ''
     error_text = f', error={error}' if error else ''
     return (
-        f"path={state.get('path')}, exists={'yes' if state.get('exists') else 'no'}, "
-        f"size={state.get('size')} bytes, mtime_ns={state.get('mtime_ns')}, "
-        f"sha256={short_sha}, total certs={state.get('total_certs')}, "
-        f"Fleasion certs={state.get('fleasion_certs')}, "
-        f"current Fleasion certs={state.get('current_fleasion_certs')}, "
-        f"healthy={'yes' if state.get('healthy') else 'no'}{error_text}"
+        f'path={state.get("path")}, exists={"yes" if state.get("exists") else "no"}, '
+        f'size={state.get("size")} bytes, mtime_ns={state.get("mtime_ns")}, '
+        f'sha256={short_sha}, total certs={state.get("total_certs")}, '
+        f'Fleasion certs={state.get("fleasion_certs")}, '
+        f'current Fleasion certs={state.get("current_fleasion_certs")}, '
+        f'healthy={"yes" if state.get("healthy") else "no"}{error_text}'
     )
 
 
-def _log_cacert_state(ca_file: Path, ca_pem: str, reason: str, *, log_healthy: bool = False) -> dict:
+def _log_cacert_state(
+    ca_file: Path, ca_pem: str, reason: str, *, log_healthy: bool = False
+) -> dict:
     state = _describe_cacert_state(ca_file, ca_pem)
     is_problem = (
-        not state.get('exists')
-        or bool(state.get('error'))
-        or not bool(state.get('healthy'))
+        not state.get('exists') or bool(state.get('error')) or not bool(state.get('healthy'))
     )
 
     if log_healthy or is_problem:
@@ -2002,9 +2072,15 @@ def _log_cacert_state(ca_file: Path, ca_pem: str, reason: str, *, log_healthy: b
     if not state.get('exists'):
         log_buffer.log('Certificate', f'WARNING: CERTS FILE MISSING: {ca_file}')
     elif state.get('error'):
-        log_buffer.log('Certificate', f'Failed to inspect cacert.pem at {ca_file}: {state["error"]}')
+        log_buffer.log(
+            'Certificate',
+            f'Failed to inspect cacert.pem at {ca_file}: {state["error"]}',
+        )
     elif not state.get('healthy'):
-        log_buffer.log('Certificate', f'WARNING: cacert.pem is not launch-healthy for {state.get("install")}: {_format_cacert_state(state)}')
+        log_buffer.log(
+            'Certificate',
+            f'WARNING: cacert.pem is not launch-healthy for {state.get("install")}: {_format_cacert_state(state)}',
+        )
     return state
 
 
@@ -2096,7 +2172,9 @@ def _healthy_linux_cacert_source(ca_file: Path, ca_pem: str, dirs: list[Path]) -
     return None
 
 
-def _seed_linux_cacert_if_needed(ca_file: Path, state: dict, install_name: str, ca_pem: str, dirs: list[Path]) -> bool:
+def _seed_linux_cacert_if_needed(
+    ca_file: Path, state: dict, install_name: str, ca_pem: str, dirs: list[Path]
+) -> bool:
     """Replace a missing/truncated Roblox CA bundle with a healthy local or Mozilla bundle."""
     if not IS_LINUX:
         return False
@@ -2111,10 +2189,16 @@ def _seed_linux_cacert_if_needed(ca_file: Path, state: dict, install_name: str, 
         try:
             _prepare_cacert_target_for_write(ca_file)
             shutil.copy2(source, ca_file)
-            log_buffer.log('Certificate', f'Seeded Roblox cacert.pem from healthy local bundle for {install_name}: {source}')
+            log_buffer.log(
+                'Certificate',
+                f'Seeded Roblox cacert.pem from healthy local bundle for {install_name}: {source}',
+            )
             return True
         except Exception as exc:
-            log_buffer.log('Certificate', f'Could not seed Roblox cacert.pem from local bundle for {install_name}: {exc}')
+            log_buffer.log(
+                'Certificate',
+                f'Could not seed Roblox cacert.pem from local bundle for {install_name}: {exc}',
+            )
         finally:
             if restore_read_only:
                 _restore_cacert_read_only(ca_file)
@@ -2126,7 +2210,10 @@ def _seed_linux_cacert_if_needed(ca_file: Path, state: dict, install_name: str, 
         restore_read_only = _cacert_is_read_only(ca_file)
         _prepare_cacert_target_for_write(ca_file)
         shutil.copy2(certifi.where(), ca_file)
-        log_buffer.log('Certificate', f'Seeded Roblox cacert.pem from Mozilla CA bundle for {install_name}')
+        log_buffer.log(
+            'Certificate',
+            f'Seeded Roblox cacert.pem from Mozilla CA bundle for {install_name}',
+        )
         return True
     except Exception as exc:
         log_buffer.log('Certificate', f'Could not seed Roblox cacert.pem for {install_name}: {exc}')
@@ -2183,16 +2270,23 @@ def _install_ca_into_roblox_with_helper(ca_pem: str, dirs: list[Path]) -> tuple[
         ca_file = roblox_dir / 'ssl' / 'cacert.pem'
         strip_all_fleasion_ca = False
         try:
-            existing = ca_file.read_text(encoding='utf-8', errors='replace') if ca_file.exists() else ''
+            existing = (
+                ca_file.read_text(encoding='utf-8', errors='replace') if ca_file.exists() else ''
+            )
         except OSError as exc:
-            log_buffer.log('Certificate', f'Could not pre-read cacert.pem for {roblox_dir.name}; helper will try root read/write: {exc}')
+            log_buffer.log(
+                'Certificate',
+                f'Could not pre-read cacert.pem for {roblox_dir.name}; helper will try root read/write: {exc}',
+            )
             existing = ''
             strip_all_fleasion_ca = True
-        installs.append({
-            'resource_dir': str(roblox_dir),
-            'remove_pems': _fleasion_ca_blocks(existing),
-            'strip_all_fleasion_ca': strip_all_fleasion_ca,
-        })
+        installs.append(
+            {
+                'resource_dir': str(roblox_dir),
+                'remove_pems': _fleasion_ca_blocks(existing),
+                'strip_all_fleasion_ca': strip_all_fleasion_ca,
+            }
+        )
 
     response = helper_patch_ca(ca_pem, installs)
     details = response or {
@@ -2201,14 +2295,24 @@ def _install_ca_into_roblox_with_helper(ca_pem: str, dirs: list[Path]) -> tuple[
         'failed': [{'error': 'macOS proxy helper did not return a CA patch response'}],
     }
 
-    for key, label in (('patched', 'patched'), ('skipped', 'already current'), ('failed', 'failed')):
+    for key, label in (
+        ('patched', 'patched'),
+        ('skipped', 'already current'),
+        ('failed', 'failed'),
+    ):
         for item in details.get(key) or []:
             path = item.get('ca_file') or item.get('resource_dir') or '(unknown)'
             if key == 'failed':
-                log_buffer.log('Certificate', f'macOS helper CA patch {label} for {path}: {item.get("error") or item.get("status") or "unknown error"}')
+                log_buffer.log(
+                    'Certificate',
+                    f'macOS helper CA patch {label} for {path}: {item.get("error") or item.get("status") or "unknown error"}',
+                )
             else:
                 changed = 'changed' if item.get('changed') else 'unchanged'
-                log_buffer.log('Certificate', f'macOS helper CA patch {label} for {path} ({changed})')
+                log_buffer.log(
+                    'Certificate',
+                    f'macOS helper CA patch {label} for {path} ({changed})',
+                )
 
     all_healthy = bool(response and response.get('ok'))
     verified: list[dict] = []
@@ -2237,30 +2341,52 @@ def _patch_roblox_ca_with_macos_helper(ca_pem: str, roblox_dir: Path) -> tuple[b
     try:
         existing = ca_file.read_text(encoding='utf-8', errors='replace') if ca_file.exists() else ''
     except OSError as exc:
-        log_buffer.log('Certificate', f'Could not pre-read cacert.pem for {roblox_dir.name}; helper will try root read/write: {exc}')
+        log_buffer.log(
+            'Certificate',
+            f'Could not pre-read cacert.pem for {roblox_dir.name}; helper will try root read/write: {exc}',
+        )
         existing = ''
         strip_all_fleasion_ca = True
 
     response = helper_patch_ca(
         ca_pem,
-        [{
-            'resource_dir': str(roblox_dir),
-            'remove_pems': _fleasion_ca_blocks(existing),
-            'strip_all_fleasion_ca': strip_all_fleasion_ca,
-        }],
+        [
+            {
+                'resource_dir': str(roblox_dir),
+                'remove_pems': _fleasion_ca_blocks(existing),
+                'strip_all_fleasion_ca': strip_all_fleasion_ca,
+            }
+        ],
     )
     if not response:
-        return False, False, {'failed': [{'resource_dir': str(roblox_dir), 'error': 'macOS proxy helper did not return a CA patch response'}]}
+        return (
+            False,
+            False,
+            {
+                'failed': [
+                    {
+                        'resource_dir': str(roblox_dir),
+                        'error': 'macOS proxy helper did not return a CA patch response',
+                    }
+                ]
+            },
+        )
 
     changed = any(bool(item.get('changed')) for item in response.get('patched') or [])
     for item in response.get('failed') or []:
         path = item.get('ca_file') or item.get('resource_dir') or str(ca_file)
-        log_buffer.log('Certificate', f'macOS helper CA patch failed for {path}: {item.get("error") or item.get("status") or "unknown error"}')
+        log_buffer.log(
+            'Certificate',
+            f'macOS helper CA patch failed for {path}: {item.get("error") or item.get("status") or "unknown error"}',
+        )
     for key, label in (('patched', 'patched'), ('skipped', 'already current')):
         for item in response.get(key) or []:
             path = item.get('ca_file') or item.get('resource_dir') or str(ca_file)
             item_changed = 'changed' if item.get('changed') else 'unchanged'
-            log_buffer.log('Certificate', f'macOS helper CA patch {label} for {path} ({item_changed})')
+            log_buffer.log(
+                'Certificate',
+                f'macOS helper CA patch {label} for {path} ({item_changed})',
+            )
     return bool(response.get('ok')), changed, response
 
 
@@ -2270,9 +2396,15 @@ def _install_ca_into_roblox(ca_pem: str) -> tuple[bool, dict]:
     dirs = _find_roblox_dirs()
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
     if not dirs:
-        log_buffer.log('Certificate', f'No Roblox installs found to patch (scanned in {elapsed_ms} ms)')
+        log_buffer.log(
+            'Certificate',
+            f'No Roblox installs found to patch (scanned in {elapsed_ms} ms)',
+        )
         return False, {'error': 'no_roblox_installs', 'dirs': []}
-    log_buffer.log('Certificate', f'Found {format_count(dirs, "Roblox install")} to patch (scanned in {elapsed_ms} ms)')
+    log_buffer.log(
+        'Certificate',
+        f'Found {format_count(dirs, "Roblox install")} to patch (scanned in {elapsed_ms} ms)',
+    )
 
     if IS_MACOS and not _is_admin():
         return _install_ca_into_roblox_with_helper(ca_pem, dirs)
@@ -2288,13 +2420,13 @@ def _install_ca_into_roblox(ca_pem: str) -> tuple[bool, dict]:
             seeded = _seed_linux_cacert_if_needed(ca_file, pre_state, d.name, ca_pem, dirs)
             changed, fleasion_count, current_count = _upsert_fleasion_ca_in_cacert(ca_file, ca_pem)
             changed = changed or seeded
-            post_state = _log_cacert_state(ca_file, ca_pem, f'cacert.pem after startup patch for {d.name}')
+            post_state = _log_cacert_state(
+                ca_file, ca_pem, f'cacert.pem after startup patch for {d.name}'
+            )
             details['verified'].append(post_state)
             ok = ok and bool(post_state.get('healthy'))
             already_current = (
-                fleasion_count == 1
-                and current_count == 1
-                and bool(post_state.get('healthy'))
+                fleasion_count == 1 and current_count == 1 and bool(post_state.get('healthy'))
             )
 
             if changed and not already_current:
@@ -2302,26 +2434,31 @@ def _install_ca_into_roblox(ca_pem: str) -> tuple[bool, dict]:
                 duplicate_current = max(current_count - 1, 0)
                 removed_count = stale_count + duplicate_current
                 if removed_count > 0:
-                    log_buffer.log('Certificate', f'Refreshed CA in {d.name} (removed {removed_count} stale/duplicate Fleasion CA entries)')
+                    log_buffer.log(
+                        'Certificate',
+                        f'Refreshed CA in {d.name} (removed {removed_count} stale/duplicate Fleasion CA entries)',
+                    )
                 else:
                     log_buffer.log('Certificate', f'Installed CA into {d.name}')
             elif changed:
                 log_buffer.log('Certificate', f'Normalized CA bundle formatting in {d.name}')
             else:
                 log_buffer.log('Certificate', f'CA already installed in {d.name}')
-            details['patched'].append({'resource_dir': str(d), 'ca_file': str(ca_file), 'changed': changed})
+            details['patched'].append(
+                {'resource_dir': str(d), 'ca_file': str(ca_file), 'changed': changed}
+            )
         except (PermissionError, OSError, UnicodeDecodeError) as exc:
             log_buffer.log('Certificate', f'Failed to write CA for {d.name}: {exc}')
-            details['failed'].append({'resource_dir': str(d), 'ca_file': str(ca_file), 'error': str(exc)})
+            details['failed'].append(
+                {'resource_dir': str(d), 'ca_file': str(ca_file), 'error': str(exc)}
+            )
             ok = False
     return ok, details
 
 
 def _ca_thumbprint_sha1(ca_pem: str) -> str:
     body = ''.join(
-        line.strip()
-        for line in ca_pem.splitlines()
-        if line and not line.startswith('-----')
+        line.strip() for line in ca_pem.splitlines() if line and not line.startswith('-----')
     )
     der = base64.b64decode(body)
     return hashlib.sha1(der).hexdigest().upper()
@@ -2351,11 +2488,17 @@ def _certutil_fleasion_root_thumbprints(store_location: str) -> list[str]:
             timeout=20,
         )
     except Exception as exc:
-        log_buffer.log('Certificate', f'Windows {store_location} trust-store enumeration failed: {exc}')
+        log_buffer.log(
+            'Certificate',
+            f'Windows {store_location} trust-store enumeration failed: {exc}',
+        )
         return []
     if result.returncode != 0:
-        err = ((result.stderr or result.stdout or b'').decode('utf-8', errors='replace').strip())
-        log_buffer.log('Certificate', f'Windows {store_location} trust-store enumeration failed: {err or result.returncode}')
+        err = (result.stderr or result.stdout or b'').decode('utf-8', errors='replace').strip()
+        log_buffer.log(
+            'Certificate',
+            f'Windows {store_location} trust-store enumeration failed: {err or result.returncode}',
+        )
         return []
 
     entries: list[tuple[str | None, str]] = []
@@ -2390,12 +2533,18 @@ def _certutil_delete_from_store(store_location: str, thumbprint: str) -> bool:
             timeout=20,
         )
     except Exception as exc:
-        log_buffer.log('Certificate', f'Failed to remove stale CA {thumbprint} from Windows {store_location} store: {exc}')
+        log_buffer.log(
+            'Certificate',
+            f'Failed to remove stale CA {thumbprint} from Windows {store_location} store: {exc}',
+        )
         return False
     if result.returncode == 0:
         return True
-    err = ((result.stderr or result.stdout or b'').decode('utf-8', errors='replace').strip())
-    log_buffer.log('Certificate', f'Failed to remove stale CA {thumbprint} from Windows {store_location} store: {err or result.returncode}')
+    err = (result.stderr or result.stdout or b'').decode('utf-8', errors='replace').strip()
+    log_buffer.log(
+        'Certificate',
+        f'Failed to remove stale CA {thumbprint} from Windows {store_location} store: {err or result.returncode}',
+    )
     return False
 
 
@@ -2416,7 +2565,10 @@ def _install_ca_into_windows_root(ca_cert_path: Path, ca_pem: str) -> None:
 
     if _certutil_store_has_thumbprint(store_location, thumbprint):
         if removed_count:
-            log_buffer.log('Certificate', f'CA already trusted in Windows Root store (removed {removed_count} stale Fleasion CA entr{"y" if removed_count == 1 else "ies"})')
+            log_buffer.log(
+                'Certificate',
+                f'CA already trusted in Windows Root store (removed {removed_count} stale Fleasion CA entr{"y" if removed_count == 1 else "ies"})',
+            )
         else:
             log_buffer.log('Certificate', 'CA already trusted in Windows Root store')
         return
@@ -2434,19 +2586,33 @@ def _install_ca_into_windows_root(ca_cert_path: Path, ca_pem: str) -> None:
 
     if result.returncode == 0:
         if removed_count:
-            log_buffer.log('Certificate', f'Installed CA into Windows Root store (removed {removed_count} stale Fleasion CA entr{"y" if removed_count == 1 else "ies"})')
+            log_buffer.log(
+                'Certificate',
+                f'Installed CA into Windows Root store (removed {removed_count} stale Fleasion CA entr{"y" if removed_count == 1 else "ies"})',
+            )
         else:
             log_buffer.log('Certificate', 'Installed CA into Windows Root store')
         return
 
-    err = ((result.stderr or result.stdout or b'').decode('utf-8', errors='replace').strip())
-    log_buffer.log('Certificate', f'Failed to install CA into Windows Root store: {err or result.returncode}')
+    err = (result.stderr or result.stdout or b'').decode('utf-8', errors='replace').strip()
+    log_buffer.log(
+        'Certificate',
+        f'Failed to install CA into Windows Root store: {err or result.returncode}',
+    )
 
 
 def _macos_fleasion_keychain_thumbprints(keychain: str) -> list[str]:
     try:
         result = subprocess.run(
-            ['security', 'find-certificate', '-a', '-p', '-c', 'Fleasion Proxy CA', keychain],
+            [
+                'security',
+                'find-certificate',
+                '-a',
+                '-p',
+                '-c',
+                'Fleasion Proxy CA',
+                keychain,
+            ],
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -2485,7 +2651,10 @@ def _macos_delete_keychain_certificate(keychain: str, thumbprint: str) -> bool:
     if result.returncode == 0:
         return True
     err = (result.stderr or result.stdout or '').strip()
-    log_buffer.log('Certificate', f'Failed to remove stale macOS CA {thumbprint}: {err or result.returncode}')
+    log_buffer.log(
+        'Certificate',
+        f'Failed to remove stale macOS CA {thumbprint}: {err or result.returncode}',
+    )
     return False
 
 
@@ -2508,7 +2677,10 @@ def _install_ca_into_macos_system_keychain(ca_cert_path: Path, ca_pem: str) -> N
 
     if thumbprint in stored_thumbprints:
         if removed_count:
-            log_buffer.log('Certificate', f'CA already trusted in macOS System keychain (removed {removed_count} stale Fleasion CA entr{"y" if removed_count == 1 else "ies"})')
+            log_buffer.log(
+                'Certificate',
+                f'CA already trusted in macOS System keychain (removed {removed_count} stale Fleasion CA entr{"y" if removed_count == 1 else "ies"})',
+            )
         else:
             log_buffer.log('Certificate', 'CA already trusted in macOS System keychain')
         return
@@ -2537,13 +2709,19 @@ def _install_ca_into_macos_system_keychain(ca_cert_path: Path, ca_pem: str) -> N
 
     if result.returncode == 0:
         if removed_count:
-            log_buffer.log('Certificate', f'Installed CA into macOS System keychain (removed {removed_count} stale Fleasion CA entr{"y" if removed_count == 1 else "ies"})')
+            log_buffer.log(
+                'Certificate',
+                f'Installed CA into macOS System keychain (removed {removed_count} stale Fleasion CA entr{"y" if removed_count == 1 else "ies"})',
+            )
         else:
             log_buffer.log('Certificate', 'Installed CA into macOS System keychain')
         return
 
     err = (result.stderr or result.stdout or '').strip()
-    log_buffer.log('Certificate', f'Failed to install CA into macOS System keychain: {err or result.returncode}')
+    log_buffer.log(
+        'Certificate',
+        f'Failed to install CA into macOS System keychain: {err or result.returncode}',
+    )
 
 
 def check_and_patch_running_roblox_ca(exe_path: 'Path') -> bool:
@@ -2560,7 +2738,10 @@ def check_and_patch_running_roblox_ca(exe_path: 'Path') -> bool:
     if not ca_cert_path.exists():
         return False  # CA not generated yet – nothing to patch
     if _is_macos_studio_bundle_path(Path(exe_path)):
-        log_buffer.log('Certificate', f'Skipping macOS Roblox Studio CA patch for {Path(exe_path).name}')
+        log_buffer.log(
+            'Certificate',
+            f'Skipping macOS Roblox Studio CA patch for {Path(exe_path).name}',
+        )
         return False
 
     ca_pem = get_ca_pem(ca_cert_path)
@@ -2579,19 +2760,34 @@ def check_and_patch_running_roblox_ca(exe_path: 'Path') -> bool:
     ca_file = ssl_dir / 'cacert.pem'
 
     try:
-        pre_state = _log_cacert_state(ca_file, ca_pem, f'cacert.pem before running-instance patch for {roblox_dir.name}')
+        pre_state = _log_cacert_state(
+            ca_file,
+            ca_pem,
+            f'cacert.pem before running-instance patch for {roblox_dir.name}',
+        )
         pre_state_readable = bool(pre_state.get('exists')) and not bool(pre_state.get('error'))
         if IS_MACOS and not _is_admin():
-            request_ok, changed, helper_details = _patch_roblox_ca_with_macos_helper(ca_pem, roblox_dir)
+            request_ok, changed, helper_details = _patch_roblox_ca_with_macos_helper(
+                ca_pem, roblox_dir
+            )
             if not request_ok:
-                log_buffer.log('Certificate', f'Failed to inject CA into running Roblox instance through macOS helper: {helper_details}')
+                log_buffer.log(
+                    'Certificate',
+                    f'Failed to inject CA into running Roblox instance through macOS helper: {helper_details}',
+                )
                 return False
             fleasion_count = int(pre_state.get('fleasion_certs') or 0) if pre_state_readable else 0
-            current_count = int(pre_state.get('current_fleasion_certs') or 0) if pre_state_readable else 0
+            current_count = (
+                int(pre_state.get('current_fleasion_certs') or 0) if pre_state_readable else 0
+            )
         else:
             _prepare_cacert_target_for_write(ca_file)
             changed, fleasion_count, current_count = _upsert_fleasion_ca_in_cacert(ca_file, ca_pem)
-        post_state = _log_cacert_state(ca_file, ca_pem, f'cacert.pem after running-instance patch for {roblox_dir.name}')
+        post_state = _log_cacert_state(
+            ca_file,
+            ca_pem,
+            f'cacert.pem after running-instance patch for {roblox_dir.name}',
+        )
         if IS_MACOS and not _is_admin() and not pre_state_readable:
             fleasion_count = int(post_state.get('fleasion_certs') or 0)
             current_count = int(post_state.get('current_fleasion_certs') or 0)
@@ -2603,7 +2799,10 @@ def check_and_patch_running_roblox_ca(exe_path: 'Path') -> bool:
     is_launch_healthy = bool(post_state.get('healthy'))
     already_current = fleasion_count == 1 and current_count == 1 and was_launch_healthy
     if already_current:
-        log_buffer.log('Certificate', f'Roblox launch detected: cacert.pem already launch-healthy for {roblox_dir.name}')
+        log_buffer.log(
+            'Certificate',
+            f'Roblox launch detected: cacert.pem already launch-healthy for {roblox_dir.name}',
+        )
         return False
 
     stale_count = max(fleasion_count - current_count, 0)
@@ -2630,7 +2829,10 @@ def check_and_patch_running_roblox_ca(exe_path: 'Path') -> bool:
         )
 
     if changed:
-        log_buffer.log('Certificate', f'CA injected into running Roblox instance: {roblox_dir.name}')
+        log_buffer.log(
+            'Certificate',
+            f'CA injected into running Roblox instance: {roblox_dir.name}',
+        )
 
     return changed or not was_launch_healthy or not is_launch_healthy
 
@@ -2639,10 +2841,15 @@ def check_and_patch_running_roblox_ca(exe_path: 'Path') -> bool:
 # ProxyMaster
 # ---------------------------------------------------------------------------
 
+
 class ProxyMaster:
     """Manages the Fleasion proxy lifecycle."""
 
-    def __init__(self, config_manager, on_proxy_start_error: Optional[Callable[[str, dict], None]] = None) -> None:
+    def __init__(
+        self,
+        config_manager,
+        on_proxy_start_error: Optional[Callable[[str, dict], None]] = None,
+    ) -> None:
         self.config_manager = config_manager
         self.cache_manager = CacheManager(config_manager)
         self._on_proxy_start_error = on_proxy_start_error
@@ -2650,11 +2857,11 @@ class ProxyMaster:
         # Singleton addon instances - GUI holds references to these directly
         self.cache_scraper = CacheScraper(self.cache_manager)
         self.cache_scraper.set_enabled(False)
-        
+
         # Wire scraper into cache_manager for private asset downloads
         self.cache_manager.set_scraper(self.cache_scraper)
         self.username_spoofer = UsernameSpoofer(config_manager)
-        
+
         self._texture_stripper: Optional[TextureStripper] = None
 
         self._proxy: Optional[FleasionProxy] = None
@@ -2679,7 +2886,9 @@ class ProxyMaster:
         return bool(self.config_manager.settings.get('_runtime_proxy_debug', False))
 
     def _proxy_debug_mode(self) -> str:
-        mode = str(self.config_manager.settings.get('_runtime_proxy_debug_mode', 'full') or 'full').lower()
+        mode = str(
+            self.config_manager.settings.get('_runtime_proxy_debug_mode', 'full') or 'full'
+        ).lower()
         return mode if mode in {'a', 'b', 'c', 'd', 'e', 'full'} else 'full'
 
     def _effective_upstream_mode(self) -> str:
@@ -2710,7 +2919,8 @@ class ProxyMaster:
         with self._lock:
             before = len(self._module_interceptors)
             self._module_interceptors = [
-                interceptor for interceptor in self._module_interceptors
+                interceptor
+                for interceptor in self._module_interceptors
                 if interceptor is not module
             ]
             if len(self._module_interceptors) == before:
@@ -2741,7 +2951,9 @@ class ProxyMaster:
     def _startup_intercept_hosts(self) -> set[str]:
         hosts = self._desired_intercept_hosts()
         if IS_LINUX:
-            manual_webui_hosts = _hosts_file_loopback_hosts(set(USERNAME_SPOOFER_INTERCEPT_HOSTS)) - hosts
+            manual_webui_hosts = (
+                _hosts_file_loopback_hosts(set(USERNAME_SPOOFER_INTERCEPT_HOSTS)) - hosts
+            )
             if manual_webui_hosts:
                 hosts.update(manual_webui_hosts)
                 log_buffer.log(
@@ -2788,7 +3000,10 @@ class ProxyMaster:
                 from ..utils.linux_proxy_helper import update_helper_hosts
 
                 if not update_helper_hosts(desired_hosts):
-                    log_buffer.log('Hosts', 'Failed to request Linux helper username spoofer hosts update')
+                    log_buffer.log(
+                        'Hosts',
+                        'Failed to request Linux helper username spoofer hosts update',
+                    )
                     return
                 real_endpoints = _resolve_real_endpoints(desired_hosts)
                 _log_upstream_ip_coverage(desired_hosts, real_endpoints)
@@ -2797,7 +3012,10 @@ class ProxyMaster:
                 scraper_ips = _first_endpoint_ips(real_endpoints)
                 if scraper_ips:
                     self.cache_scraper.set_real_ips(scraper_ips)
-                log_buffer.log('Hosts', f'Requested Linux helper intercept update: {", ".join(sorted(desired_hosts))}')
+                log_buffer.log(
+                    'Hosts',
+                    f'Requested Linux helper intercept update: {", ".join(sorted(desired_hosts))}',
+                )
                 return
 
             previous_hosts = set(self._active_intercept_hosts)
@@ -2824,7 +3042,10 @@ class ProxyMaster:
             scraper_ips = _first_endpoint_ips(real_endpoints)
             if scraper_ips:
                 self.cache_scraper.set_real_ips(scraper_ips)
-            log_buffer.log('Hosts', f'Active intercepts updated: {", ".join(sorted(desired_hosts))}')
+            log_buffer.log(
+                'Hosts',
+                f'Active intercepts updated: {", ".join(sorted(desired_hosts))}',
+            )
 
     def _emit_proxy_start_error(self, code: str, details: dict) -> None:
         """Forward startup failures to the app layer for user-facing dialogs."""
@@ -2909,7 +3130,9 @@ class ProxyMaster:
         if scraper_ips:
             self.cache_scraper.set_real_ips(scraper_ips)
 
-    def _repair_cert_refresh_ips_and_restart_roblox(self, exe_path: Path, ca_pem: str, ca_file: Path, reason: str) -> None:
+    def _repair_cert_refresh_ips_and_restart_roblox(
+        self, exe_path: Path, ca_pem: str, ca_file: Path, reason: str
+    ) -> None:
         log_buffer.log('Certificate', f'{reason} — refreshing hosts and restarting...')
 
         def _patch_cert() -> None:
@@ -2919,6 +3142,7 @@ class ProxyMaster:
             self._refresh_proxy_ips_for_cert_repair()
 
         from concurrent.futures import ThreadPoolExecutor
+
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix='fleasion-cert-refresh') as pool:
             f_cert = pool.submit(_patch_cert)
             f_ips = pool.submit(_refresh_ips)
@@ -2928,16 +3152,29 @@ class ProxyMaster:
             if fut.exception():
                 log_buffer.log('Certificate', f'Error during {label}: {fut.exception()}')
 
-        _log_cacert_state(ca_file, ca_pem, f'cacert.pem before Roblox restart for {exe_path.parent.name}')
-        log_buffer.log('Certificate', 'Cert injected and IPs refreshed — waiting for Roblox to finish launching...')
+        _log_cacert_state(
+            ca_file,
+            ca_pem,
+            f'cacert.pem before Roblox restart for {exe_path.parent.name}',
+        )
+        log_buffer.log(
+            'Certificate',
+            'Cert injected and IPs refreshed — waiting for Roblox to finish launching...',
+        )
         if not wait_for_roblox_window(timeout=60.0):
-            log_buffer.log('Certificate', 'Warning: Roblox window did not appear within 60 s — restarting anyway')
+            log_buffer.log(
+                'Certificate',
+                'Warning: Roblox window did not appear within 60 s — restarting anyway',
+            )
         time.sleep(2)
 
         log_buffer.log('Certificate', 'Restarting Roblox...')
         terminate_roblox()
         if not wait_for_roblox_exit(timeout=15.0):
-            log_buffer.log('Certificate', 'Warning: Roblox did not exit within 15 s — skipping restart')
+            log_buffer.log(
+                'Certificate',
+                'Warning: Roblox did not exit within 15 s — skipping restart',
+            )
             return
 
         try:
@@ -2963,7 +3200,10 @@ class ProxyMaster:
 
         exe_path = Path(exe_path)
         if _is_macos_studio_bundle_path(exe_path):
-            log_buffer.log('Certificate', f'Skipping macOS Roblox Studio CA refresh for {exe_path.name}')
+            log_buffer.log(
+                'Certificate',
+                f'Skipping macOS Roblox Studio CA refresh for {exe_path.name}',
+            )
             return
         ca_pem = get_ca_pem(ca_cert_path)
         if IS_MACOS:
@@ -2980,11 +3220,18 @@ class ProxyMaster:
         ca_file = roblox_dir / 'ssl' / 'cacert.pem'
 
         if not self._cert_refresh_lock.acquire(blocking=False):
-            log_buffer.log('Certificate', f'Roblox launch CA refresh already in progress for {exe_path.parent.name}; skipping duplicate trigger')
+            log_buffer.log(
+                'Certificate',
+                f'Roblox launch CA refresh already in progress for {exe_path.parent.name}; skipping duplicate trigger',
+            )
             return
 
         try:
-            initial_state = _log_cacert_state(ca_file, ca_pem, f'Roblox launch initial cacert.pem state for {exe_path.parent.name}')
+            initial_state = _log_cacert_state(
+                ca_file,
+                ca_pem,
+                f'Roblox launch initial cacert.pem state for {exe_path.parent.name}',
+            )
             now = time.monotonic()
             last_refresh = self._last_cert_refresh_by_exe.get(exe_path)
             initial_sha = str(initial_state.get('sha256') or '')
@@ -2999,7 +3246,11 @@ class ProxyMaster:
                     return
 
             time.sleep(_CACERT_LAUNCH_SETTLE_SECONDS)
-            stable_state = _log_cacert_state(ca_file, ca_pem, f'Roblox launch settled cacert.pem state for {exe_path.parent.name}')
+            stable_state = _log_cacert_state(
+                ca_file,
+                ca_pem,
+                f'Roblox launch settled cacert.pem state for {exe_path.parent.name}',
+            )
             if stable_state.get('sha256') != initial_state.get('sha256'):
                 log_buffer.log(
                     'Certificate',
@@ -3014,11 +3265,18 @@ class ProxyMaster:
             stable_unhealthy_samples = 0
             while time.monotonic() < deadline:
                 if bool(last_state.get('healthy')):
-                    log_buffer.log('Certificate', f'Roblox launch detected: stable patched cert confirmed for {exe_path.parent.name}')
+                    log_buffer.log(
+                        'Certificate',
+                        f'Roblox launch detected: stable patched cert confirmed for {exe_path.parent.name}',
+                    )
                     return
 
                 time.sleep(_CACERT_LAUNCH_POLL_INTERVAL_SECONDS)
-                next_state = _log_cacert_state(ca_file, ca_pem, f'Roblox launch polling cacert.pem state for {exe_path.parent.name}')
+                next_state = _log_cacert_state(
+                    ca_file,
+                    ca_pem,
+                    f'Roblox launch polling cacert.pem state for {exe_path.parent.name}',
+                )
                 next_sha = str(next_state.get('sha256') or '')
                 if next_sha and next_sha != last_sha:
                     log_buffer.log(
@@ -3044,7 +3302,6 @@ class ProxyMaster:
         finally:
             self._cert_refresh_lock.release()
 
-
     def start(self) -> None:
         with self._lock:
             if self._running:
@@ -3068,7 +3325,7 @@ class ProxyMaster:
 
             # Clean up hosts file first so Roblox stops routing to us immediately
             if self._hosts_installed:
-                self._stop_watchdog()           # Cancel the force-kill guard task first
+                self._stop_watchdog()  # Cancel the force-kill guard task first
                 if _use_linux_privileged_helper():
                     from ..utils.linux_proxy_helper import stop_helper
 
@@ -3115,10 +3372,13 @@ class ProxyMaster:
                 self._running = False
                 return
         elif not _is_admin() and not _use_linux_privileged_helper():
-            log_buffer.log('Error', (
-                'Fleasion requires administrator privileges to modify the hosts file '
-                'and bind port 443.  Please run as Administrator.'
-            ))
+            log_buffer.log(
+                'Error',
+                (
+                    'Fleasion requires administrator privileges to modify the hosts file '
+                    'and bind port 443.  Please run as Administrator.'
+                ),
+            )
             self._running = False
             return
 
@@ -3150,7 +3410,10 @@ class ProxyMaster:
         for host in INTERCEPT_HOSTS:
             try:
                 cert_path, key_path = generate_host_cert(
-                    host, ca_cert_path, ca_key_path, proxy_ca_dir,
+                    host,
+                    ca_cert_path,
+                    ca_key_path,
+                    proxy_ca_dir,
                 )
                 host_certs[host] = (cert_path, key_path)
             except Exception as exc:
@@ -3200,7 +3463,10 @@ class ProxyMaster:
         # owns the proxy.  Deleting its watchdog task or hosts entries while it
         # is running would break it silently.
         if _use_linux_privileged_helper():
-            log_buffer.log('ProxyHelper', 'Linux user-mode GUI active; privileged helper will own port 443 and hosts entries')
+            log_buffer.log(
+                'ProxyHelper',
+                'Linux user-mode GUI active; privileged helper will own port 443 and hosts entries',
+            )
         elif not _other_proxy_owner_alive():
             _delete_watchdog_task()
             # Remove stale hosts entries: if the previous session crashed without
@@ -3208,12 +3474,16 @@ class ProxyMaster:
             # would return 127.0.0.1 instead of real CDN IPs, and upstream
             # connections would fail with WinError 1225.
             stale_hosts_error_details: dict = {}
-            if not _remove_hosts_entries(set(INTERCEPT_HOSTS), error_details=stale_hosts_error_details):
-                log_buffer.log('Error',
+            if not _remove_hosts_entries(
+                set(INTERCEPT_HOSTS), error_details=stale_hosts_error_details
+            ):
+                log_buffer.log(
+                    'Error',
                     'Failed to remove stale proxy hosts entries — real CDN IPs '
                     'cannot be resolved safely.  Aborting proxy start. '
                     'If the problem persists, manually remove "# Fleasion proxy entry" '
-                    f'lines from {HOSTS_FILE} and restart.')
+                    f'lines from {HOSTS_FILE} and restart.',
+                )
                 if stale_hosts_error_details.get('notify_user'):
                     self._emit_proxy_start_error('hosts_write_exhausted', stale_hosts_error_details)
                 self._running = False
@@ -3266,6 +3536,7 @@ class ProxyMaster:
         # Preview tab in the standalone JSON viewer also bypasses the hosts file.
         try:
             from ..gui.json_viewer import AssetFetcherThread
+
             AssetFetcherThread.set_scraper(self.cache_scraper)
         except Exception:
             pass
@@ -3311,12 +3582,15 @@ class ProxyMaster:
                 or (str(listen_port) in err_text and 'bind' in err_text)
             ):
                 owners = _list_port_listeners(listen_port)
-                log_buffer.log('Error', (
-                    f'Cannot bind local proxy backend port {listen_port}: another process is already listening.'
-                ))
+                log_buffer.log(
+                    'Error',
+                    (
+                        f'Cannot bind local proxy backend port {listen_port}: another process is already listening.'
+                    ),
+                )
                 if owners:
                     owners_summary = '; '.join(
-                        f"{owner['process_name']} (PID {owner['pid']}) on {owner['local_address']}:{listen_port}"
+                        f'{owner["process_name"]} (PID {owner["pid"]}) on {owner["local_address"]}:{listen_port}'
                         for owner in owners
                     )
                     log_buffer.log('Error', f'Port {listen_port} listeners: {owners_summary}')
@@ -3351,7 +3625,10 @@ class ProxyMaster:
             self._running = False
             return
         if use_linux_helper:
-            from ..utils.linux_proxy_helper import last_start_error_details, start_helper
+            from ..utils.linux_proxy_helper import (
+                last_start_error_details,
+                start_helper,
+            )
 
             require_linux_system_ca = bool(active_hosts & USERNAME_SPOOFER_INTERCEPT_HOSTS)
             helper_ca_cert_path = ca_cert_path
@@ -3385,7 +3662,9 @@ class ProxyMaster:
                     stop_helper()
                     self._running = False
                     return
-        if (IS_MACOS or use_linux_helper) and not await _run_tls_self_test(set(INTERCEPT_HOSTS), ca_cert_path, PROXY_PORT):
+        if (IS_MACOS or use_linux_helper) and not await _run_tls_self_test(
+            set(INTERCEPT_HOSTS), ca_cert_path, PROXY_PORT
+        ):
             log_buffer.log('ProxyHelper', 'Privileged port-443 relay TLS self-test failed')
             await self._proxy.stop()
             _set_active_hosts_loopbacks(None)
@@ -3429,8 +3708,8 @@ class ProxyMaster:
         except OSError:
             pass
         _schedule_hosts_cleanup_on_reboot()  # Boot guard: power-loss / BSOD
-        _upsert_watchdog_task()              # Initial task creation
-        self._start_watchdog()               # Keep task pushed 5 s ahead
+        _upsert_watchdog_task()  # Initial task creation
+        self._start_watchdog()  # Keep task pushed 5 s ahead
 
         log_buffer.log('Info', '=' * 50)
         log_buffer.log('Info', 'Fleasion Proxy Active')
@@ -3461,7 +3740,7 @@ class ProxyMaster:
         # ── Run until the server is stopped ──────────────────────────────
         try:
             await self._proxy.serve_forever()
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError, Exception:
             pass  # Normal shutdown path
         finally:
             # Ensure hosts file is cleaned up even if stop() wasn't called

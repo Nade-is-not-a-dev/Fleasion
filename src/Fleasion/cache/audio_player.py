@@ -9,8 +9,6 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-
-from ..utils import log_buffer
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -20,6 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ..utils import log_buffer
 
 _LINUX_LIBRARY_SEARCH_DIRS = (
     '/lib64',
@@ -174,7 +173,7 @@ class AudioPlayerWidget(QWidget):
             initial_slider = config_manager.audio_volume
         else:
             initial_slider = 70
-        
+
         if initial_slider <= 0:
             self.volume = 0.0
         else:
@@ -213,7 +212,9 @@ class AudioPlayerWidget(QWidget):
                 mono = self.audio_data.mean(axis=1)
                 self.audio_data = np.column_stack((mono, mono))
 
-            self.audio_data = np.ascontiguousarray(np.clip(self.audio_data, -1.0, 1.0), dtype=np.float32)
+            self.audio_data = np.ascontiguousarray(
+                np.clip(self.audio_data, -1.0, 1.0), dtype=np.float32
+            )
 
             # Calculate duration
             self.duration = len(self.audio_data) / self.sample_rate
@@ -352,6 +353,7 @@ class AudioPlayerWidget(QWidget):
     def _playback_worker(self, stop_event):
         """Worker thread for audio playback."""
         try:
+
             def callback(outdata, frames, time_info, status):
                 if status:
                     log_buffer.log('Audio', f'Audio callback status: {status}')
@@ -382,7 +384,7 @@ class AudioPlayerWidget(QWidget):
                 channels=2,
                 dtype='float32',
                 callback=callback,
-                blocksize=2048
+                blocksize=2048,
             )
             with self.stream_lock:
                 self.stream = stream
@@ -467,7 +469,7 @@ class AudioPlayerWidget(QWidget):
             self.volume = 0.0
         else:
             self.volume = (pow(10, value / 100.0) - 1.0) / 9.0
-            
+
         if self.config_manager:
             self.config_manager.audio_volume = value
 
@@ -478,7 +480,9 @@ class AudioPlayerWidget(QWidget):
                 current_time = self.playback_position / self.sample_rate
 
             self.progress_slider.setValue(int(current_time * 1000))
-            self.time_label.setText(f'{self._format_time(current_time)} / {self._format_time(self.duration)}')
+            self.time_label.setText(
+                f'{self._format_time(current_time)} / {self._format_time(self.duration)}'
+            )
 
         # Keep button in sync with playback state (handles thread-safe UI updates)
         expected_text = '⏸' if self.is_playing else '▶'

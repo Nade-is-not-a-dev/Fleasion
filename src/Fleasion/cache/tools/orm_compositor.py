@@ -29,8 +29,8 @@ from ...utils.paths import APP_CACHE_DIR
 _CHANNEL_MAP: dict[str, int] = {
     'metalness': 0,
     'roughness': 1,
-    'emissive':  2,
-    'height':    3,
+    'emissive': 2,
+    'height': 3,
 }
 # Values used when a channel is explicitly "removed" (set to None path).
 # metalness=0 (non-metallic), roughness=0 (fully smooth), emissive=0 (off),
@@ -38,8 +38,8 @@ _CHANNEL_MAP: dict[str, int] = {
 _CHANNEL_ZERO: dict[str, int] = {
     'metalness': 0,
     'roughness': 0,
-    'emissive':  0,
-    'height':  128,
+    'emissive': 0,
+    'height': 128,
 }
 
 _VK_BC1 = 131  # VK_FORMAT_BC1_RGB_UNORM_BLOCK  (DXT1, no alpha)
@@ -113,7 +113,10 @@ def composite_orm(
             log_buffer.log('TexPackTrace', f'ORM compositor baseline decoded: {width}x{height}')
         except Exception as exc:
             log_buffer.log('ORM', f'Baseline decode failed ({baseline.name}): {exc}')
-            log_buffer.log('TexPackTrace', f'ORM compositor baseline decode failed: baseline={baseline.name} error={exc}')
+            log_buffer.log(
+                'TexPackTrace',
+                f'ORM compositor baseline decode failed: baseline={baseline.name} error={exc}',
+            )
 
     if rgba is None:
         # Default: non-metallic (R=0), fully-rough (G=255), no-emissive (B=0),
@@ -121,7 +124,10 @@ def composite_orm(
         rgba = np.zeros((height, width, 4), dtype=np.uint8)
         rgba[:, :, 1] = 255
         rgba[:, :, 3] = 128
-        log_buffer.log('TexPackTrace', f'ORM compositor using synthesized default baseline: {width}x{height}')
+        log_buffer.log(
+            'TexPackTrace',
+            f'ORM compositor using synthesized default baseline: {width}x{height}',
+        )
 
     # ── Apply per-channel PNG overrides ─────────────────────────────────────
     applied: list[str] = []
@@ -134,11 +140,17 @@ def composite_orm(
             # "Remove" / zero-out: set channel to its neutral default value.
             rgba[:, :, ch_idx] = _CHANNEL_ZERO.get(ch_name.lower(), 0)
             applied.append(f'{ch_name}=zero')
-            log_buffer.log('TexPackTrace', f'ORM compositor channel {ch_name}: remove/default value applied')
+            log_buffer.log(
+                'TexPackTrace',
+                f'ORM compositor channel {ch_name}: remove/default value applied',
+            )
             continue
         if not png_path.exists():
             log_buffer.log('ORM', f'Channel PNG not found: {png_path}')
-            log_buffer.log('TexPackTrace', f'ORM compositor channel {ch_name}: missing file={png_path}')
+            log_buffer.log(
+                'TexPackTrace',
+                f'ORM compositor channel {ch_name}: missing file={png_path}',
+            )
             continue
         try:
             img = Image.open(png_path)
@@ -158,10 +170,16 @@ def composite_orm(
                 )
             rgba[:, :, ch_idx] = r_arr
             applied.append(ch_name)
-            log_buffer.log('TexPackTrace', f'ORM compositor channel {ch_name}: applied file={png_path.name}')
+            log_buffer.log(
+                'TexPackTrace',
+                f'ORM compositor channel {ch_name}: applied file={png_path.name}',
+            )
         except Exception as exc:
             log_buffer.log('ORM', f'Failed to apply channel "{ch_name}": {exc}')
-            log_buffer.log('TexPackTrace', f'ORM compositor channel {ch_name}: failed file={png_path.name} error={exc}')
+            log_buffer.log(
+                'TexPackTrace',
+                f'ORM compositor channel {ch_name}: failed file={png_path.name} error={exc}',
+            )
 
     if not applied:
         log_buffer.log('ORM', 'No channels were applied — skipping composite')
@@ -170,7 +188,10 @@ def composite_orm(
     # ── Write uncompressed RGBA32 KTX2 ──────────────────────────────────────
     try:
         _write_ktx2(rgba, width, height, out_path)
-        log_buffer.log('ORM', f'Composited [{", ".join(applied)}] → {out_path.name} ({width}×{height})')
+        log_buffer.log(
+            'ORM',
+            f'Composited [{", ".join(applied)}] → {out_path.name} ({width}×{height})',
+        )
         return str(out_path)
     except Exception as exc:
         log_buffer.log('ORM', f'KTX2 write failed: {exc}')
@@ -183,6 +204,7 @@ def composite_orm(
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
 
+
 def _decode_bc_ktx2(data: bytes) -> tuple[np.ndarray, int, int]:
     """Decode a BC1/BC3 KTX2 file to ``(rgba_ndarray, width, height)``.
 
@@ -194,9 +216,9 @@ def _decode_bc_ktx2(data: bytes) -> tuple[np.ndarray, int, int]:
     if len(data) < 96:
         raise ValueError('KTX2 data too short')
 
-    vk_fmt          = struct.unpack_from('<I', data, 12)[0]
-    width           = struct.unpack_from('<I', data, 20)[0]
-    height          = struct.unpack_from('<I', data, 24)[0]
+    vk_fmt = struct.unpack_from('<I', data, 12)[0]
+    width = struct.unpack_from('<I', data, 20)[0]
+    height = struct.unpack_from('<I', data, 24)[0]
     supercompression = struct.unpack_from('<I', data, 44)[0]
 
     if width == 0 or height == 0:
@@ -204,13 +226,15 @@ def _decode_bc_ktx2(data: bytes) -> tuple[np.ndarray, int, int]:
 
     # Level-index entry 0 is always at offset 80 (fixed KTX2 header size).
     byte_offset = struct.unpack_from('<Q', data, 80)[0]
-    byte_length  = struct.unpack_from('<Q', data, 88)[0]
-    level_data   = data[byte_offset: byte_offset + byte_length]
+    byte_length = struct.unpack_from('<Q', data, 88)[0]
+    level_data = data[byte_offset : byte_offset + byte_length]
 
-    if supercompression == 2:        # zstd
+    if supercompression == 2:  # zstd
         import zstandard
+
         level_data = zstandard.ZstdDecompressor().decompress(
-            level_data, max_output_size=64 * 1024 * 1024,
+            level_data,
+            max_output_size=64 * 1024 * 1024,
         )
     elif supercompression != 0:
         raise ValueError(f'Unsupported KTX2 supercompressionScheme {supercompression}')
@@ -229,11 +253,27 @@ def _decode_bc_ktx2(data: bytes) -> tuple[np.ndarray, int, int]:
     #                     DDSD_PIXELFORMAT | DDSD_LINEARSIZE = 0x1007)
     dds = (
         b'DDS '
-        + _u32(124) + _u32(0x1007) + _u32(height) + _u32(width)
-        + _u32(len(level_data)) + _u32(0) + _u32(1) + b'\x00' * 44
-        + _u32(32) + _u32(4) + fourcc
-        + _u32(0) + _u32(0) + _u32(0) + _u32(0) + _u32(0)
-        + _u32(0x1000) + _u32(0) + _u32(0) + _u32(0) + _u32(0)
+        + _u32(124)
+        + _u32(0x1007)
+        + _u32(height)
+        + _u32(width)
+        + _u32(len(level_data))
+        + _u32(0)
+        + _u32(1)
+        + b'\x00' * 44
+        + _u32(32)
+        + _u32(4)
+        + fourcc
+        + _u32(0)
+        + _u32(0)
+        + _u32(0)
+        + _u32(0)
+        + _u32(0)
+        + _u32(0x1000)
+        + _u32(0)
+        + _u32(0)
+        + _u32(0)
+        + _u32(0)
     )
     img = Image.open(io.BytesIO(dds + level_data)).convert('RGBA')
     return np.array(img, dtype=np.uint8), width, height

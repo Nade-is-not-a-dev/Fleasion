@@ -22,9 +22,9 @@ class DeleteCacheWindow(QDialog):
 
         # Set window flags to allow minimize
         self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowMinimizeButtonHint |
-            Qt.WindowType.WindowCloseButtonHint
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
         )
 
         self._setup_ui()

@@ -7,8 +7,8 @@ import uuid
 from pathlib import Path
 
 from PIL import Image, ImageDraw
-from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt6.QtGui import QPalette, QPixmap, QImage, QFont, QIcon
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QIcon, QImage, QPalette, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -28,16 +28,22 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ..utils import CLOG_URL, PREJSONS_DIR, ORIGINALS_DIR, REPLACEMENTS_DIR, get_icon_path
+from ..utils import (
+    CLOG_URL,
+    ORIGINALS_DIR,
+    PREJSONS_DIR,
+    REPLACEMENTS_DIR,
+    get_icon_path,
+)
 from ..utils.http import http_get
 from .file_drop import FileDropLineEdit
 
-CUSTOM_DUMPS_DIR = PREJSONS_DIR / "custom_dumps"
-CLOG_CACHE_FILE = PREJSONS_DIR / "CLOG.json"
+CUSTOM_DUMPS_DIR = PREJSONS_DIR / 'custom_dumps'
+CLOG_CACHE_FILE = PREJSONS_DIR / 'CLOG.json'
 
 _DEFAULT_THUMB_URL = (
-    "https://static.wikia.nocookie.net/roblox/images/5/54/Default_Thumbnail_1_updated.png"
-    "/revision/latest/scale-to-width-down/1000?cb=20250523160858"
+    'https://static.wikia.nocookie.net/roblox/images/5/54/Default_Thumbnail_1_updated.png'
+    '/revision/latest/scale-to-width-down/1000?cb=20250523160858'
 )
 _default_thumb_bytes_cache: list[bytes] = []  # single-element list so it's mutable
 
@@ -51,13 +57,14 @@ _thumb_bytes_cache: dict[int, bytes] = {}
 
 # HTTP helper
 
+
 def _http_get(url: str, timeout: int = 12) -> bytes:
     return http_get(url, timeout=timeout)
 
 
 def _fetch_or_read(url_or_path: str, timeout: int = 15) -> bytes:
     """Fetch a URL or read a local file, returning raw bytes."""
-    if url_or_path.startswith(("http://", "https://")):
+    if url_or_path.startswith(('http://', 'https://')):
         return _http_get(url_or_path, timeout=timeout)
     return Path(url_or_path).read_bytes()
 
@@ -65,17 +72,19 @@ def _fetch_or_read(url_or_path: str, timeout: int = 15) -> bytes:
 def _safe_filename(name: str) -> str:
     """Strip characters that are invalid in Windows filenames."""
     import re
-    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name).strip(' .')[:128] or "dump"
+
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name).strip(' .')[:128] or 'dump'
 
 
 # PIL-based rounded thumbnail helper
+
 
 def _make_rounded_pixmap(pix: QPixmap, w: int, h: int, radius: int = 6) -> QPixmap:
     """Scale-crop pixmap to (w × h) with rounded corners via PIL."""
     qimg = pix.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
     ptr = qimg.bits()
     ptr.setsize(qimg.width() * qimg.height() * 4)
-    img = Image.frombytes("RGBA", (qimg.width(), qimg.height()), bytes(ptr))
+    img = Image.frombytes('RGBA', (qimg.width(), qimg.height()), bytes(ptr))
 
     src_w, src_h = img.size
     if src_w == 0 or src_h == 0:
@@ -94,26 +103,26 @@ def _make_rounded_pixmap(pix: QPixmap, w: int, h: int, radius: int = 6) -> QPixm
 
     scale = 2
     img = img.resize((w * scale, h * scale), Image.LANCZOS)
-    mask = Image.new("L", img.size, 0)
+    mask = Image.new('L', img.size, 0)
     draw = ImageDraw.Draw(mask)
     draw.rounded_rectangle((0, 0, img.width, img.height), radius=radius * scale, fill=255)
     img.putalpha(mask)
     img = img.resize((w, h), Image.LANCZOS)
 
-    out = QImage(
-        img.tobytes("raw", "RGBA"), img.width, img.height, QImage.Format.Format_RGBA8888
-    )
+    out = QImage(img.tobytes('raw', 'RGBA'), img.width, img.height, QImage.Format.Format_RGBA8888)
     return QPixmap.fromImage(out)
 
 
-def _preprocess_thumb_bytes(raw: bytes, w: int, h: int, radius: int = 6) -> tuple[bytes, int, int] | None:
+def _preprocess_thumb_bytes(
+    raw: bytes, w: int, h: int, radius: int = 6
+) -> tuple[bytes, int, int] | None:
     """Crop, resize, and round-corner raw image bytes using PIL only.
 
     Safe to call from a background thread — no Qt objects involved.
     Returns (rgba_bytes, w, h) ready to hand to QImage on the main thread.
     """
     try:
-        img = Image.open(io.BytesIO(raw)).convert("RGBA")
+        img = Image.open(io.BytesIO(raw)).convert('RGBA')
         src_w, src_h = img.size
         if src_w == 0 or src_h == 0:
             return None
@@ -129,44 +138,50 @@ def _preprocess_thumb_bytes(raw: bytes, w: int, h: int, radius: int = 6) -> tupl
             img = img.crop((0, top, src_w, top + new_h))
         scale = 2
         img = img.resize((w * scale, h * scale), Image.LANCZOS)
-        mask = Image.new("L", img.size, 0)
+        mask = Image.new('L', img.size, 0)
         draw = ImageDraw.Draw(mask)
         draw.rounded_rectangle((0, 0, img.width, img.height), radius=radius * scale, fill=255)
         img.putalpha(mask)
         img = img.resize((w, h), Image.LANCZOS)
-        return img.tobytes("raw", "RGBA"), w, h
+        return img.tobytes('raw', 'RGBA'), w, h
     except Exception:
         return None
 
+
 # Normalize game entry
+
 
 def _normalize_entry(e: dict) -> dict | None:
     """Normalize a single game entry dict. Returns None if unusable."""
     if not isinstance(e, dict):
         return None
-    name = e.get("name") or e.get("game") or ""
-    pid = e.get("placeId") or e.get("place_id") or e.get("id")
+    name = e.get('name') or e.get('game') or ''
+    pid = e.get('placeId') or e.get('place_id') or e.get('id')
     try:
         pid = int(pid) if pid is not None else None
     except Exception:
         pid = None
     if not name and pid:
-        name = f"Place {pid}"
+        name = f'Place {pid}'
     if not name:
         return None
     credit = (
-        e.get("credit") or e.get("Credit") or
-        e.get("Owner") or e.get("owner") or
-        e.get("author") or e.get("Author") or ""
+        e.get('credit')
+        or e.get('Credit')
+        or e.get('Owner')
+        or e.get('owner')
+        or e.get('author')
+        or e.get('Author')
+        or ''
     )
     return {
-        "name": str(name),
-        "created": str(e.get("created") or ""),
-        "updated": str(e.get("updated") or ""),
-        "credit": str(credit),
-        "placeId": pid,
-        "github": e.get("github") or "",
-        "replacement": e.get("replacement") or e.get("Replacement") or "",
+        'name': str(name),
+        'created': str(e.get('created') or ''),
+        'updated': str(e.get('updated') or ''),
+        'credit': str(credit),
+        'placeId': pid,
+        'github': e.get('github') or '',
+        'replacement': e.get('replacement') or e.get('Replacement') or '',
     }
 
 
@@ -174,16 +189,16 @@ def _normalize_games(data: dict) -> list[dict]:
     """Convert CLOG.json into a flat list of normalized game dicts."""
     if not isinstance(data, dict):
         return []
-    raw = data.get("games", {})
+    raw = data.get('games', {})
     entries: list[dict] = []
     if isinstance(raw, dict):
         for name, cfg in raw.items():
             if isinstance(cfg, dict):
                 e = dict(cfg)
-                e.setdefault("name", name)
+                e.setdefault('name', name)
                 entries.append(e)
             else:
-                entries.append({"name": str(name)})
+                entries.append({'name': str(name)})
     elif isinstance(raw, list):
         entries = [e for e in raw if isinstance(e, dict)]
 
@@ -195,28 +210,32 @@ def _load_custom_dumps() -> list[tuple[dict, Path]]:
     results = []
     try:
         CUSTOM_DUMPS_DIR.mkdir(parents=True, exist_ok=True)
-        for fp in sorted(CUSTOM_DUMPS_DIR.glob("*.json")):
+        for fp in sorted(CUSTOM_DUMPS_DIR.glob('*.json')):
             try:
-                data = json.loads(fp.read_text(encoding="utf-8", errors="ignore"))
+                data = json.loads(fp.read_text(encoding='utf-8', errors='ignore'))
                 # Support both single-entry {"name":...} and {"games":{...}} wrappers
-                if isinstance(data, dict) and "games" not in data and (
-                    isinstance(data.get("name"), str) or data.get("placeId") is not None
+                if (
+                    isinstance(data, dict)
+                    and 'games' not in data
+                    and (isinstance(data.get('name'), str) or data.get('placeId') is not None)
                 ):
-                    data = {"games": {"_": data}}
+                    data = {'games': {'_': data}}
                 games = _normalize_games(data)
                 for g in games:
                     results.append((g, fp))
             except Exception as e:
-                print(f"[CustomDump] Failed to load {fp.name}: {e}")
+                print(f'[CustomDump] Failed to load {fp.name}: {e}')
     except Exception as e:
-        print(f"[CustomDump] Failed to scan dir: {e}")
+        print(f'[CustomDump] Failed to scan dir: {e}')
     return results
 
 
 # Worker threads
 
+
 class _ClogWorker(QThread):
     """Fetches CLOG.json and builds the normalised game list."""
+
     done = pyqtSignal(list)
     failed = pyqtSignal(str)
 
@@ -233,7 +252,7 @@ class _ClogWorker(QThread):
                 return
 
         try:
-            data = json.loads(raw.decode("utf-8"))
+            data = json.loads(raw.decode('utf-8'))
             games = _normalize_games(data)
             self.done.emit(games)
         except Exception as e:
@@ -242,7 +261,8 @@ class _ClogWorker(QThread):
 
 class _CardMetaWorker(QThread):
     """Fetches real game name + dates for one card via Roblox API."""
-    name_ready = pyqtSignal(str, str, str)   # name, created, updated
+
+    name_ready = pyqtSignal(str, str, str)  # name, created, updated
 
     def __init__(self, place_id: int, fallback_cr: str, fallback_up: str):
         super().__init__()
@@ -252,24 +272,28 @@ class _CardMetaWorker(QThread):
 
     def run(self):
         try:
-            r1 = json.loads(_http_get(
-                f"https://apis.roblox.com/universes/v1/places/{self._pid}/universe",
-                timeout=10,
-            ))
-            universe_id = r1.get("universeId")
+            r1 = json.loads(
+                _http_get(
+                    f'https://apis.roblox.com/universes/v1/places/{self._pid}/universe',
+                    timeout=10,
+                )
+            )
+            universe_id = r1.get('universeId')
             if not universe_id:
                 return
-            r2 = json.loads(_http_get(
-                f"https://games.roblox.com/v1/games?universeIds={universe_id}",
-                timeout=10,
-            ))
-            entries = r2.get("data", [])
+            r2 = json.loads(
+                _http_get(
+                    f'https://games.roblox.com/v1/games?universeIds={universe_id}',
+                    timeout=10,
+                )
+            )
+            entries = r2.get('data', [])
             if not entries:
                 return
             e = entries[0]
-            name = e.get("name") or ""
-            created = e.get("created") or self._cr
-            updated = e.get("updated") or self._up
+            name = e.get('name') or ''
+            created = e.get('created') or self._cr
+            updated = e.get('updated') or self._up
             if name:
                 _meta_cache[self._pid] = (name, created, updated)
                 self.name_ready.emit(name, created, updated)
@@ -288,12 +312,14 @@ def _get_default_thumb_bytes() -> bytes | None:
     except Exception:
         return None
 
+
 # Pre-fetch the default thumbnail in the background as soon as the module loads
 threading.Thread(target=_get_default_thumb_bytes, daemon=True).start()
 
 
 class _CardThumbWorker(QThread):
     """Fetches the thumbnail for one card via Roblox thumbnails API."""
+
     thumb_ready = pyqtSignal(QPixmap)
 
     def __init__(self, place_id: int):
@@ -303,12 +329,14 @@ class _CardThumbWorker(QThread):
     def run(self):
         img_bytes = None
         try:
-            meta = json.loads(_http_get(
-                f"https://thumbnails.roblox.com/v1/places/gameicons"
-                f"?placeIds={self._pid}&size=512x512&format=Png",
-                timeout=10,
-            ))
-            img_url = (meta.get("data") or [{}])[0].get("imageUrl") or ""
+            meta = json.loads(
+                _http_get(
+                    f'https://thumbnails.roblox.com/v1/places/gameicons'
+                    f'?placeIds={self._pid}&size=512x512&format=Png',
+                    timeout=10,
+                )
+            )
+            img_url = (meta.get('data') or [{}])[0].get('imageUrl') or ''
             if img_url:
                 img_bytes = _http_get(img_url, timeout=10)
                 _thumb_bytes_cache[self._pid] = img_bytes
@@ -326,6 +354,7 @@ class _CardThumbWorker(QThread):
 
 class _JsonFetchWorker(QThread):
     """Downloads a JSON file from a URL."""
+
     done = pyqtSignal(object, str)
     failed = pyqtSignal(str)
 
@@ -336,8 +365,8 @@ class _JsonFetchWorker(QThread):
     def run(self):
         try:
             raw = _http_get(self._url, timeout=15)
-            data = json.loads(raw.decode("utf-8"))
-            filename = self._url.rsplit("/", 1)[-1] or "data.json"
+            data = json.loads(raw.decode('utf-8'))
+            filename = self._url.rsplit('/', 1)[-1] or 'data.json'
             self.done.emit(data, filename)
         except Exception as e:
             self.failed.emit(str(e))
@@ -353,14 +382,19 @@ _THUMB_H = 128
 
 # Game Card Widget
 
+
 class GameCard(QFrame):
     """A single game card: thumbnail + name + dates + action buttons."""
 
     def _apply_style(self, hover=False):
         dark = QApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
-        border = "rgba(255,255,255,0.22)" if dark else "rgba(0,0,0,0.18)"
-        bg = ("rgba(255,255,255,0.07)" if hover else "rgba(255,255,255,0.04)") if dark else ("rgba(0,0,0,0.06)" if hover else "transparent")
-        self.setStyleSheet(f"GameCard {{ border: 1px solid {border}; background: {bg}; }}")
+        border = 'rgba(255,255,255,0.22)' if dark else 'rgba(0,0,0,0.18)'
+        bg = (
+            ('rgba(255,255,255,0.07)' if hover else 'rgba(255,255,255,0.04)')
+            if dark
+            else ('rgba(0,0,0,0.06)' if hover else 'transparent')
+        )
+        self.setStyleSheet(f'GameCard {{ border: 1px solid {border}; background: {bg}; }}')
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -369,7 +403,7 @@ class GameCard(QFrame):
         self.setFixedHeight(_CARD_H)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._apply_style()
-        self._game_name = ""
+        self._game_name = ''
         self._dump_file: Path | None = None
         self._on_delete = None
         self._setup_ui()
@@ -386,7 +420,7 @@ class GameCard(QFrame):
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumb_label.setScaledContents(True)
         self.thumb_label.setStyleSheet(
-            "background: palette(alternate-base); border-radius: 4px; color: palette(placeholder-text); font-size: 8pt;"
+            'background: palette(alternate-base); border-radius: 4px; color: palette(placeholder-text); font-size: 8pt;'
         )
         layout.addWidget(self.thumb_label)
         # Apply the default thumbnail immediately if already cached
@@ -399,9 +433,9 @@ class GameCard(QFrame):
                 except Exception:
                     pass
                 self.thumb_label.setPixmap(_pix)
-                self.thumb_label.setStyleSheet("background: transparent;")
+                self.thumb_label.setStyleSheet('background: transparent;')
 
-        self.name_label = QLabel("Unknown")
+        self.name_label = QLabel('Unknown')
         self.name_label.setWordWrap(True)
         self.name_label.setMaximumHeight(38)
         f = QFont()
@@ -409,16 +443,16 @@ class GameCard(QFrame):
         self.name_label.setFont(f)
         layout.addWidget(self.name_label)
 
-        self.created_label = QLabel("")
-        self.created_label.setStyleSheet("color: palette(placeholder-text); font-size: 7pt;")
+        self.created_label = QLabel('')
+        self.created_label.setStyleSheet('color: palette(placeholder-text); font-size: 7pt;')
         layout.addWidget(self.created_label)
 
-        self.updated_label = QLabel("")
-        self.updated_label.setStyleSheet("color: palette(placeholder-text); font-size: 7pt;")
+        self.updated_label = QLabel('')
+        self.updated_label.setStyleSheet('color: palette(placeholder-text); font-size: 7pt;')
         layout.addWidget(self.updated_label)
 
-        self.credit_label = QLabel("")
-        self.credit_label.setStyleSheet("color: palette(placeholder-text); font-size: 7pt;")
+        self.credit_label = QLabel('')
+        self.credit_label.setStyleSheet('color: palette(placeholder-text); font-size: 7pt;')
         layout.addWidget(self.credit_label)
 
         layout.addStretch()
@@ -426,12 +460,12 @@ class GameCard(QFrame):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(4)
 
-        self.assets_btn = QPushButton("Assets")
+        self.assets_btn = QPushButton('Assets')
         self.assets_btn.setVisible(False)
         self.assets_btn.setFixedHeight(22)
         btn_row.addWidget(self.assets_btn)
 
-        self.replacements_btn = QPushButton("Replacements")
+        self.replacements_btn = QPushButton('Replacements')
         self.replacements_btn.setVisible(False)
         self.replacements_btn.setFixedHeight(22)
         btn_row.addWidget(self.replacements_btn)
@@ -439,15 +473,15 @@ class GameCard(QFrame):
         layout.addLayout(btn_row)
         self.setLayout(layout)
 
-    def set_data(self, name: str, created: str = "", updated: str = "", credit: str = ""):
+    def set_data(self, name: str, created: str = '', updated: str = '', credit: str = ''):
         self._game_name = name
         self.name_label.setText(name)
         if created:
-            self.created_label.setText("Created: " + created[:10])
+            self.created_label.setText('Created: ' + created[:10])
         if updated:
-            self.updated_label.setText("Updated: " + updated[:10])
+            self.updated_label.setText('Updated: ' + updated[:10])
         if credit:
-            self.credit_label.setText("Credit: " + credit)
+            self.credit_label.setText('Credit: ' + credit)
 
     def set_thumbnail(self, pix: QPixmap):
         if not pix or pix.isNull():
@@ -457,8 +491,8 @@ class GameCard(QFrame):
         except Exception:
             baked = pix
         self.thumb_label.setPixmap(baked)
-        self.thumb_label.setText("")
-        self.thumb_label.setStyleSheet("background: transparent;")
+        self.thumb_label.setText('')
+        self.thumb_label.setStyleSheet('background: transparent;')
 
     def enable_delete_menu(self, dump_file: Path, on_delete):
         """Wire up right-click → Delete for custom dump cards."""
@@ -469,7 +503,7 @@ class GameCard(QFrame):
 
     def _show_context_menu(self, pos):
         menu = QMenu(self)
-        delete_action = menu.addAction("Delete")
+        delete_action = menu.addAction('Delete')
         action = menu.exec(self.mapToGlobal(pos))
         if action == delete_action and self._on_delete:
             self._on_delete(self)
@@ -485,15 +519,21 @@ class GameCard(QFrame):
 
 # Add Card Widget  (the "+" button at the end of the grid)
 
+
 class AddCard(QFrame):
     """Clickable '+' card that opens the import dialog."""
+
     clicked = pyqtSignal()
 
     def _apply_style(self, hover=False):
         dark = QApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
-        border = "rgba(255,255,255,0.22)" if dark else "rgba(0,0,0,0.18)"
-        bg = ("rgba(255,255,255,0.07)" if hover else "rgba(255,255,255,0.04)") if dark else ("rgba(0,0,0,0.06)" if hover else "transparent")
-        self.setStyleSheet(f"AddCard {{ border: 1px solid {border}; background: {bg}; }}")
+        border = 'rgba(255,255,255,0.22)' if dark else 'rgba(0,0,0,0.18)'
+        bg = (
+            ('rgba(255,255,255,0.07)' if hover else 'rgba(255,255,255,0.04)')
+            if dark
+            else ('rgba(0,0,0,0.06)' if hover else 'transparent')
+        )
+        self.setStyleSheet(f'AddCard {{ border: 1px solid {border}; background: {bg}; }}')
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -507,14 +547,14 @@ class AddCard(QFrame):
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        plus = QLabel("+")
+        plus = QLabel('+')
         plus.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        plus.setStyleSheet("font-size: 36pt; color: palette(placeholder-text);")
+        plus.setStyleSheet('font-size: 36pt; color: palette(placeholder-text);')
         layout.addWidget(plus)
 
-        sub = QLabel("Add custom dump")
+        sub = QLabel('Add custom dump')
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sub.setStyleSheet("color: palette(placeholder-text); font-size: 9pt;")
+        sub.setStyleSheet('color: palette(placeholder-text); font-size: 9pt;')
         layout.addWidget(sub)
 
         self.setLayout(layout)
@@ -534,6 +574,7 @@ class AddCard(QFrame):
 
 
 # PreJsons Dialog
+
 
 class PreJsonsDialog(QDialog):
     """Browse available PreJsons as interactive game cards with live thumbnails."""
@@ -580,18 +621,20 @@ class PreJsonsDialog(QDialog):
         root.setSpacing(6)
 
         bar = QHBoxLayout()
-        bar.addWidget(QLabel("Search:"))
+        bar.addWidget(QLabel('Search:'))
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Filter by game name…")
+        self.search_edit.setPlaceholderText('Filter by game name…')
         self.search_edit.textChanged.connect(lambda: self._search_timer.start(80))
         bar.addWidget(self.search_edit)
-        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn = QPushButton('Refresh')
         self.refresh_btn.clicked.connect(self._do_refresh)
         bar.addWidget(self.refresh_btn)
         root.addLayout(bar)
 
-        self.status_label = QLabel("Loading…")
-        self.status_label.setStyleSheet("color: palette(placeholder-text); font-size: 8pt; padding-left: 2px;")
+        self.status_label = QLabel('Loading…')
+        self.status_label.setStyleSheet(
+            'color: palette(placeholder-text); font-size: 8pt; padding-left: 2px;'
+        )
         root.addWidget(self.status_label)
 
         self.scroll = QScrollArea()
@@ -621,7 +664,7 @@ class PreJsonsDialog(QDialog):
         self._thumbs_pending = 0
         self._thumbs_finished = 0
         self.refresh_btn.setEnabled(False)
-        self.status_label.setText("Fetching game list…")
+        self.status_label.setText('Fetching game list…')
         worker = _ClogWorker()
         worker.done.connect(self._on_clog_done)
         worker.failed.connect(self._on_clog_failed)
@@ -630,15 +673,13 @@ class PreJsonsDialog(QDialog):
 
     def _on_clog_done(self, games: list):
         count = len(games)
-        self.status_label.setText(
-            f"{count} game{'s' if count != 1 else ''} — fetching thumbnails…"
-        )
+        self.status_label.setText(f'{count} game{"s" if count != 1 else ""} — fetching thumbnails…')
         self.refresh_btn.setEnabled(True)
         self._populate(games)
         self._update_thumbnail_status()
 
     def _on_clog_failed(self, err: str):
-        self.status_label.setText(f"Failed to load: {err}")
+        self.status_label.setText(f'Failed to load: {err}')
         self.refresh_btn.setEnabled(True)
         # Still show custom dumps and the add card even if CLOG fails
         self._load_custom_cards()
@@ -650,8 +691,10 @@ class PreJsonsDialog(QDialog):
         for g in games:
             card = self._make_card(g)
             self._cards.append(card)
-            if g.get("placeId"):
-                self._start_card_meta(card, g["placeId"], g.get("created", ""), g.get("updated", ""))
+            if g.get('placeId'):
+                self._start_card_meta(
+                    card, g['placeId'], g.get('created', ''), g.get('updated', '')
+                )
 
         self._load_custom_cards()
         self._place_all()
@@ -659,16 +702,14 @@ class PreJsonsDialog(QDialog):
     def _make_card(self, g: dict, dump_file: Path | None = None) -> GameCard:
         """Build a GameCard from a normalised game dict."""
         card = GameCard(self.container)
-        card.set_data(g["name"], g.get("created", ""), g.get("updated", ""), g.get("credit", ""))
+        card.set_data(g['name'], g.get('created', ''), g.get('updated', ''), g.get('credit', ''))
 
-        gh_url = (g.get("github") or "").strip()
-        rep_url = (g.get("replacement") or "").strip()
+        gh_url = (g.get('github') or '').strip()
+        rep_url = (g.get('replacement') or '').strip()
 
         if gh_url:
             card.assets_btn.setVisible(True)
-            card.assets_btn.clicked.connect(
-                lambda _=False, u=gh_url: self._fetch_and_open(u)
-            )
+            card.assets_btn.clicked.connect(lambda _=False, u=gh_url: self._fetch_and_open(u))
         if rep_url:
             card.replacements_btn.setVisible(True)
             card.replacements_btn.clicked.connect(
@@ -685,8 +726,10 @@ class PreJsonsDialog(QDialog):
         for g, fp in _load_custom_dumps():
             card = self._make_card(g, dump_file=fp)
             self._cards.append(card)
-            if g.get("placeId"):
-                self._start_card_meta(card, g["placeId"], g.get("created", ""), g.get("updated", ""))
+            if g.get('placeId'):
+                self._start_card_meta(
+                    card, g['placeId'], g.get('created', ''), g.get('updated', '')
+                )
 
     def _start_card_meta(self, card: GameCard, place_id: int, cr: str, up: str):
         # Serve from cache if available — no network round-trip needed
@@ -720,13 +763,13 @@ class PreJsonsDialog(QDialog):
     def _update_thumbnail_status(self):
         total_games = len(self._cards)
         if self._thumbs_pending <= 0:
-            self.status_label.setText(f"{total_games} game{'s' if total_games != 1 else ''}")
+            self.status_label.setText(f'{total_games} game{"s" if total_games != 1 else ""}')
             return
         if self._thumbs_finished >= self._thumbs_pending:
-            self.status_label.setText(f"{total_games} game{'s' if total_games != 1 else ''}")
+            self.status_label.setText(f'{total_games} game{"s" if total_games != 1 else ""}')
             return
         self.status_label.setText(
-            f"{total_games} game{'s' if total_games != 1 else ''} — fetching thumbnails…"
+            f'{total_games} game{"s" if total_games != 1 else ""} — fetching thumbnails…'
         )
 
     # Grid layout helpers
@@ -799,7 +842,7 @@ class PreJsonsDialog(QDialog):
 
     def _open_add_dump_dialog(self):
         dlg = QDialog(self)
-        dlg.setWindowTitle("Import custom game dump")
+        dlg.setWindowTitle('Import custom game dump')
         dlg.setMinimumWidth(520)
 
         layout = QVBoxLayout(dlg)
@@ -807,7 +850,7 @@ class PreJsonsDialog(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
 
         # Example format
-        layout.addWidget(QLabel("Expected JSON format:"))
+        layout.addWidget(QLabel('Expected JSON format:'))
         example = QTextEdit()
         example.setReadOnly(True)
         example.setMaximumHeight(110)
@@ -828,49 +871,62 @@ class PreJsonsDialog(QDialog):
         sep1.setFrameShape(QFrame.Shape.HLine)
         sep1.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(sep1)
-        layout.addWidget(QLabel("Fill in manually:"))
+        layout.addWidget(QLabel('Fill in manually:'))
 
-        layout.addWidget(QLabel("Name:"))
+        layout.addWidget(QLabel('Name:'))
         name_edit = QLineEdit()
-        name_edit.setPlaceholderText("My Game")
+        name_edit.setPlaceholderText('My Game')
         layout.addWidget(name_edit)
 
-        layout.addWidget(QLabel("Place ID (optional — fetches real name + thumbnail automatically):"))
+        layout.addWidget(
+            QLabel('Place ID (optional — fetches real name + thumbnail automatically):')
+        )
         placeid_edit = QLineEdit()
-        placeid_edit.setPlaceholderText("12345")
+        placeid_edit.setPlaceholderText('12345')
         layout.addWidget(placeid_edit)
 
-        layout.addWidget(QLabel("Assets URL (github):"))
+        layout.addWidget(QLabel('Assets URL (github):'))
         assets_row = QHBoxLayout()
         assets_edit = FileDropLineEdit()
-        assets_edit.setPlaceholderText("https://raw.githubusercontent.com/.../assets.json")
+        assets_edit.setPlaceholderText('https://raw.githubusercontent.com/.../assets.json')
         assets_row.addWidget(assets_edit)
-        assets_browse = QPushButton("Browse…")
+        assets_browse = QPushButton('Browse…')
         assets_browse.setFixedWidth(80)
         assets_row.addWidget(assets_browse)
         layout.addLayout(assets_row)
-        assets_browse.clicked.connect(lambda: (
-            path := QFileDialog.getOpenFileName(dlg, "Select Assets JSON", "", "JSON Files (*.json);;All Files (*)")[0],
-            assets_edit.setText(path) if path else None,
-        ))
+        assets_browse.clicked.connect(
+            lambda: (
+                path := QFileDialog.getOpenFileName(
+                    dlg, 'Select Assets JSON', '', 'JSON Files (*.json);;All Files (*)'
+                )[0],
+                assets_edit.setText(path) if path else None,
+            )
+        )
 
-        layout.addWidget(QLabel("Replacements URL (replacement):"))
+        layout.addWidget(QLabel('Replacements URL (replacement):'))
         rep_row = QHBoxLayout()
         rep_edit = FileDropLineEdit()
-        rep_edit.setPlaceholderText("https://raw.githubusercontent.com/.../replacements.json")
+        rep_edit.setPlaceholderText('https://raw.githubusercontent.com/.../replacements.json')
         rep_row.addWidget(rep_edit)
-        rep_browse = QPushButton("Browse…")
+        rep_browse = QPushButton('Browse…')
         rep_browse.setFixedWidth(80)
         rep_row.addWidget(rep_browse)
         layout.addLayout(rep_row)
-        rep_browse.clicked.connect(lambda: (
-            path := QFileDialog.getOpenFileName(dlg, "Select Replacements JSON", "", "JSON Files (*.json);;All Files (*)")[0],
-            rep_edit.setText(path) if path else None,
-        ))
+        rep_browse.clicked.connect(
+            lambda: (
+                path := QFileDialog.getOpenFileName(
+                    dlg,
+                    'Select Replacements JSON',
+                    '',
+                    'JSON Files (*.json);;All Files (*)',
+                )[0],
+                rep_edit.setText(path) if path else None,
+            )
+        )
 
-        layout.addWidget(QLabel("Credit (optional):"))
+        layout.addWidget(QLabel('Credit (optional):'))
         credit_edit = QLineEdit()
-        credit_edit.setPlaceholderText("Your name")
+        credit_edit.setPlaceholderText('Your name')
         layout.addWidget(credit_edit)
 
         # OR import from URL / file
@@ -878,25 +934,28 @@ class PreJsonsDialog(QDialog):
         sep2.setFrameShape(QFrame.Shape.HLine)
         sep2.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(sep2)
-        layout.addWidget(QLabel("OR import from URL / file:"))
+        layout.addWidget(QLabel('OR import from URL / file:'))
 
         url_edit = FileDropLineEdit()
-        url_edit.setPlaceholderText("https://raw.githubusercontent.com/.../dump.json")
+        url_edit.setPlaceholderText('https://raw.githubusercontent.com/.../dump.json')
         layout.addWidget(url_edit)
 
-        file_btn = QPushButton("Import from file…")
+        file_btn = QPushButton('Import from file…')
         layout.addWidget(file_btn)
 
         def pick_file():
-            path, _ = QFileDialog.getOpenFileName(dlg, "Select JSON dump", "", "JSON Files (*.json);;All Files (*)")
+            path, _ = QFileDialog.getOpenFileName(
+                dlg, 'Select JSON dump', '', 'JSON Files (*.json);;All Files (*)'
+            )
             if path:
                 url_edit.setText(path)
+
         file_btn.clicked.connect(pick_file)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        ok_btn = QPushButton("Import")
-        cancel_btn = QPushButton("Cancel")
+        ok_btn = QPushButton('Import')
+        cancel_btn = QPushButton('Cancel')
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)
         layout.addLayout(btn_row)
@@ -908,60 +967,78 @@ class PreJsonsDialog(QDialog):
 
             if name_text or placeid_text:
                 # Build from form fields
-                data: dict = {"name": name_text or (f"Place {placeid_text}" if placeid_text else "Unknown")}
+                data: dict = {
+                    'name': name_text or (f'Place {placeid_text}' if placeid_text else 'Unknown')
+                }
                 if placeid_text:
                     try:
-                        data["placeId"] = int(placeid_text)
+                        data['placeId'] = int(placeid_text)
                     except ValueError:
                         pass
                 if assets_edit.text().strip():
-                    data["github"] = assets_edit.text().strip()
+                    data['github'] = assets_edit.text().strip()
                 if rep_edit.text().strip():
-                    data["replacement"] = rep_edit.text().strip()
+                    data['replacement'] = rep_edit.text().strip()
                 if credit_edit.text().strip():
-                    data["credit"] = credit_edit.text().strip()
+                    data['credit'] = credit_edit.text().strip()
             else:
                 url_text = url_edit.text().strip()
                 if not url_text:
-                    QMessageBox.warning(dlg, "Import failed", "Fill in the Name field, or provide a URL / file path.")
+                    QMessageBox.warning(
+                        dlg,
+                        'Import failed',
+                        'Fill in the Name field, or provide a URL / file path.',
+                    )
                     return
 
                 if Path(url_text).is_file():
                     try:
-                        data = json.loads(Path(url_text).read_text(encoding="utf-8", errors="ignore"))
+                        data = json.loads(
+                            Path(url_text).read_text(encoding='utf-8', errors='ignore')
+                        )
                     except Exception as e:
-                        QMessageBox.warning(dlg, "Import failed", f"Could not read file:\n{e}")
+                        QMessageBox.warning(dlg, 'Import failed', f'Could not read file:\n{e}')
                         return
-                elif url_text.startswith(("http://", "https://")):
+                elif url_text.startswith(('http://', 'https://')):
                     try:
                         raw = _http_get(url_text, timeout=15)
-                        data = json.loads(raw.decode("utf-8"))
+                        data = json.loads(raw.decode('utf-8'))
                     except Exception as e:
-                        QMessageBox.warning(dlg, "Import failed", f"Could not fetch JSON:\n{e}")
+                        QMessageBox.warning(dlg, 'Import failed', f'Could not fetch JSON:\n{e}')
                         return
                 else:
-                    QMessageBox.warning(dlg, "Import failed", "Enter a URL or path to a local JSON file.")
+                    QMessageBox.warning(
+                        dlg,
+                        'Import failed',
+                        'Enter a URL or path to a local JSON file.',
+                    )
                     return
 
             # Wrap bare single-entry dicts so _normalize_games handles them
-            if isinstance(data, dict) and "games" not in data and (
-                isinstance(data.get("name"), str) or data.get("placeId") is not None
+            if (
+                isinstance(data, dict)
+                and 'games' not in data
+                and (isinstance(data.get('name'), str) or data.get('placeId') is not None)
             ):
-                wrapped = {"games": {"_": data}}
+                wrapped = {'games': {'_': data}}
             else:
                 wrapped = data
 
             games = _normalize_games(wrapped)
             if not games:
-                QMessageBox.warning(dlg, "Import failed", "No valid game entries found.\nCheck the format.")
+                QMessageBox.warning(
+                    dlg,
+                    'Import failed',
+                    'No valid game entries found.\nCheck the format.',
+                )
                 return
 
             CUSTOM_DUMPS_DIR.mkdir(parents=True, exist_ok=True)
-            dump_path = CUSTOM_DUMPS_DIR / f"{uuid.uuid4().hex}.json"
+            dump_path = CUSTOM_DUMPS_DIR / f'{uuid.uuid4().hex}.json'
             try:
-                dump_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                dump_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
             except Exception as e:
-                QMessageBox.warning(dlg, "Import failed", f"Could not save:\n{e}")
+                QMessageBox.warning(dlg, 'Import failed', f'Could not save:\n{e}')
                 return
 
             # Save originals/replacements for each game entry so they appear
@@ -971,15 +1048,18 @@ class PreJsonsDialog(QDialog):
             ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
             REPLACEMENTS_DIR.mkdir(parents=True, exist_ok=True)
             for g in games:
-                raw_name = g.get("name") or (f"Place {g['placeId']}" if g.get("placeId") else None)
+                raw_name = g.get('name') or (f'Place {g["placeId"]}' if g.get('placeId') else None)
                 if not raw_name:
                     continue
                 fname = _safe_filename(raw_name)
-                for url_key, dest_dir in (("github", ORIGINALS_DIR), ("replacement", REPLACEMENTS_DIR)):
-                    url_or_path = g.get(url_key, "").strip()
+                for url_key, dest_dir in (
+                    ('github', ORIGINALS_DIR),
+                    ('replacement', REPLACEMENTS_DIR),
+                ):
+                    url_or_path = g.get(url_key, '').strip()
                     if not url_or_path:
                         continue
-                    dest_path = dest_dir / f"{fname}.json"
+                    dest_path = dest_dir / f'{fname}.json'
                     try:
                         content = _fetch_or_read(url_or_path)
                         dest_path.write_bytes(content)
@@ -990,15 +1070,25 @@ class PreJsonsDialog(QDialog):
 
             # Re-save the dump with updated paths so they survive dialog restarts
             try:
-                dump_path.write_text(json.dumps({"games": {"_": games[0]}} if len(games) == 1 else {"games": {g["name"]: g for g in games}}, indent=2), encoding="utf-8")
+                dump_path.write_text(
+                    json.dumps(
+                        {'games': {'_': games[0]}}
+                        if len(games) == 1
+                        else {'games': {g['name']: g for g in games}},
+                        indent=2,
+                    ),
+                    encoding='utf-8',
+                )
             except Exception:
                 pass
 
             for g in games:
                 card = self._make_card(g, dump_file=dump_path)
                 self._cards.append(card)
-                if g.get("placeId"):
-                    self._start_card_meta(card, g["placeId"], g.get("created", ""), g.get("updated", ""))
+                if g.get('placeId'):
+                    self._start_card_meta(
+                        card, g['placeId'], g.get('created', ''), g.get('updated', '')
+                    )
 
             self._place_all()
             dlg.accept()
@@ -1013,7 +1103,7 @@ class PreJsonsDialog(QDialog):
             try:
                 card._dump_file.unlink(missing_ok=True)
             except Exception as e:
-                print(f"[CustomDump] Delete failed: {e}")
+                print(f'[CustomDump] Delete failed: {e}')
 
         if card in self._cards:
             self._cards.remove(card)
@@ -1033,16 +1123,16 @@ class PreJsonsDialog(QDialog):
         p = Path(url)
         if p.is_file():
             try:
-                data = json.loads(p.read_text(encoding="utf-8", errors="ignore"))
+                data = json.loads(p.read_text(encoding='utf-8', errors='ignore'))
                 self._open_viewer(data, p.name)
             except Exception as e:
-                QMessageBox.warning(self, "Error", f"Failed to read file:\n{e}")
+                QMessageBox.warning(self, 'Error', f'Failed to read file:\n{e}')
             return
 
         fetch_w = _JsonFetchWorker(url)
         fetch_w.done.connect(self._open_viewer)
         fetch_w.failed.connect(
-            lambda err: QMessageBox.warning(self, "Error", f"Failed to load JSON:\n{err}")
+            lambda err: QMessageBox.warning(self, 'Error', f'Failed to load JSON:\n{err}')
         )
         self._workers.append(fetch_w)
         fetch_w.start()

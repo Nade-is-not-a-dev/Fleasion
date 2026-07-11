@@ -17,7 +17,6 @@ from .logging import log_buffer
 from .paths import CONFIG_DIR, MACOS_PROXY_BACKEND_PORT, PROXY_PORT
 from .plural import format_count
 
-
 HELPER_READY_FILE = CONFIG_DIR / 'linux_proxy_helper.ready'
 HELPER_STOP_FILE = CONFIG_DIR / 'linux_proxy_helper.stop'
 HELPER_HOSTS_FILE = CONFIG_DIR / 'linux_proxy_helper.hosts.json'
@@ -26,11 +25,15 @@ NSS_CERT_NICKNAME = 'Fleasion Proxy CA'
 SYSTEM_CA_NAME = 'fleasion-proxy-ca.crt'
 HELPER_BUNDLED_EXECUTABLE_NAME = 'fleasion-linux-proxy-helper'
 INSTALLED_HELPER_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper')
-INSTALLED_HELPER_METADATA_PATH = Path('/usr/local/libexec/fleasion-linux-proxy-helper.metadata.json')
+INSTALLED_HELPER_METADATA_PATH = Path(
+    '/usr/local/libexec/fleasion-linux-proxy-helper.metadata.json'
+)
 HELPER_METADATA_VERSION = 1
 POLKIT_ACTION_NAMESPACE = 'com.fleasion.proxy-helper'
 POLKIT_POLICY_PATH = Path('/usr/share/polkit-1/actions') / f'{POLKIT_ACTION_NAMESPACE}.policy'
-LEGACY_POLKIT_POLICY_PATH = Path('/usr/local/share/polkit-1/actions') / f'{POLKIT_ACTION_NAMESPACE}.policy'
+LEGACY_POLKIT_POLICY_PATH = (
+    Path('/usr/local/share/polkit-1/actions') / f'{POLKIT_ACTION_NAMESPACE}.policy'
+)
 SYSTEM_CA_DIRS = (
     Path('/usr/local/share/ca-certificates'),
     Path('/etc/pki/ca-trust/source/anchors'),
@@ -58,7 +61,8 @@ def _host_subprocess_env() -> dict[str, str]:
     library_path = env.get('LD_LIBRARY_PATH')
     if bundle_root and library_path:
         entries = [
-            entry for entry in library_path.split(os.pathsep)
+            entry
+            for entry in library_path.split(os.pathsep)
             if entry and Path(entry).resolve() != Path(bundle_root).resolve()
         ]
         if entries:
@@ -115,11 +119,7 @@ def _is_trusted_installed_helper(path: Path = INSTALLED_HELPER_PATH) -> bool:
 
 def _error_text_is_read_only_filesystem(error: object) -> bool:
     text = str(error or '').lower()
-    return (
-        'read-only file system' in text
-        or 'errno 30' in text
-        or 'os error 30' in text
-    )
+    return 'read-only file system' in text or 'errno 30' in text or 'os error 30' in text
 
 
 def _path_on_read_only_mount(path: Path) -> bool:
@@ -134,9 +134,8 @@ def _path_on_read_only_mount(path: Path) -> bool:
 
 
 def _persistent_helper_install_path_is_read_only() -> bool:
-    return (
-        _path_on_read_only_mount(INSTALLED_HELPER_PATH)
-        or _path_on_read_only_mount(INSTALLED_HELPER_PATH.parent)
+    return _path_on_read_only_mount(INSTALLED_HELPER_PATH) or _path_on_read_only_mount(
+        INSTALLED_HELPER_PATH.parent
     )
 
 
@@ -161,7 +160,9 @@ def _current_helper_metadata() -> dict | None:
         return None
 
 
-def _installed_helper_metadata(path: Path = INSTALLED_HELPER_METADATA_PATH) -> dict | None:
+def _installed_helper_metadata(
+    path: Path = INSTALLED_HELPER_METADATA_PATH,
+) -> dict | None:
     try:
         payload = json.loads(path.read_text(encoding='utf-8'))
     except OSError:
@@ -186,14 +187,14 @@ def _policy_file_is_current(path: Path) -> bool:
     return (
         f'id="{POLKIT_ACTION_NAMESPACE}.run"' in text
         and '<allow_active>yes</allow_active>' in text
-        and f'<annotate key="org.freedesktop.policykit.exec.path">{INSTALLED_HELPER_PATH}</annotate>' in text
+        and f'<annotate key="org.freedesktop.policykit.exec.path">{INSTALLED_HELPER_PATH}</annotate>'
+        in text
     )
 
 
 def _installed_policy_is_current() -> bool:
-    return (
-        _policy_file_is_current(POLKIT_POLICY_PATH)
-        and _policy_file_is_current(LEGACY_POLKIT_POLICY_PATH)
+    return _policy_file_is_current(POLKIT_POLICY_PATH) and _policy_file_is_current(
+        LEGACY_POLKIT_POLICY_PATH
     )
 
 
@@ -334,9 +335,15 @@ def ensure_privileged_helper_installed(
         return True
 
     if trusted_helper and current_policy and not current_metadata:
-        log_buffer.log('ProxyHelper', 'Updating Fleasion Linux privileged helper to match this app build')
+        log_buffer.log(
+            'ProxyHelper',
+            'Updating Fleasion Linux privileged helper to match this app build',
+        )
     else:
-        log_buffer.log('ProxyHelper', 'Installing Fleasion Linux privileged helper for persistent proxy permissions')
+        log_buffer.log(
+            'ProxyHelper',
+            'Installing Fleasion Linux privileged helper for persistent proxy permissions',
+        )
     install_kwargs = {'enable_promptless': enable_promptless}
     if ca_cert_path is not None:
         install_kwargs['ca_cert_path'] = ca_cert_path
@@ -357,13 +364,22 @@ def ensure_privileged_helper_installed(
         return False
 
     if not _is_trusted_installed_helper():
-        log_buffer.log('ProxyHelper', 'Linux privileged helper install finished but installed helper was not trusted')
+        log_buffer.log(
+            'ProxyHelper',
+            'Linux privileged helper install finished but installed helper was not trusted',
+        )
         return False
     if not _installed_policy_is_current():
-        log_buffer.log('ProxyHelper', 'Linux privileged helper install finished but Polkit policy was not current')
+        log_buffer.log(
+            'ProxyHelper',
+            'Linux privileged helper install finished but Polkit policy was not current',
+        )
         return False
     if not _installed_helper_metadata_is_current():
-        log_buffer.log('ProxyHelper', 'Linux privileged helper install finished but helper metadata was not current')
+        log_buffer.log(
+            'ProxyHelper',
+            'Linux privileged helper install finished but helper metadata was not current',
+        )
         return False
 
     system_ca = details.get('system_ca') if isinstance(details.get('system_ca'), dict) else None
@@ -431,7 +447,11 @@ def start_helper(
     ):
         _set_last_start_error(error='privileged helper install failed')
         return False
-    if needs_system_ca_install and ca_cert_path is not None and not linux_system_ca_is_current(ca_cert_path):
+    if (
+        needs_system_ca_install
+        and ca_cert_path is not None
+        and not linux_system_ca_is_current(ca_cert_path)
+    ):
         details = _install_ca_into_linux_system_store(ca_cert_path)
         if not details.get('ok'):
             error = details.get('error') or details
@@ -443,7 +463,9 @@ def start_helper(
                     'continuing without distro-wide CA trust',
                 )
             else:
-                _set_last_start_error(details, error=f'system CA trust could not be installed: {error}')
+                _set_last_start_error(
+                    details, error=f'system CA trust could not be installed: {error}'
+                )
                 log_buffer.log(
                     'ProxyHelper',
                     f'Linux proxy helper failed: system CA trust could not be installed: {error}',
@@ -489,7 +511,10 @@ def start_helper(
     if enforce_system_ca:
         cmd.append('--require-system-ca')
 
-    log_buffer.log('ProxyHelper', 'Requesting Linux Polkit approval for Fleasion hosts entries and port-443 relay')
+    log_buffer.log(
+        'ProxyHelper',
+        'Requesting Linux Polkit approval for Fleasion hosts entries and port-443 relay',
+    )
     try:
         log_file = HELPER_LOG_FILE.open('ab')
     except OSError as exc:
@@ -499,7 +524,9 @@ def start_helper(
 
     with log_file:
         try:
-            process = _popen_host_command(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
+            process = _popen_host_command(
+                cmd, stdout=log_file, stderr=log_file, start_new_session=True
+            )
         except Exception as exc:
             _set_last_start_error(error=f'could not start Linux proxy helper: {exc}')
             log_buffer.log('ProxyHelper', f'Could not start Linux proxy helper: {exc}')
@@ -512,17 +539,25 @@ def start_helper(
             if ready.get('ok'):
                 if enforce_system_ca and not (ready.get('system_ca') or {}).get('ok'):
                     _set_last_start_error(ready, error='system CA trust was not confirmed')
-                    log_buffer.log('ProxyHelper', 'Linux proxy helper failed: system CA trust was not confirmed')
+                    log_buffer.log(
+                        'ProxyHelper',
+                        'Linux proxy helper failed: system CA trust was not confirmed',
+                    )
                     return False
                 log_buffer.log('ProxyHelper', f'Linux proxy helper ready on port {PROXY_PORT}')
                 return True
             _set_last_start_error(ready)
-            log_buffer.log('ProxyHelper', f'Linux proxy helper failed: {ready.get("error") or "unknown error"}')
+            log_buffer.log(
+                'ProxyHelper',
+                f'Linux proxy helper failed: {ready.get("error") or "unknown error"}',
+            )
             return False
 
         returncode = process.poll()
         if returncode is not None:
-            _set_last_start_error(error=f'helper exited before becoming ready with code {returncode}')
+            _set_last_start_error(
+                error=f'helper exited before becoming ready with code {returncode}'
+            )
             log_buffer.log(
                 'ProxyHelper',
                 f'Linux proxy helper exited before becoming ready with code {returncode}; log: {HELPER_LOG_FILE}',
@@ -531,7 +566,10 @@ def start_helper(
         time.sleep(0.2)
 
     _set_last_start_error(error=f'timed out waiting for readiness; log: {HELPER_LOG_FILE}')
-    log_buffer.log('ProxyHelper', f'Linux proxy helper timed out waiting for readiness; log: {HELPER_LOG_FILE}')
+    log_buffer.log(
+        'ProxyHelper',
+        f'Linux proxy helper timed out waiting for readiness; log: {HELPER_LOG_FILE}',
+    )
     return False
 
 
@@ -622,12 +660,18 @@ def _ensure_shared_nss_db(home: Path) -> Path | None:
             timeout=10,
         )
     except Exception as exc:
-        log_buffer.log('Certificate', f'Could not create shared NSS certificate DB at {nssdb}: {exc}')
+        log_buffer.log(
+            'Certificate',
+            f'Could not create shared NSS certificate DB at {nssdb}: {exc}',
+        )
         return None
     if result.returncode == 0 or (nssdb / 'cert9.db').exists():
         return nssdb
     err = (result.stderr or result.stdout or '').strip()
-    log_buffer.log('Certificate', f'Could not create shared NSS certificate DB at {nssdb}: {err or result.returncode}')
+    log_buffer.log(
+        'Certificate',
+        f'Could not create shared NSS certificate DB at {nssdb}: {err or result.returncode}',
+    )
     return None
 
 
@@ -732,16 +776,31 @@ def _install_ca_into_browser_nss(ca_cert_path: Path) -> list[dict]:
     refreshed_count = sum(1 for item in results if item.get('status') == 'refreshed')
     fail_count = len(results) - ok_count
     if already_count:
-        log_buffer.log('Certificate', f'CA already trusted in {format_count(already_count, "Linux browser NSS database")}')
+        log_buffer.log(
+            'Certificate',
+            f'CA already trusted in {format_count(already_count, "Linux browser NSS database")}',
+        )
     if installed_count:
-        log_buffer.log('Certificate', f'Installed CA into {format_count(installed_count, "Linux browser NSS database")}')
+        log_buffer.log(
+            'Certificate',
+            f'Installed CA into {format_count(installed_count, "Linux browser NSS database")}',
+        )
     if refreshed_count:
-        log_buffer.log('Certificate', f'Refreshed CA in {format_count(refreshed_count, "Linux browser NSS database")}')
+        log_buffer.log(
+            'Certificate',
+            f'Refreshed CA in {format_count(refreshed_count, "Linux browser NSS database")}',
+        )
     if fail_count:
-        log_buffer.log('Certificate', f'Failed to install CA into {format_count(fail_count, "Linux browser NSS database")}')
+        log_buffer.log(
+            'Certificate',
+            f'Failed to install CA into {format_count(fail_count, "Linux browser NSS database")}',
+        )
         for item in results:
             if not item.get('ok'):
-                log_buffer.log('Certificate', f'Linux browser NSS import failed for {item.get("db")}: {item.get("error")}')
+                log_buffer.log(
+                    'Certificate',
+                    f'Linux browser NSS import failed for {item.get("db")}: {item.get("error")}',
+                )
     return results
 
 
@@ -753,9 +812,7 @@ def linux_system_ca_is_current(ca_cert_path: Path) -> bool:
         return False
 
     supported_targets = [
-        directory / SYSTEM_CA_NAME
-        for directory in SYSTEM_CA_DIRS
-        if directory.is_dir()
+        directory / SYSTEM_CA_NAME for directory in SYSTEM_CA_DIRS if directory.is_dir()
     ]
     if not supported_targets:
         return False
@@ -832,9 +889,15 @@ def _install_ca_into_linux_system_store(ca_cert_path: Path) -> dict:
         stores = ', '.join(details.get('stores') or [])
         store_names = details.get('stores') or []
         if store_names and all(str(store).endswith(':already-current') for store in store_names):
-            log_buffer.log('Certificate', f'CA already trusted in Linux system trust store{f" ({stores})" if stores else ""}')
+            log_buffer.log(
+                'Certificate',
+                f'CA already trusted in Linux system trust store{f" ({stores})" if stores else ""}',
+            )
         else:
-            log_buffer.log('Certificate', f'Installed CA into Linux system trust store{f" ({stores})" if stores else ""}')
+            log_buffer.log(
+                'Certificate',
+                f'Installed CA into Linux system trust store{f" ({stores})" if stores else ""}',
+            )
     else:
         err = details.get('error') or (result.stderr or output or str(result.returncode)).strip()
         log_buffer.log('Certificate', f'Failed to install CA into Linux system trust store: {err}')
@@ -852,8 +915,16 @@ def install_ca_into_linux_trust(
     if not sys.platform.startswith('linux'):
         return {'ok': True, 'skipped': 'not_linux'}
 
-    if install_system and not linux_system_ca_store_supported() and not linux_system_ca_is_current(ca_cert_path):
-        system = {'ok': False, 'skipped': 'unsupported', 'error': 'no_supported_system_trust_store'}
+    if (
+        install_system
+        and not linux_system_ca_store_supported()
+        and not linux_system_ca_is_current(ca_cert_path)
+    ):
+        system = {
+            'ok': False,
+            'skipped': 'unsupported',
+            'error': 'no_supported_system_trust_store',
+        }
         log_buffer.log(
             'Certificate',
             'Skipping Linux system trust-store install: no supported system trust store found',

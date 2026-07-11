@@ -34,7 +34,7 @@ class CategoryFilterPopup(QMenu):
         self._updating = False
 
         self.container = QWidget()
-        self.container.setObjectName("FilterContainer")
+        self.container.setObjectName('FilterContainer')
         layout = QVBoxLayout(self.container)
         layout.setContentsMargins(10, 10, 10, 10)
 
@@ -46,10 +46,47 @@ class CategoryFilterPopup(QMenu):
             '3D Models': [4, 10, 39, 40, 32, 17, 79, 75],
             'Images/Textures': [1, 13, 63, 21, 22, 18],
             'Audio/Video': [3, 62, 33],
-            'Animations': [24, ('R6Animation', 'R6 Animation'), ('R15Animation', 'R15 Animation'), ('NonPlayerAnimation', 'Non-player Animation'), 48, 49, 50, 51, 52, 53, 54, 55, 56, 61, 78],
+            'Animations': [
+                24,
+                ('R6Animation', 'R6 Animation'),
+                ('R15Animation', 'R15 Animation'),
+                ('NonPlayerAnimation', 'Non-player Animation'),
+                48,
+                49,
+                50,
+                51,
+                52,
+                53,
+                54,
+                55,
+                56,
+                61,
+                78,
+            ],
             'Avatar Parts': [16, 25, 26, 27, 28, 29, 30, 31],
             'Clothing': [2, 11, 12, 8, 19],
-            'Accessories': [41, 42, 43, 44, 45, 46, 47, 57, 58, 64, 65, 66, 67, 68, 69, 70, 71, 72, 76, 77],
+            'Accessories': [
+                41,
+                42,
+                43,
+                44,
+                45,
+                46,
+                47,
+                57,
+                58,
+                64,
+                65,
+                66,
+                67,
+                68,
+                69,
+                70,
+                71,
+                72,
+                76,
+                77,
+            ],
             'Scripts/Data': [5, 6, 7, 37, 38, 80, 59, 74, 73, 35, 34, 9, 'Json'],
         }
 
@@ -62,7 +99,7 @@ class CategoryFilterPopup(QMenu):
 
         for cat_name, type_ids in self.categories.items():
             cat_frame = QFrame()
-            cat_frame.setObjectName("CategoryCard")
+            cat_frame.setObjectName('CategoryCard')
             cat_frame.setStyleSheet("""
                 QFrame#CategoryCard {
                     border: 1px solid palette(mid);
@@ -75,7 +112,7 @@ class CategoryFilterPopup(QMenu):
             vbox.setSpacing(3)
 
             cat_cb = QCheckBox(cat_name)
-            cat_cb.setStyleSheet("font-weight: bold; color: #55aaff;")
+            cat_cb.setStyleSheet('font-weight: bold; color: #55aaff;')
             cat_cb.setTristate(True)
             self.category_checkboxes[cat_name] = cat_cb
             vbox.addWidget(cat_cb)
@@ -83,7 +120,9 @@ class CategoryFilterPopup(QMenu):
             line = QFrame()
             line.setFrameShape(QFrame.Shape.HLine)
             line.setFrameShadow(QFrame.Shadow.Sunken)
-            line.setStyleSheet("background-color: palette(mid); margin-bottom: 2px; margin-top: 2px;")
+            line.setStyleSheet(
+                'background-color: palette(mid); margin-bottom: 2px; margin-top: 2px;'
+            )
             vbox.addWidget(line)
 
             cat_types = []
@@ -106,10 +145,14 @@ class CategoryFilterPopup(QMenu):
                 vbox.addWidget(cb)
                 cat_types.append(tid)
 
-            cat_cb.clicked.connect(lambda checked, t=cat_types, c=cat_name: self._on_category_clicked(t, c))
+            cat_cb.clicked.connect(
+                lambda checked, t=cat_types, c=cat_name: self._on_category_clicked(t, c)
+            )
             for tid in cat_types:
                 cb = self.checkboxes[tid]
-                cb.clicked.connect(lambda checked, t=tid, c=cat_name: self._on_type_clicked(t, c, checked))
+                cb.clicked.connect(
+                    lambda checked, t=tid, c=cat_name: self._on_type_clicked(t, c, checked)
+                )
 
             self._update_category_state(cat_name)
             vbox.addStretch()
@@ -122,15 +165,17 @@ class CategoryFilterPopup(QMenu):
         layout.addLayout(grid)
 
         btn_layout = QHBoxLayout()
-        clear_btn = QPushButton("Clear Filters")
-        clear_btn.setStyleSheet("padding: 5px 15px; border: 1px solid palette(mid); border-radius: 3px;")
+        clear_btn = QPushButton('Clear Filters')
+        clear_btn.setStyleSheet(
+            'padding: 5px 15px; border: 1px solid palette(mid); border-radius: 3px;'
+        )
         clear_btn.clicked.connect(self._clear_all)
         btn_layout.addWidget(clear_btn)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
         self.scroll_area = QScrollArea()
-        self.scroll_area.setObjectName("FilterScrollArea")
+        self.scroll_area.setObjectName('FilterScrollArea')
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -192,7 +237,9 @@ class CategoryFilterPopup(QMenu):
             return
         self._updating = True
 
-        checked_count = sum(1 for tid in type_ids if tid in self.checkboxes and self.checkboxes[tid].isChecked())
+        checked_count = sum(
+            1 for tid in type_ids if tid in self.checkboxes and self.checkboxes[tid].isChecked()
+        )
         total_count = sum(1 for tid in type_ids if tid in self.checkboxes)
         new_state = checked_count < total_count
 
@@ -227,7 +274,9 @@ class CategoryFilterPopup(QMenu):
     def _update_category_state(self, cat_name):
         cat_cb = self.category_checkboxes[cat_name]
         type_ids = self.categories[cat_name]
-        checked_count = sum(1 for tid in type_ids if tid in self.checkboxes and self.checkboxes[tid].isChecked())
+        checked_count = sum(
+            1 for tid in type_ids if tid in self.checkboxes and self.checkboxes[tid].isChecked()
+        )
         total_count = sum(1 for tid in type_ids if tid in self.checkboxes)
 
         cat_cb.blockSignals(True)

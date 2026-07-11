@@ -74,10 +74,10 @@ def interleave_u32(values: list[int]) -> bytes:
     count = len(values)
     out = bytearray(count * 4)
     for i, v in enumerate(values):
-        out[i]               = (v >> 24) & 0xFF
-        out[count + i]       = (v >> 16) & 0xFF
-        out[2 * count + i]   = (v >> 8)  & 0xFF
-        out[3 * count + i]   =  v        & 0xFF
+        out[i] = (v >> 24) & 0xFF
+        out[count + i] = (v >> 16) & 0xFF
+        out[2 * count + i] = (v >> 8) & 0xFF
+        out[3 * count + i] = v & 0xFF
     return bytes(out)
 
 

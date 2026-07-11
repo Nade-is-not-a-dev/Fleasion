@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import shutil
 import ssl
 import subprocess
 import urllib.error
 import urllib.request
 from functools import lru_cache
 from pathlib import Path
-import shutil
-
 
 _USER_AGENT = 'FleasionNT/1.2.0'
 

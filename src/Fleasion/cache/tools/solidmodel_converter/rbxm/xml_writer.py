@@ -165,9 +165,7 @@ def _write_property(
             if isinstance(prop.value, bytes):
                 el.text = base64.b64encode(prop.value).decode('ascii')
             else:
-                el.text = base64.b64encode(str(prop.value).encode('utf-8')).decode(
-                    'ascii'
-                )
+                el.text = base64.b64encode(str(prop.value).encode('utf-8')).decode('ascii')
         case PropertyFormat.UNIQUE_ID:
             _write_unique_id(props_el, prop)
         case PropertyFormat.FONT:
@@ -214,9 +212,7 @@ def _write_string_prop(parent: Element, tag: str, prop: RbxProperty) -> None:
         # Preserve payload as bytes when text contains XML-illegal code points.
         el = SubElement(parent, 'BinaryString')
         el.set('name', prop.name)
-        el.text = base64.b64encode(
-            val.encode('utf-8', errors='surrogatepass')
-        ).decode('ascii')
+        el.text = base64.b64encode(val.encode('utf-8', errors='surrogatepass')).decode('ascii')
         return
 
     if prop.name in {'Source', 'LinkedSource'}:
@@ -331,9 +327,7 @@ def _write_vector3(parent: Element, tag: str, prop: RbxProperty) -> None:
     SubElement(el, 'Z').text = _fmt_float(prop.value['Z'])
 
 
-def _write_vector_int(
-    parent: Element, tag: str, prop: RbxProperty, axes: tuple[str, ...]
-) -> None:
+def _write_vector_int(parent: Element, tag: str, prop: RbxProperty, axes: tuple[str, ...]) -> None:
     el = SubElement(parent, tag)
     el.set('name', prop.name)
     for axis in axes:
@@ -385,8 +379,7 @@ def _write_number_sequence(parent: Element, prop: RbxProperty) -> None:
     el = SubElement(parent, 'NumberSequence')
     el.set('name', prop.name)
     parts: list[str] = [
-        f'{_fmt_float(key["Time"])} {_fmt_float(key["Value"])} '
-        f'{_fmt_float(key["Envelope"])}'
+        f'{_fmt_float(key["Time"])} {_fmt_float(key["Value"])} {_fmt_float(key["Envelope"])}'
         for key in prop.value
     ]
     el.text = ' '.join(parts)
@@ -433,9 +426,7 @@ def _write_physical_properties(parent: Element, prop: RbxProperty) -> None:
         SubElement(el, 'Friction').text = _fmt_float(prop.value['Friction'])
         SubElement(el, 'Elasticity').text = _fmt_float(prop.value['Elasticity'])
         SubElement(el, 'FrictionWeight').text = _fmt_float(prop.value['FrictionWeight'])
-        SubElement(el, 'ElasticityWeight').text = _fmt_float(
-            prop.value['ElasticityWeight']
-        )
+        SubElement(el, 'ElasticityWeight').text = _fmt_float(prop.value['ElasticityWeight'])
         SubElement(el, 'AcousticAbsorption').text = _fmt_float(
             prop.value.get('AcousticAbsorption', 1.0)
         )

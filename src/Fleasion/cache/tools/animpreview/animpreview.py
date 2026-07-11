@@ -1,16 +1,15 @@
-import sys
 import math
 import os
+import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Optional
-
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout
+from typing import Dict, List, Optional, Tuple
 
 import pyvista as pv
-from pyvistaqt import QtInteractor
 import vtk
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from pyvistaqt import QtInteractor
 
 try:
     from ....utils import log_buffer
@@ -20,7 +19,8 @@ except ImportError:
 
 # XML helpers
 
-def _text(elem: Optional[ET.Element], default="") -> str:
+
+def _text(elem: Optional[ET.Element], default='') -> str:
     return elem.text if elem is not None and elem.text is not None else default
 
 
@@ -32,7 +32,7 @@ def find_prop(props: ET.Element, tag: str, names: List[str]) -> Optional[ET.Elem
     for child in props:
         if child.tag != tag:
             continue
-        nm = child.attrib.get("name", "")
+        nm = child.attrib.get('name', '')
         for n in names:
             if nm.lower() == n.lower():
                 return child
@@ -41,22 +41,22 @@ def find_prop(props: ET.Element, tag: str, names: List[str]) -> Optional[ET.Elem
 
 def parse_vector3(elem: ET.Element) -> Tuple[float, float, float]:
     return (
-        float(_text(elem.find("X"), "0")),
-        float(_text(elem.find("Y"), "0")),
-        float(_text(elem.find("Z"), "0")),
+        float(_text(elem.find('X'), '0')),
+        float(_text(elem.find('Y'), '0')),
+        float(_text(elem.find('Z'), '0')),
     )
 
 
 def parse_cframe(elem: ET.Element) -> Tuple[Tuple[float, float, float], List[float]]:
-    x = float(_text(elem.find("X"), "0"))
-    y = float(_text(elem.find("Y"), "0"))
-    z = float(_text(elem.find("Z"), "0"))
+    x = float(_text(elem.find('X'), '0'))
+    y = float(_text(elem.find('Y'), '0'))
+    z = float(_text(elem.find('Z'), '0'))
     r = []
-    for k in ("R00", "R01", "R02", "R10", "R11", "R12", "R20", "R21", "R22"):
-        if k in ("R00", "R11", "R22"):
-            r.append(float(_text(elem.find(k), "1")))
+    for k in ('R00', 'R01', 'R02', 'R10', 'R11', 'R12', 'R20', 'R21', 'R22'):
+        if k in ('R00', 'R11', 'R22'):
+            r.append(float(_text(elem.find(k), '1')))
         else:
-            r.append(float(_text(elem.find(k), "0")))
+            r.append(float(_text(elem.find(k), '0')))
     return (x, y, z), r
 
 
@@ -95,6 +95,7 @@ def lerp(a: float, b: float, t: float) -> float:
 
 
 # Some thing
+
 
 def mat_get_translation(m: vtk.vtkMatrix4x4):
     return (m.GetElement(0, 3), m.GetElement(1, 3), m.GetElement(2, 3))
@@ -152,42 +153,42 @@ def quat_from_rot3(r):
         x = (r[0][2] + r[2][0]) / s
         y = (r[1][2] + r[2][1]) / s
         z = 0.25 * s
-    n = math.sqrt(w*w + x*x + y*y + z*z) or 1.0
-    return (w/n, x/n, y/n, z/n)
+    n = math.sqrt(w * w + x * x + y * y + z * z) or 1.0
+    return (w / n, x / n, y / n, z / n)
 
 
 def rot3_from_quat(q):
     w, x, y, z = q
-    xx, yy, zz = x*x, y*y, z*z
-    xy, xz, yz = x*y, x*z, y*z
-    wx, wy, wz = w*x, w*y, w*z
+    xx, yy, zz = x * x, y * y, z * z
+    xy, xz, yz = x * y, x * z, y * z
+    wx, wy, wz = w * x, w * y, w * z
     return [
-        [1 - 2*(yy+zz), 2*(xy - wz),     2*(xz + wy)],
-        [2*(xy + wz),   1 - 2*(xx+zz),   2*(yz - wx)],
-        [2*(xz - wy),   2*(yz + wx),     1 - 2*(xx+yy)],
+        [1 - 2 * (yy + zz), 2 * (xy - wz), 2 * (xz + wy)],
+        [2 * (xy + wz), 1 - 2 * (xx + zz), 2 * (yz - wx)],
+        [2 * (xz - wy), 2 * (yz + wx), 1 - 2 * (xx + yy)],
     ]
 
 
 def quat_slerp(q0, q1, t):
     w0, x0, y0, z0 = q0
     w1, x1, y1, z1 = q1
-    dot = w0*w1 + x0*x1 + y0*y1 + z0*z1
+    dot = w0 * w1 + x0 * x1 + y0 * y1 + z0 * z1
     if dot < 0.0:
         dot = -dot
         w1, x1, y1, z1 = -w1, -x1, -y1, -z1
     if dot > 0.9995:
-        w = w0 + (w1 - w0)*t
-        x = x0 + (x1 - x0)*t
-        y = y0 + (y1 - y0)*t
-        z = z0 + (z1 - z0)*t
-        n = math.sqrt(w*w + x*x + y*y + z*z) or 1.0
-        return (w/n, x/n, y/n, z/n)
+        w = w0 + (w1 - w0) * t
+        x = x0 + (x1 - x0) * t
+        y = y0 + (y1 - y0) * t
+        z = z0 + (z1 - z0) * t
+        n = math.sqrt(w * w + x * x + y * y + z * z) or 1.0
+        return (w / n, x / n, y / n, z / n)
     theta_0 = math.acos(max(-1.0, min(1.0, dot)))
     sin_0 = math.sin(theta_0) or 1e-8
     theta = theta_0 * t
     s0 = math.sin(theta_0 - theta) / sin_0
     s1 = math.sin(theta) / sin_0
-    return (w0*s0 + w1*s1, x0*s0 + x1*s1, y0*s0 + y1*s1, z0*s0 + z1*s1)
+    return (w0 * s0 + w1 * s1, x0 * s0 + x1 * s1, y0 * s0 + y1 * s1, z0 * s0 + z1 * s1)
 
 
 def matrix_trs_lerp(m0: vtk.vtkMatrix4x4, m1: vtk.vtkMatrix4x4, t: float) -> vtk.vtkMatrix4x4:
@@ -206,6 +207,7 @@ def matrix_trs_lerp(m0: vtk.vtkMatrix4x4, m1: vtk.vtkMatrix4x4, t: float) -> vtk
 
 
 # Data models
+
 
 @dataclass
 class Part:
@@ -232,6 +234,7 @@ class Keyframe:
 
 # Parse rig
 
+
 def load_rig(rig_path: str) -> Tuple[Dict[str, Part], List[Motor6D]]:
     tree = ET.parse(rig_path)
     root = tree.getroot()
@@ -239,80 +242,82 @@ def load_rig(rig_path: str) -> Tuple[Dict[str, Part], List[Motor6D]]:
     parts: Dict[str, Part] = {}
     motors: List[Motor6D] = []
 
-    for item in root.iter("Item"):
-        cls = item.attrib.get("class", "")
-        ref = item.attrib.get("referent", "")
-        props = item.find("Properties")
+    for item in root.iter('Item'):
+        cls = item.attrib.get('class', '')
+        ref = item.attrib.get('referent', '')
+        props = item.find('Properties')
         if props is None:
             continue
 
-        size_elem = find_prop(
-            props, "Vector3", ["size", "Size", "InitialSize"])
-        cf_elem = find_prop(props, "CoordinateFrame", ["CFrame"]) or find_prop(
-            props, "CFrame", ["CFrame"])
+        size_elem = find_prop(props, 'Vector3', ['size', 'Size', 'InitialSize'])
+        cf_elem = find_prop(props, 'CoordinateFrame', ['CFrame']) or find_prop(
+            props, 'CFrame', ['CFrame']
+        )
 
         if size_elem is not None and cf_elem is not None:
-            name = _text(find_prop(props, "string", ["Name"]), cls)
+            name = _text(find_prop(props, 'string', ['Name']), cls)
             size = parse_vector3(size_elem)
             pos, r = parse_cframe(cf_elem)
             parts[ref] = Part(ref, name, size, vtk_matrix_from_cframe(pos, r))
 
-        if cls == "Motor6D":
-            name = _text(find_prop(props, "string", ["Name"]))
+        if cls == 'Motor6D':
+            name = _text(find_prop(props, 'string', ['Name']))
 
-            p0 = find_prop(props, "Ref", ["Part0"])
-            p1 = find_prop(props, "Ref", ["Part1"])
-            c0e = find_prop(props, "CoordinateFrame", ["C0"]) or find_prop(
-                props, "CFrame", ["C0"])
-            c1e = find_prop(props, "CoordinateFrame", ["C1"]) or find_prop(
-                props, "CFrame", ["C1"])
+            p0 = find_prop(props, 'Ref', ['Part0'])
+            p1 = find_prop(props, 'Ref', ['Part1'])
+            c0e = find_prop(props, 'CoordinateFrame', ['C0']) or find_prop(props, 'CFrame', ['C0'])
+            c1e = find_prop(props, 'CoordinateFrame', ['C1']) or find_prop(props, 'CFrame', ['C1'])
             if p0 is None or p1 is None or c0e is None or c1e is None:
                 continue
 
             pos0, r0 = parse_cframe(c0e)
             pos1, r1 = parse_cframe(c1e)
 
-            motors.append(Motor6D(
-                name=name,
-                part0_ref=_text(p0),
-                part1_ref=_text(p1),
-                c0=vtk_matrix_from_cframe(pos0, r0),
-                c1=vtk_matrix_from_cframe(pos1, r1),
-            ))
+            motors.append(
+                Motor6D(
+                    name=name,
+                    part0_ref=_text(p0),
+                    part1_ref=_text(p1),
+                    c0=vtk_matrix_from_cframe(pos0, r0),
+                    c1=vtk_matrix_from_cframe(pos1, r1),
+                )
+            )
 
     return parts, motors
 
 
 # Parse anim
 
+
 def load_animation(anim_path: str) -> List[Keyframe]:
     tree = ET.parse(anim_path)
     root = tree.getroot()
 
     keys: List[Keyframe] = []
-    for item in root.iter("Item"):
-        if item.attrib.get("class") != "Keyframe":
+    for item in root.iter('Item'):
+        if item.attrib.get('class') != 'Keyframe':
             continue
-        props = item.find("Properties")
+        props = item.find('Properties')
         if props is None:
             continue
 
-        t_elem = find_prop(props, "float", ["Time"])
+        t_elem = find_prop(props, 'float', ['Time'])
         if t_elem is None:
             continue
-        t = float(_text(t_elem, "0"))
+        t = float(_text(t_elem, '0'))
 
         poses: Dict[str, vtk.vtkMatrix4x4] = {}
-        for pose_item in item.iter("Item"):
-            if pose_item.attrib.get("class") != "Pose":
+        for pose_item in item.iter('Item'):
+            if pose_item.attrib.get('class') != 'Pose':
                 continue
-            pprops = pose_item.find("Properties")
+            pprops = pose_item.find('Properties')
             if pprops is None:
                 continue
 
-            pname = _text(find_prop(pprops, "string", ["Name"]))
-            cf = find_prop(pprops, "CoordinateFrame", ["CFrame"]) or find_prop(
-                pprops, "CFrame", ["CFrame"])
+            pname = _text(find_prop(pprops, 'string', ['Name']))
+            cf = find_prop(pprops, 'CoordinateFrame', ['CFrame']) or find_prop(
+                pprops, 'CFrame', ['CFrame']
+            )
             if not pname or cf is None:
                 continue
 
@@ -331,7 +336,7 @@ def sample_keys(keys: List[Keyframe], t: float) -> Tuple[Keyframe, Keyframe, flo
     if t >= keys[-1].time:
         return keys[-1], keys[-1], 0.0
     for i in range(len(keys) - 1):
-        a, b = keys[i], keys[i+1]
+        a, b = keys[i], keys[i + 1]
         if a.time <= t <= b.time:
             span = (b.time - a.time) or 1e-6
             return a, b, (t - a.time) / span
@@ -340,9 +345,9 @@ def sample_keys(keys: List[Keyframe], t: float) -> Tuple[Keyframe, Keyframe, flo
 
 # Root picking
 
+
 def pick_root_ref(parts: Dict[str, Part]) -> str:
-    preferred = ("HumanoidRootPart", "LowerTorso",
-                 "Torso", "UpperTorso", "Head")
+    preferred = ('HumanoidRootPart', 'LowerTorso', 'Torso', 'UpperTorso', 'Head')
     for want in preferred:
         for ref, p in parts.items():
             if p.name == want:
@@ -352,24 +357,29 @@ def pick_root_ref(parts: Dict[str, Part]) -> str:
 
 # OBJ loading
 
+
 def detect_rig_prefix(parts: Dict[str, Part]) -> str:
     # R6 has these part names; R15 has UpperTorso/LowerTorso etc.
     names = {p.name for p in parts.values()}
-    if "Torso" in names and "UpperTorso" not in names:
-        return "R6"
-    return "R15"
+    if 'Torso' in names and 'UpperTorso' not in names:
+        return 'R6'
+    return 'R15'
 
 
 def obj_path_for_part(mesh_dir: str, prefix: str, part_name: str) -> str:
-    return os.path.join(mesh_dir, f"{prefix}{part_name}.obj")
+    return os.path.join(mesh_dir, f'{prefix}{part_name}.obj')
 
 
-def load_obj_mesh(mesh_dir: str, prefix: str, part_name: str,
-                  fallback_size: Tuple[float, float, float]) -> pv.PolyData:
+def load_obj_mesh(
+    mesh_dir: str,
+    prefix: str,
+    part_name: str,
+    fallback_size: Tuple[float, float, float],
+) -> pv.PolyData:
 
     candidates = [obj_path_for_part(mesh_dir, prefix, part_name)]
 
-    other = "R15" if prefix == "R6" else "R6"
+    other = 'R15' if prefix == 'R6' else 'R6'
     candidates.append(obj_path_for_part(mesh_dir, other, part_name))
 
     for path in candidates:
@@ -399,8 +409,15 @@ def load_obj_mesh(mesh_dir: str, prefix: str, part_name: str,
 
 # Qt + VTK viewport player
 
+
 class AnimPreviewWidget(QWidget):
-    def __init__(self, rig_path: str, anim_path: str, mesh_dir: str = "R15AndR6Parts", parent=None):
+    def __init__(
+        self,
+        rig_path: str,
+        anim_path: str,
+        mesh_dir: str = 'R15AndR6Parts',
+        parent=None,
+    ):
         super().__init__(parent)
 
         self.plotter = QtInteractor(self)
@@ -411,9 +428,9 @@ class AnimPreviewWidget(QWidget):
 
         # AA + background + axes first
         try:
-            self.plotter.enable_anti_aliasing("ssaa")
+            self.plotter.enable_anti_aliasing('ssaa')
         except Exception:
-            self.plotter.enable_anti_aliasing("fxaa")
+            self.plotter.enable_anti_aliasing('fxaa')
 
         self.plotter.set_background((0.95, 0.95, 0.95))
         self.plotter.add_axes()
@@ -447,17 +464,17 @@ class AnimPreviewWidget(QWidget):
         self.keys = load_animation(anim_path)
 
         if not self.parts:
-            raise RuntimeError(
-                "Loaded 0 parts from rig. Wrong rig file or unexpected format.")
+            raise RuntimeError('Loaded 0 parts from rig. Wrong rig file or unexpected format.')
         if not self.keys:
             raise RuntimeError(
-                "Loaded 0 keyframes from animation. output.rbxmx must be a KeyframeSequence export.")
+                'Loaded 0 keyframes from animation. output.rbxmx must be a KeyframeSequence export.'
+            )
 
         # Actors
         self.actors_by_part_ref = {}
         for ref, p in self.parts.items():
             mesh = load_obj_mesh(mesh_dir, self.prefix, p.name, p.size)
-            is_hrp = (p.name.lower() == "humanoidrootpart")
+            is_hrp = p.name.lower() == 'humanoidrootpart'
             actor = self.plotter.add_mesh(
                 mesh,
                 opacity=0.5 if is_hrp else 1.0,
@@ -507,8 +524,7 @@ class AnimPreviewWidget(QWidget):
         k0, k1, alpha = sample_keys(self.keys, self.time)
 
         pose = {}
-        names = set(k0.pose_by_part_name.keys()) | set(
-            k1.pose_by_part_name.keys())
+        names = set(k0.pose_by_part_name.keys()) | set(k1.pose_by_part_name.keys())
         ident = vtk.vtkMatrix4x4()
         ident.Identity()
 
@@ -535,8 +551,7 @@ class AnimPreviewWidget(QWidget):
                     continue
 
                 T = pose.get(child.name, ident)
-                part1 = mat_mul(
-                    mat_mul(mat_mul(world[m.part0_ref], m.c0), T), mat_inv(m.c1))
+                part1 = mat_mul(mat_mul(mat_mul(world[m.part0_ref], m.c0), T), mat_inv(m.c1))
 
                 world[m.part1_ref] = part1
                 changed = True
@@ -562,13 +577,13 @@ class AnimPreviewWidget(QWidget):
         super().closeEvent(event)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     if len(sys.argv) < 3:
-        print("Usage: python animpreview.py <RIG.rbxmx> <ANIM.rbxmx>")
+        print('Usage: python animpreview.py <RIG.rbxmx> <ANIM.rbxmx>')
         sys.exit(2)
 
     app = QApplication(sys.argv)
-    w = AnimPreviewWidget(sys.argv[1], sys.argv[2], mesh_dir="R15AndR6Parts")
+    w = AnimPreviewWidget(sys.argv[1], sys.argv[2], mesh_dir='R15AndR6Parts')
     w.resize(1100, 800)
     w.show()
     sys.exit(app.exec())

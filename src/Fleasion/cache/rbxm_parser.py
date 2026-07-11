@@ -6,9 +6,9 @@ Based on the specification at http://dom.rojo.space/binary.html
 import struct
 import zlib
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional, Tuple
-import lz4.block
+from typing import Any, Dict, List, Optional, Tuple
 
+import lz4.block
 
 # Magic header for RBXM files
 RBXM_MAGIC = b'<roblox!'
@@ -18,6 +18,7 @@ RBXM_SIGNATURE = bytes([0x89, 0xFF, 0x0D, 0x0A, 0x1A, 0x0A])
 @dataclass
 class RbxmInstance:
     """Represents a Roblox instance."""
+
     class_name: str
     referent: int
     properties: Dict[str, Any] = field(default_factory=dict)
@@ -82,7 +83,7 @@ def read_string(data: bytes, offset: int) -> Tuple[str, int]:
     """Read a length-prefixed string."""
     length = struct.unpack_from('<I', data, offset)[0]
     offset += 4
-    value = data[offset:offset + length].decode('utf-8', errors='replace')
+    value = data[offset : offset + length].decode('utf-8', errors='replace')
     return value, offset + length
 
 
@@ -146,7 +147,7 @@ def parse_rbxm(data: bytes) -> Dict[int, RbxmInstance]:
 
     # Parse header
     offset = 8
-    signature = data[offset:offset + 6]
+    signature = data[offset : offset + 6]
     offset += 6
 
     version = struct.unpack_from('<H', data, offset)[0]
@@ -172,7 +173,7 @@ def parse_rbxm(data: bytes) -> Dict[int, RbxmInstance]:
             break
 
         # Read chunk header
-        chunk_name = data[offset:offset + 4].decode('ascii', errors='replace').rstrip('\x00')
+        chunk_name = data[offset : offset + 4].decode('ascii', errors='replace').rstrip('\x00')
         offset += 4
 
         compressed_size = struct.unpack_from('<I', data, offset)[0]
@@ -186,7 +187,7 @@ def parse_rbxm(data: bytes) -> Dict[int, RbxmInstance]:
 
         # Get chunk data
         if compressed_size == 0:
-            chunk_data = data[offset:offset + uncompressed_size]
+            chunk_data = data[offset : offset + uncompressed_size]
             offset += uncompressed_size
         else:
             chunk_data = decompress_chunk(data[offset:], compressed_size, uncompressed_size)
@@ -230,7 +231,7 @@ def _parse_inst_chunk(data: bytes, class_info: Dict, instances: Dict):
     offset += 4
 
     # Read referents (interleaved i32)
-    referents_data = data[offset:offset + instance_count * 4]
+    referents_data = data[offset : offset + instance_count * 4]
     referent_deltas = decode_interleaved_i32(referents_data, instance_count)
 
     # Convert deltas to absolute referents
@@ -363,10 +364,7 @@ def _parse_cframes(data: bytes, count: int) -> List[Dict]:
         y = positions_y[i] if i < len(positions_y) else 0.0
         z = positions_z[i] if i < len(positions_z) else 0.0
 
-        cframes.append({
-            'position': (x, y, z),
-            'rotation': rot
-        })
+        cframes.append({'position': (x, y, z), 'rotation': rot})
 
     return cframes
 

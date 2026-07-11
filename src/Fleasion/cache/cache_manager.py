@@ -2,11 +2,11 @@
 
 import gzip
 import hashlib
-import threading
 import json
+import threading
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from datetime import datetime
 from typing import Optional
 
 from ..utils import CONFIG_DIR, log_buffer
@@ -19,15 +19,18 @@ from .roblox_document import (
 # Use orjson if available (2-3x faster), fallback to json
 try:
     import orjson
+
     def json_dumps(obj, **kwargs):
         # orjson doesn't support indent parameter in the same way, but we can do it for pretty-print
         if kwargs.get('indent'):
             return orjson.dumps(obj, option=orjson.OPT_INDENT_2).decode('utf-8')
         return orjson.dumps(obj).decode('utf-8')
+
     def json_loads(data):
         return orjson.loads(data)
 except ImportError:
     import json
+
     json_dumps = json.dumps
     json_loads = json.loads
 
@@ -37,27 +40,79 @@ class CacheManager:
 
     # Asset types mapping
     ASSET_TYPES = {
-        1: 'Image', 2: 'TShirt', 3: 'Audio', 4: 'Mesh', 5: 'Lua',
-        6: 'HTML', 7: 'Text', 8: 'Hat', 9: 'Place', 10: 'Model',
-        11: 'Shirt', 12: 'Pants', 13: 'Decal', 16: 'Avatar', 17: 'Head',
-        18: 'Face', 19: 'Gear', 21: 'Badge', 22: 'GroupEmblem',
-        24: 'Animation', 25: 'Arms', 26: 'Legs', 27: 'Torso',
-        28: 'RightArm', 29: 'LeftArm', 30: 'LeftLeg', 31: 'RightLeg',
-        32: 'Package', 33: 'YouTubeVideo', 34: 'GamePass', 35: 'App',
-        37: 'Code', 38: 'Plugin', 39: 'SolidModel', 40: 'MeshPart',
-        41: 'HairAccessory', 42: 'FaceAccessory', 43: 'NeckAccessory',
-        44: 'ShoulderAccessory', 45: 'FrontAccessory', 46: 'BackAccessory',
-        47: 'WaistAccessory', 48: 'ClimbAnimation', 49: 'DeathAnimation',
-        50: 'FallAnimation', 51: 'IdleAnimation', 52: 'JumpAnimation',
-        53: 'RunAnimation', 54: 'SwimAnimation', 55: 'WalkAnimation',
-        56: 'PoseAnimation', 57: 'EarAccessory', 58: 'EyeAccessory',
-        59: 'LocalizationTableManifest', 61: 'EmoteAnimation', 62: 'Video',
-        63: 'TexturePack', 64: 'TShirtAccessory', 65: 'ShirtAccessory',
-        66: 'PantsAccessory', 67: 'JacketAccessory', 68: 'SweaterAccessory',
-        69: 'ShortsAccessory', 70: 'LeftShoeAccessory', 71: 'RightShoeAccessory',
-        72: 'DressSkirtAccessory', 73: 'FontFamily', 74: 'FontFace',
-        75: 'MeshHiddenSurfaceRemoval', 76: 'EyebrowAccessory',
-        77: 'EyelashAccessory', 78: 'MoodAnimation', 79: 'DynamicHead',
+        1: 'Image',
+        2: 'TShirt',
+        3: 'Audio',
+        4: 'Mesh',
+        5: 'Lua',
+        6: 'HTML',
+        7: 'Text',
+        8: 'Hat',
+        9: 'Place',
+        10: 'Model',
+        11: 'Shirt',
+        12: 'Pants',
+        13: 'Decal',
+        16: 'Avatar',
+        17: 'Head',
+        18: 'Face',
+        19: 'Gear',
+        21: 'Badge',
+        22: 'GroupEmblem',
+        24: 'Animation',
+        25: 'Arms',
+        26: 'Legs',
+        27: 'Torso',
+        28: 'RightArm',
+        29: 'LeftArm',
+        30: 'LeftLeg',
+        31: 'RightLeg',
+        32: 'Package',
+        33: 'YouTubeVideo',
+        34: 'GamePass',
+        35: 'App',
+        37: 'Code',
+        38: 'Plugin',
+        39: 'SolidModel',
+        40: 'MeshPart',
+        41: 'HairAccessory',
+        42: 'FaceAccessory',
+        43: 'NeckAccessory',
+        44: 'ShoulderAccessory',
+        45: 'FrontAccessory',
+        46: 'BackAccessory',
+        47: 'WaistAccessory',
+        48: 'ClimbAnimation',
+        49: 'DeathAnimation',
+        50: 'FallAnimation',
+        51: 'IdleAnimation',
+        52: 'JumpAnimation',
+        53: 'RunAnimation',
+        54: 'SwimAnimation',
+        55: 'WalkAnimation',
+        56: 'PoseAnimation',
+        57: 'EarAccessory',
+        58: 'EyeAccessory',
+        59: 'LocalizationTableManifest',
+        61: 'EmoteAnimation',
+        62: 'Video',
+        63: 'TexturePack',
+        64: 'TShirtAccessory',
+        65: 'ShirtAccessory',
+        66: 'PantsAccessory',
+        67: 'JacketAccessory',
+        68: 'SweaterAccessory',
+        69: 'ShortsAccessory',
+        70: 'LeftShoeAccessory',
+        71: 'RightShoeAccessory',
+        72: 'DressSkirtAccessory',
+        73: 'FontFamily',
+        74: 'FontFace',
+        75: 'MeshHiddenSurfaceRemoval',
+        76: 'EyebrowAccessory',
+        77: 'EyelashAccessory',
+        78: 'MoodAnimation',
+        79: 'DynamicHead',
         80: 'CodeSnippet',
     }
 
@@ -68,16 +123,16 @@ class CacheManager:
         self.index_file = self.cache_dir / 'index.json'
         self.config_manager = config_manager
         self._lock = threading.Lock()
-        
+
         # Cache scraper for asset downloads (optional, set by ProxyMaster)
         self._cache_scraper = None
-        
+
         # Debounced index writes: reduce disk I/O by batching writes
         # Instead of writing on every store_asset(), we schedule a write 500ms in the future
         # If another write comes in before 500ms, we cancel the pending one and reschedule
         self._index_dirty = False
         self._index_commit_timer = None
-        
+
         # LRU cache for asset reads (256 assets max ~50-100MB depending on size)
         # This drastically speeds up repeated lookups during preview, search, export operations
         self._asset_cache = {}
@@ -101,7 +156,10 @@ class CacheManager:
             try:
                 with self.index_file.open('r', encoding='utf-8') as f:
                     return json_loads(f.read())
-            except (ValueError, OSError):  # ValueError for orjson, JSONDecodeError for json
+            except (
+                ValueError,
+                OSError,
+            ):  # ValueError for orjson, JSONDecodeError for json
                 pass
         return {'assets': {}, 'version': '1.0'}
 
@@ -112,21 +170,21 @@ class CacheManager:
                 f.write(json_dumps(self.index, indent=2))
         except OSError as e:
             log_buffer.log('Scraper', f'Failed to save cache index: {e}')
-    
+
     def _schedule_index_commit(self):
         """Schedule index write with debouncing (500ms delay).
-        
+
         If _index_dirty is already True and a timer is pending, cancel it and reschedule.
         This reduces disk writes from 1000+ per scraping to ~20 when caching thousands of assets.
         """
         if self._index_commit_timer is not None:
             self._index_commit_timer.cancel()
-        
+
         self._index_dirty = True
         self._index_commit_timer = threading.Timer(0.5, self._flush_index)
         self._index_commit_timer.daemon = True
         self._index_commit_timer.start()
-    
+
     def _flush_index(self):
         """Internal method called by timer to actually write the index."""
         with self._lock:
@@ -184,7 +242,7 @@ class CacheManager:
     def _is_json_data(self, data: bytes) -> bool:
         """
         Quick check if binary data is valid JSON.
-        
+
         Returns:
             True if data is valid JSON, False otherwise
         """
@@ -204,7 +262,7 @@ class CacheManager:
                 text = data.decode(encoding)
                 json.loads(text)
                 return True
-            except (UnicodeDecodeError, json.JSONDecodeError):
+            except UnicodeDecodeError, json.JSONDecodeError:
                 continue
 
         return False
@@ -213,6 +271,7 @@ class CacheManager:
         """Return a display type override when the cached bytes identify better."""
         try:
             from . import mesh_processing
+
             if asset_type != 4 and mesh_processing.is_mesh_data(data):
                 return 'Mesh'
         except Exception:
@@ -235,15 +294,21 @@ class CacheManager:
         return (
             data.startswith(b'OggS')
             or data.startswith(b'ID3')
-            or data.startswith(b'\xFF\xFB')
-            or data.startswith(b'\xFF\xF3')
-            or data.startswith(b'\xFF\xF2')
+            or data.startswith(b'\xff\xfb')
+            or data.startswith(b'\xff\xf3')
+            or data.startswith(b'\xff\xf2')
             or (len(data) >= 12 and data.startswith(b'RIFF') and data[8:12] == b'WAVE')
             or data.startswith(b'fLaC')
         )
 
-    def store_asset(self, asset_id: str, asset_type: int, data: bytes,
-                   url: str = '', metadata: Optional[dict] = None) -> bool:
+    def store_asset(
+        self,
+        asset_id: str,
+        asset_type: int,
+        data: bytes,
+        url: str = '',
+        metadata: Optional[dict] = None,
+    ) -> bool:
         """
         Store an asset in the cache.
 
@@ -291,17 +356,17 @@ class CacheManager:
                     'cached_at': datetime.now().isoformat(),
                     'metadata': metadata or {},
                 }
-                
+
                 # Add detected_type if JSON was detected
                 if detected_type:
                     asset_entry['detected_type'] = detected_type
                     asset_entry['type_name'] = detected_type
-                
+
                 self.index['assets'][asset_key] = asset_entry
 
                 # Schedule debounced index write instead of immediate disk write
                 self._schedule_index_commit()
-            
+
             # Invalidate cache for this asset in case it was updated
             cache_key = f'{asset_type}_{asset_id}'
             with self._asset_cache_lock:
@@ -324,12 +389,12 @@ class CacheManager:
             Asset data or None if not found
         """
         cache_key = f'{asset_type}_{asset_id}'
-        
+
         # Check LRU cache first (avoids disk I/O for repeated reads)
         with self._asset_cache_lock:
             if cache_key in self._asset_cache:
                 return self._asset_cache[cache_key]
-        
+
         try:
             asset_path = self.get_asset_path(asset_id, asset_type)
             if not asset_path.exists():
@@ -343,7 +408,7 @@ class CacheManager:
                     data = f.read()
             else:
                 data = asset_path.read_bytes()
-            
+
             # Store in LRU cache with simple eviction (remove oldest when full)
             with self._asset_cache_lock:
                 if len(self._asset_cache) >= self._asset_cache_maxsize:
@@ -351,7 +416,7 @@ class CacheManager:
                     oldest_key = next(iter(self._asset_cache))
                     del self._asset_cache[oldest_key]
                 self._asset_cache[cache_key] = data
-            
+
             return data
 
         except Exception as e:
@@ -367,7 +432,7 @@ class CacheManager:
         """
         Store a detected asset type (e.g., 'Json' for unknown types that are actually JSON).
         This persists to the cache index and overrides the default type name.
-        
+
         Args:
             asset_id: Asset ID
             asset_type: Asset type ID
@@ -383,11 +448,13 @@ class CacheManager:
         except Exception as e:
             log_buffer.log('Scraper', f'Failed to set detected type for {asset_id}: {e}')
 
-    def get_type_name_for_asset(self, asset_id: str, asset_type: int, *, probe_payload: bool = True) -> str:
+    def get_type_name_for_asset(
+        self, asset_id: str, asset_type: int, *, probe_payload: bool = True
+    ) -> str:
         """Get the type name for an asset, considering detected type."""
         asset_key = f'{asset_type}_{asset_id}'
         asset_info = self.index['assets'].get(asset_key, {})
-        
+
         # Return detected type if available, otherwise use standard type name
         if 'detected_type' in asset_info:
             return asset_info['detected_type']
@@ -402,7 +469,7 @@ class CacheManager:
                 if detected_type:
                     self.set_detected_type(asset_id, asset_type, detected_type)
                     return detected_type
-        
+
         return self.get_asset_type_name(asset_type)
 
     def list_assets(self, asset_types: Optional[set[int]] = None) -> list[dict]:
@@ -421,12 +488,14 @@ class CacheManager:
         if asset_types is not None and len(asset_types) > 0:
             int_filters = {t for t in asset_types if isinstance(t, int)}
             str_filters = {t for t in asset_types if isinstance(t, str)}
+
             def _matches(a):
                 if int_filters and a['type'] in int_filters:
                     return True
                 if str_filters and a.get('detected_type') in str_filters:
                     return True
                 return False
+
             assets = [a for a in assets if _matches(a)]
 
         # Update type_name with detected_type if available (this makes detected types persistent in listings)
@@ -491,9 +560,14 @@ class CacheManager:
                 formats.insert(0, fmt)
         return formats
 
-    def export_asset(self, asset_id: str, asset_type: int,
-                    output_path: Optional[Path] = None, resolved_name: str = None,
-                    export_format: str = 'converted') -> Optional[Path]:
+    def export_asset(
+        self,
+        asset_id: str,
+        asset_type: int,
+        output_path: Optional[Path] = None,
+        resolved_name: str = None,
+        export_format: str = 'converted',
+    ) -> Optional[Path]:
         """
         Export an asset to the exports folder.
 
@@ -534,7 +608,9 @@ class CacheManager:
                     naming_options = self.config_manager.export_naming
                     if 'name' in naming_options and resolved_name:
                         # Sanitize resolved name
-                        sanitized_name = ''.join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in resolved_name)
+                        sanitized_name = ''.join(
+                            c if c.isalnum() or c in (' ', '-', '_') else '_' for c in resolved_name
+                        )
                         filename_parts.append(sanitized_name[:100])
                     if 'id' in naming_options and asset_id:
                         filename_parts.append(asset_id)
@@ -549,9 +625,13 @@ class CacheManager:
 
                 # Export based on format
                 if export_format == 'converted':
-                    document_format = get_default_roblox_document_export_format(data, asset_type=asset_type)
+                    document_format = get_default_roblox_document_export_format(
+                        data, asset_type=asset_type
+                    )
                     if document_format is not None:
-                        export_data, ext = export_roblox_document(data, document_format, asset_type=asset_type)
+                        export_data, ext = export_roblox_document(
+                            data, document_format, asset_type=asset_type
+                        )
                         output_path = export_type_dir / f'{filename}{ext}'
                         output_path.write_bytes(export_data)
                         return output_path
@@ -567,7 +647,9 @@ class CacheManager:
                     'converted_document_rbxmx',
                     'converted_document_rbxl',
                 }:
-                    export_data, ext = export_roblox_document(data, export_format, asset_type=asset_type)
+                    export_data, ext = export_roblox_document(
+                        data, export_format, asset_type=asset_type
+                    )
                     output_path = export_type_dir / f'{filename}{ext}'
                     output_path.write_bytes(export_data)
                     return output_path
@@ -588,14 +670,16 @@ class CacheManager:
                 # Converted export - convert to usable format
                 if export_format == 'converted_obj' and asset_type == 4:  # Mesh - convert to OBJ
                     from . import mesh_processing
+
                     try:
                         mesh_data = data
                         if data.startswith(b'\x1f\x8b'):
                             import gzip as gzip_module
+
                             mesh_data = gzip_module.decompress(data)
-                        
+
                         obj_data = mesh_processing.convert(mesh_data)
-                        
+
                         if obj_data:
                             output_path = export_type_dir / f'{filename}.obj'
                             output_path.write_text(obj_data, encoding='utf-8')
@@ -606,7 +690,11 @@ class CacheManager:
                     output_path = export_type_dir / f'{filename}.mesh'
 
                 elif export_format == 'converted_obj' and asset_type == 39:  # SolidModel -> obj
-                    from .tools.solidmodel_converter.converter import _export_obj_from_doc, deserialize_rbxm
+                    from .tools.solidmodel_converter.converter import (
+                        _export_obj_from_doc,
+                        deserialize_rbxm,
+                    )
+
                     try:
                         doc = deserialize_rbxm(data)
                         output_path = export_type_dir / f'{filename}.obj'
@@ -614,51 +702,66 @@ class CacheManager:
                         return output_path
                     except Exception as e:
                         from ..utils import log_buffer
+
                         log_buffer.log('Export', f'Failed to export SolidModel OBJ: {e}')
-                        pass # Fall through to binary
-                    
-                elif export_format == 'converted_rbxmx_model' and asset_type == 39:  # SolidModel -> rbxmx
-                    from .tools.solidmodel_converter.converter import deserialize_rbxm, _try_extract_child_data, _get_top_level_mesh_data, _inject_mesh_data
+                        pass  # Fall through to binary
+
+                elif (
+                    export_format == 'converted_rbxmx_model' and asset_type == 39
+                ):  # SolidModel -> rbxmx
+                    from .tools.solidmodel_converter.converter import (
+                        _get_top_level_mesh_data,
+                        _inject_mesh_data,
+                        _try_extract_child_data,
+                        deserialize_rbxm,
+                    )
                     from .tools.solidmodel_converter.rbxm.xml_writer import write_rbxmx
+
                     try:
                         decompressed = data
                         if data.startswith(b'\x1f\x8b'):
                             import gzip as gzip_module
+
                             decompressed = gzip_module.decompress(data)
-                            
+
                         doc = deserialize_rbxm(decompressed)
-                        
+
                         top_mesh_data = _get_top_level_mesh_data(doc)
                         child_doc = _try_extract_child_data(doc)
                         if child_doc is not None:
                             doc = child_doc
                             if top_mesh_data is not None:
                                 _inject_mesh_data(doc, top_mesh_data)
-                                
+
                         xml_bytes = write_rbxmx(doc)
                         output_path = export_type_dir / f'{filename}.rbxmx'
                         output_path.write_bytes(xml_bytes)
                         return output_path
                     except Exception as e:
                         from ..utils import log_buffer
+
                         log_buffer.log('Export', f'Failed to export SolidModel RBXMX: {e}')
                         pass
-                
+
                 elif export_format == 'converted_audio':  # Audio - export as OGG/MP3
                     # Check file signature to determine format
                     if data.startswith(b'OggS'):
                         output_path = export_type_dir / f'{filename}.ogg'
-                    elif data.startswith(b'ID3') or data.startswith(b'\xFF\xFB'):
+                    elif data.startswith(b'ID3') or data.startswith(b'\xff\xfb'):
                         output_path = export_type_dir / f'{filename}.mp3'
                     else:
                         output_path = export_type_dir / f'{filename}.ogg'  # Default to ogg
 
                 elif export_format == 'converted_png':  # Image, Decal - export as PNG
                     # Convert from KTX if needed (lazily-cached or pre-pipeline assets)
-                    _KTX_MAGIC = (b'\xabKTX 11\xbb\r\n\x1a\n', b'\xabKTX 20\xbb\r\n\x1a\n')
+                    _KTX_MAGIC = (
+                        b'\xabKTX 11\xbb\r\n\x1a\n',
+                        b'\xabKTX 20\xbb\r\n\x1a\n',
+                    )
                     export_data = data
                     if data[:12] in _KTX_MAGIC:
                         from .tools.ktx_to_png import convert as _ktx_convert
+
                         converted = _ktx_convert(data)
                         if converted:
                             export_data = converted
@@ -666,72 +769,93 @@ class CacheManager:
                     output_path.write_bytes(export_data)
                     return output_path
 
-                elif export_format == 'converted' and asset_type == 63:  # TexturePack - export as XML
+                elif (
+                    export_format == 'converted' and asset_type == 63
+                ):  # TexturePack - export as XML
                     # Decompress if needed
                     xml_data = data
                     if data.startswith(b'\x1f\x8b'):
                         import gzip as gzip_module
+
                         xml_data = gzip_module.decompress(data)
                     output_path = export_type_dir / f'{filename}.xml'
                     output_path.write_bytes(xml_data)
                     return output_path
 
-                elif export_format == 'converted_images' and asset_type == 63:  # TexturePack - extract individual textures
+                elif (
+                    export_format == 'converted_images' and asset_type == 63
+                ):  # TexturePack - extract individual textures
                     return self._export_texturepack(data, asset_id, export_type_dir, filename)
 
-                elif export_format == 'converted_rbxmx' and asset_type == 24:  # Animation - export as RBXMX
+                elif (
+                    export_format == 'converted_rbxmx' and asset_type == 24
+                ):  # Animation - export as RBXMX
                     try:
                         anim_data = data
                         # Decompress gzip wrapper if present
                         if anim_data.startswith(b'\x1f\x8b'):
                             import gzip as gzip_module
+
                             anim_data = gzip_module.decompress(anim_data)
                         # Convert binary .rbxm -> .rbxmx XML if needed
                         if anim_data.startswith(b'<roblox!'):
                             from ..utils.anim_converter import rbxm_to_rbxmx
+
                             anim_data = rbxm_to_rbxmx(anim_data)
                         # Convert CurveAnimation -> KeyframeSequence
                         if b'CurveAnimation' in anim_data:
                             from ..utils.r15_to_r6 import curve_anim_to_keyframe_xml
+
                             anim_data = curve_anim_to_keyframe_xml(anim_data)
                         output_path = export_type_dir / f'{filename}.rbxmx'
                         output_path.write_bytes(anim_data)
                         return output_path
                     except Exception as e:
                         from ..utils import log_buffer
+
                         log_buffer.log('Export', f'Failed to convert animation to RBXMX: {e}')
                         output_path = export_type_dir / f'{filename}.rbxmx'
 
-                elif export_format == 'converted_rbxmx_curve' and asset_type == 24:  # Animation - export as CurveAnimation RBXMX
+                elif (
+                    export_format == 'converted_rbxmx_curve' and asset_type == 24
+                ):  # Animation - export as CurveAnimation RBXMX
                     try:
                         anim_data = data
                         # Decompress gzip wrapper if present
                         if anim_data.startswith(b'\x1f\x8b'):
                             import gzip as gzip_module
+
                             anim_data = gzip_module.decompress(anim_data)
                         # Convert binary .rbxm -> .rbxmx XML if needed
                         if anim_data.startswith(b'<roblox!'):
                             from ..utils.anim_converter import rbxm_to_rbxmx
+
                             anim_data = rbxm_to_rbxmx(anim_data)
                         # If it's a KeyframeSequence, convert to CurveAnimation
                         if b'CurveAnimation' not in anim_data:
                             from ..utils.r15_to_r6 import keyframe_to_curve_anim
+
                             anim_data = keyframe_to_curve_anim(anim_data)
                         output_path = export_type_dir / f'{filename}.rbxmx'
                         output_path.write_bytes(anim_data)
                         return output_path
                     except Exception as e:
                         from ..utils import log_buffer
+
                         log_buffer.log('Export', f'Failed to convert animation to RBXMX: {e}')
                         output_path = export_type_dir / f'{filename}.rbxmx'
 
-                elif export_format == 'converted_json' and asset_type == 73:  # FontFamily - JSON metadata
+                elif (
+                    export_format == 'converted_json' and asset_type == 73
+                ):  # FontFamily - JSON metadata
                     # FontFamily assets are JSON files
                     output_path = export_type_dir / f'{filename}.json'
                     output_path.write_bytes(data)
                     return output_path
 
-                elif export_format == 'converted_font' and asset_type == 74:  # FontFace - actual font file
+                elif (
+                    export_format == 'converted_font' and asset_type == 74
+                ):  # FontFace - actual font file
                     ext = self._detect_font_extension(data)
                     output_path = export_type_dir / f'{filename}{ext}'
 
@@ -744,6 +868,7 @@ class CacheManager:
 
         except Exception as e:
             from ..utils import log_buffer
+
             log_buffer.log('Scraper', f'Failed to export asset {asset_id}: {e}')
             return None
 
@@ -759,7 +884,12 @@ class CacheManager:
             return '.png'
         elif data.startswith(b'OggS'):
             return '.ogg'
-        elif data.startswith(b'ID3') or data.startswith(b'\xFF\xFB') or data.startswith(b'\xFF\xF3') or data.startswith(b'\xFF\xF2'):
+        elif (
+            data.startswith(b'ID3')
+            or data.startswith(b'\xff\xfb')
+            or data.startswith(b'\xff\xf3')
+            or data.startswith(b'\xff\xf2')
+        ):
             return '.mp3'
         elif len(data) >= 12 and data.startswith(b'RIFF') and data[8:12] == b'WAVE':
             return '.wav'
@@ -775,7 +905,7 @@ class CacheManager:
                 return '.xml'
             else:
                 return '.rbxm' if is_binary else '.rbxmx'
-        elif data.startswith(b'\xABKTX'):
+        elif data.startswith(b'\xabKTX'):
             return '.ktx'
         elif data.startswith(b'\x1f\x8b'):
             return '.gz'
@@ -786,7 +916,7 @@ class CacheManager:
         """Detect font file extension from magic bytes."""
         if not data:
             return '.ttf'
-        
+
         # TrueType
         if data[:4] == b'\x00\x01\x00\x00':
             return '.ttf'
@@ -799,11 +929,12 @@ class CacheManager:
         # Alternative TrueType magic
         if data[:2] == b'\x01\x00':
             return '.ttf'
-        
+
         return '.ttf'  # Default to TTF for font types
 
-    def _export_texturepack(self, data: bytes, asset_id: str,
-                           export_type_dir: Path, base_filename: str) -> Optional[Path]:
+    def _export_texturepack(
+        self, data: bytes, asset_id: str, export_type_dir: Path, base_filename: str
+    ) -> Optional[Path]:
         """
         Export texture pack by extracting all textures to subfolders.
 
@@ -817,6 +948,7 @@ class CacheManager:
             Path to export directory or None on failure
         """
         import xml.etree.ElementTree as ET
+
         import requests
         import urllib3
 
@@ -827,14 +959,15 @@ class CacheManager:
 
         try:
             log_buffer.log('Export', f'Starting TexturePack export for {asset_id}')
-            
+
             # Decompress if gzip-compressed
             xml_data = data
             if data.startswith(b'\x1f\x8b'):
                 import gzip as gzip_module
+
                 xml_data = gzip_module.decompress(data)
                 log_buffer.log('Export', f'Decompressed gzip data, size: {len(xml_data)} bytes')
-            
+
             # Parse XML
             xml_text = xml_data.decode('utf-8', errors='replace')
             root = ET.fromstring(xml_text)
@@ -849,7 +982,7 @@ class CacheManager:
                     maps[elem.capitalize()] = node.text
 
             log_buffer.log('Export', f'Found {len(maps)} texture maps: {list(maps.keys())}')
-            
+
             if not maps:
                 log_buffer.log('Export', f'No texture maps found in texture pack {asset_id}')
                 return None
@@ -881,29 +1014,46 @@ class CacheManager:
                             cookie = self._cache_scraper._get_roblosecurity()
                             if cookie:
                                 extra['Cookie'] = f'.ROBLOSECURITY={cookie};'
-                            texture_data, _status = self._cache_scraper._fetch_asset_with_place_id_retry(
-                                str(map_id), extra_headers=extra or None,
+                            texture_data, _status = (
+                                self._cache_scraper._fetch_asset_with_place_id_retry(
+                                    str(map_id),
+                                    extra_headers=extra or None,
+                                )
                             )
                         else:
                             # Fallback: direct requests with cookie extraction
                             from urllib.parse import urlparse
+
                             api_url = f'https://assetdelivery.roblox.com/v1/asset/?id={map_id}'
                             headers = {'User-Agent': 'Roblox/WinInet'}
                             # Get cookie if available for private assets (use centralized function)
                             try:
                                 from ..utils.roblox_auth import get_roblosecurity
+
                                 cookie = get_roblosecurity()
                                 if cookie:
                                     headers['Cookie'] = f'.ROBLOSECURITY={cookie};'
                             except Exception:
                                 pass
-                            response = requests.get(api_url, headers=headers, timeout=15, allow_redirects=True, verify=False)
+                            response = requests.get(
+                                api_url,
+                                headers=headers,
+                                timeout=15,
+                                allow_redirects=True,
+                                verify=False,
+                            )
                             if response.status_code == 200 and response.content:
                                 texture_data = response.content
-                                log_buffer.log('Export', f'Successfully fetched {map_name} texture {map_id}, size: {len(texture_data)} bytes')
+                                log_buffer.log(
+                                    'Export',
+                                    f'Successfully fetched {map_name} texture {map_id}, size: {len(texture_data)} bytes',
+                                )
                             else:
-                                log_buffer.log('Export', f'API returned status {response.status_code} for {map_name} texture {map_id}')
-                        
+                                log_buffer.log(
+                                    'Export',
+                                    f'API returned status {response.status_code} for {map_name} texture {map_id}',
+                                )
+
                         if texture_data:
                             # Extract hash from CDN URL if available
                             # This is a fallback since we're fetching from API, not CDN
@@ -929,7 +1079,10 @@ class CacheManager:
                     exported_count += 1
                     log_buffer.log('Export', f'Saved {map_name} texture to {texture_path}')
                 except Exception as e:
-                    log_buffer.log('Export', f'Failed to write {map_name} texture to {texture_path}: {e}')
+                    log_buffer.log(
+                        'Export',
+                        f'Failed to write {map_name} texture to {texture_path}: {e}',
+                    )
                     continue
 
             if exported_count > 0:
@@ -941,6 +1094,7 @@ class CacheManager:
 
         except Exception as e:
             from ..utils import log_buffer
+
             log_buffer.log('Export', f'Failed to export texture pack {asset_id}: {e}')
             return None
 
@@ -975,7 +1129,7 @@ class CacheManager:
     def delete_assets_batch(self, assets: list[tuple[str, int]]) -> tuple[int, int]:
         """
         Delete multiple assets efficiently by batching index writes.
-        
+
         This is MUCH faster than calling delete_asset() multiple times because
         it only writes the index file ONCE instead of N times for N assets.
 
@@ -987,7 +1141,7 @@ class CacheManager:
         """
         deleted_count = 0
         failed_count = 0
-        
+
         try:
             # Delete all asset files first
             for asset_id, asset_type in assets:
@@ -999,26 +1153,26 @@ class CacheManager:
                 except Exception as e:
                     log_buffer.log('Scraper', f'Failed to delete asset file {asset_id}: {e}')
                     failed_count += 1
-            
+
             # Update index once for all deletions
             with self._lock:
                 for asset_id, asset_type in assets:
                     asset_key = f'{asset_type}_{asset_id}'
                     if asset_key in self.index['assets']:
                         del self.index['assets'][asset_key]
-                
+
                 # Write index ONLY ONCE after all deletions
                 if deleted_count > 0:
                     self._save_index()
-            
+
             # Invalidate LRU cache for deleted assets
             with self._asset_cache_lock:
                 for asset_id, asset_type in assets:
                     cache_key = f'{asset_type}_{asset_id}'
                     self._asset_cache.pop(cache_key, None)
-            
+
             return deleted_count, failed_count
-        
+
         except Exception as e:
             log_buffer.log('Scraper', f'Batch delete failed: {e}')
             return deleted_count, failed_count

@@ -24,10 +24,10 @@ class LogsWindow(QDialog):
         self.setWindowTitle('Logs')
         self.resize(600, 400)
         self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowMinimizeButtonHint |
-            Qt.WindowType.WindowMaximizeButtonHint |
-            Qt.WindowType.WindowCloseButtonHint
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
         )
 
         self._last_count = 0
@@ -38,6 +38,7 @@ class LogsWindow(QDialog):
     def _set_icon(self):
         if icon_path := get_icon_path():
             from PyQt6.QtGui import QIcon
+
             self.setWindowIcon(QIcon(str(icon_path)))
 
     def _setup_ui(self):
@@ -52,14 +53,14 @@ class LogsWindow(QDialog):
         bottom = QHBoxLayout()
         bottom.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        copy_btn = QPushButton("Copy All")
+        copy_btn = QPushButton('Copy All')
         copy_btn.setFixedSize(80, 22)
         copy_btn.clicked.connect(self._copy_all)
         bottom.addWidget(copy_btn)
 
         bottom.addSpacing(6)
 
-        open_folder_btn = QPushButton("Open Log Folder")
+        open_folder_btn = QPushButton('Open Log Folder')
         open_folder_btn.setFixedSize(110, 22)
         open_folder_btn.clicked.connect(lambda: open_folder(LOGS_DIR))
         bottom.addWidget(open_folder_btn)
@@ -67,7 +68,7 @@ class LogsWindow(QDialog):
         bottom.addSpacing(6)
 
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Search…")
+        self._search_input.setPlaceholderText('Search…')
         self._search_input.setFixedHeight(22)
         self._search_input.setClearButtonEnabled(True)
         self._search_input.textChanged.connect(self._on_search)
@@ -84,11 +85,11 @@ class LogsWindow(QDialog):
         self.setLayout(layout)
 
         # Ctrl+F focuses the search bar
-        shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        shortcut = QShortcut(QKeySequence('Ctrl+F'), self)
         shortcut.activated.connect(self._focus_search)
 
         # Escape clears + unfocuses search
-        esc = QShortcut(QKeySequence("Escape"), self._search_input)
+        esc = QShortcut(QKeySequence('Escape'), self._search_input)
         esc.activated.connect(self._clear_search)
 
     def _get_monospace_font(self):
@@ -112,8 +113,8 @@ class LogsWindow(QDialog):
 
         if text:
             highlight_fmt = QTextCharFormat()
-            highlight_fmt.setBackground(QColor("#f5c518"))
-            highlight_fmt.setForeground(QColor("#000000"))
+            highlight_fmt.setBackground(QColor('#f5c518'))
+            highlight_fmt.setForeground(QColor('#000000'))
 
             doc = self.text_edit.document()
             cursor = doc.find(text)
@@ -160,7 +161,7 @@ class LogsWindow(QDialog):
             scrollbar = self.text_edit.verticalScrollBar()
             was_at_bottom = scrollbar.value() >= scrollbar.maximum() - 4
 
-            new_text = '\n'.join(logs[self._last_count:])
+            new_text = '\n'.join(logs[self._last_count :])
             prefix = '\n' if self._last_count > 0 else ''
 
             cursor = QTextCursor(self.text_edit.document())

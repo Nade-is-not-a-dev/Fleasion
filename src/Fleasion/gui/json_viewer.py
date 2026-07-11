@@ -123,6 +123,7 @@ class AssetFetcherThread(QThread):
 
     def _get_roblosecurity(self) -> str | None:
         from ..utils.roblox_auth import get_roblosecurity
+
         return get_roblosecurity()
 
     def run(self):
@@ -130,22 +131,32 @@ class AssetFetcherThread(QThread):
             val = self._asset
             scraper = self.__class__._scraper
 
-            if isinstance(val, int) or (isinstance(val, str) and str(val).strip().lstrip('-').isdigit()):
+            if isinstance(val, int) or (
+                isinstance(val, str) and str(val).strip().lstrip('-').isdigit()
+            ):
                 cookie = self._get_roblosecurity()
-                extra = {'Cookie': f'.ROBLOSECURITY={cookie};' } if cookie else None
+                extra = {'Cookie': f'.ROBLOSECURITY={cookie};'} if cookie else None
                 status = None
 
                 if scraper is not None:
                     data, status = scraper._fetch_asset_with_place_id_retry(
-                        str(val), extra_headers=extra,
+                        str(val),
+                        extra_headers=extra,
                     )
                 else:
                     import requests as _req
-                    headers = {'User-Agent': 'Roblox/WinInet', 'Accept-Encoding': 'gzip, deflate'}
+
+                    headers = {
+                        'User-Agent': 'Roblox/WinInet',
+                        'Accept-Encoding': 'gzip, deflate',
+                    }
                     if extra:
                         headers.update(extra)
-                    r = _req.get(f'https://assetdelivery.roblox.com/v1/asset/?id={val}',
-                                 headers=headers, timeout=15)
+                    r = _req.get(
+                        f'https://assetdelivery.roblox.com/v1/asset/?id={val}',
+                        headers=headers,
+                        timeout=15,
+                    )
                     status = r.status_code
                     data = r.content if r.status_code == 200 else None
                     # Attempt place-ID retry on 403 via inline logic
@@ -153,8 +164,7 @@ class AssetFetcherThread(QThread):
                         try:
                             info_r = _req.get(
                                 f'https://develop.roblox.com/v1/assets?assetIds={val}',
-                                headers={'Accept': 'application/json',
-                                         **(extra or {})},
+                                headers={'Accept': 'application/json', **(extra or {})},
                                 timeout=10,
                             )
                             if info_r.status_code == 200:
@@ -170,21 +180,31 @@ class AssetFetcherThread(QThread):
                                             CREATOR_GAME_PAGE_LIMITS,
                                             creator_game_base_paths,
                                         )
+
                                         seen_pids = set()
                                         attempted_paths = set()
                                         for limit in CREATOR_GAME_PAGE_LIMITS:
                                             found_before_limit = len(seen_pids)
-                                            max_pages = max(1, (CREATOR_GAME_MAX_SCAN + limit - 1) // limit)
-                                            for g_path in creator_game_base_paths(cid, ctype, limit):
+                                            max_pages = max(
+                                                1,
+                                                (CREATOR_GAME_MAX_SCAN + limit - 1) // limit,
+                                            )
+                                            for g_path in creator_game_base_paths(
+                                                cid, ctype, limit
+                                            ):
                                                 if g_path in attempted_paths:
                                                     continue
                                                 attempted_paths.add(g_path)
                                                 cursor = ''
                                                 for _page in range(max_pages):
-                                                    path = g_path + (f'&cursor={cursor}' if cursor else '')
-                                                    g_r = _req.get(f'https://games.roblox.com{path}',
-                                                                   headers={'Accept': 'application/json'},
-                                                                   timeout=10)
+                                                    path = g_path + (
+                                                        f'&cursor={cursor}' if cursor else ''
+                                                    )
+                                                    g_r = _req.get(
+                                                        f'https://games.roblox.com{path}',
+                                                        headers={'Accept': 'application/json'},
+                                                        timeout=10,
+                                                    )
                                                     if g_r.status_code != 200:
                                                         break
                                                     resp_json = g_r.json()
@@ -196,10 +216,15 @@ class AssetFetcherThread(QThread):
                                                             if pid in seen_pids:
                                                                 continue
                                                             seen_pids.add(pid)
-                                                            retry_h = {**headers, 'Roblox-Place-Id': str(pid)}
+                                                            retry_h = {
+                                                                **headers,
+                                                                'Roblox-Place-Id': str(pid),
+                                                            }
                                                             r2 = _req.get(
                                                                 f'https://assetdelivery.roblox.com/v1/asset/?id={val}',
-                                                                headers=retry_h, timeout=15)
+                                                                headers=retry_h,
+                                                                timeout=15,
+                                                            )
                                                             status = r2.status_code
                                                             if r2.status_code == 200 and r2.content:
                                                                 data = r2.content
@@ -229,6 +254,7 @@ class AssetFetcherThread(QThread):
 
             elif isinstance(val, str) and (val.startswith('http://') or val.startswith('https://')):
                 from urllib.parse import urlparse as _up
+
                 parsed = _up(val)
                 hostname = (parsed.hostname or '').lower()
                 path = parsed.path + ('?' + parsed.query if parsed.query else '')
@@ -241,7 +267,11 @@ class AssetFetcherThread(QThread):
                     data = scraper._https_get(hostname, path, extra_headers=extra)
                 else:
                     import requests as _req
-                    headers = {'User-Agent': 'Roblox/WinInet', 'Accept-Encoding': 'gzip, deflate'}
+
+                    headers = {
+                        'User-Agent': 'Roblox/WinInet',
+                        'Accept-Encoding': 'gzip, deflate',
+                    }
                     if extra:
                         headers.update(extra)
                     r = _req.get(val, headers=headers, timeout=15)
@@ -352,7 +382,11 @@ class SolidModelLoaderThread(QThread):
         try:
             import tempfile
             from pathlib import Path
-            from ..cache.tools.solidmodel_converter.converter import deserialize_rbxm, _export_obj_from_doc
+
+            from ..cache.tools.solidmodel_converter.converter import (
+                _export_obj_from_doc,
+                deserialize_rbxm,
+            )
 
             decompressed = self.data
             if self.data.startswith(b'\x1f\x8b'):
@@ -389,7 +423,12 @@ class JsonTreeViewer(QDialog):
     """JSON tree viewer dialog."""
 
     def __init__(
-        self, parent, data, filename: str, on_import_ids, on_import_replacement,
+        self,
+        parent,
+        data,
+        filename: str,
+        on_import_ids,
+        on_import_replacement,
         config_manager=None,
     ):
         super().__init__(parent)
@@ -399,10 +438,10 @@ class JsonTreeViewer(QDialog):
 
         # Set window flags to allow minimize/maximize
         self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowMinimizeButtonHint |
-            Qt.WindowType.WindowMaximizeButtonHint |
-            Qt.WindowType.WindowCloseButtonHint
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
         )
 
         self.data = data
@@ -547,7 +586,9 @@ class JsonTreeViewer(QDialog):
         btn_layout.addSpacing(8)
 
         self.selection_label = QLabel(f'Selected: {format_count(0, "value")}')
-        self.selection_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.selection_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         btn_layout.addWidget(self.selection_label)
 
         layout.addLayout(btn_layout)
@@ -588,13 +629,9 @@ class JsonTreeViewer(QDialog):
         try:
             self.tree.clear()
             if isinstance(self.data, (dict, list)):
-                items = (
-                    self.data.items() if isinstance(self.data, dict) else enumerate(self.data)
-                )
+                items = self.data.items() if isinstance(self.data, dict) else enumerate(self.data)
                 for k, v in items:
-                    self._add_node(
-                        self.tree, f'[{k}]' if isinstance(self.data, list) else k, v
-                    )
+                    self._add_node(self.tree, f'[{k}]' if isinstance(self.data, list) else k, v)
             else:
                 self._add_node(self.tree, '', self.data)
         finally:
@@ -650,7 +687,7 @@ class JsonTreeViewer(QDialog):
             # Try to parse as integer first
             try:
                 values.append(int(val))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 # Check if it's a link or file path
                 if self._is_link_or_path(val):
                     values.append(val)
@@ -674,10 +711,14 @@ class JsonTreeViewer(QDialog):
     def _create_preview_panel(self) -> QWidget:
         """Create the right-side preview panel (mirrors cache_viewer's panel)."""
         from ..cache.animation_viewer import AnimationViewerPanel
-        from ..cache.audio_player import AudioPlayerWidget  # noqa: F401 - used dynamically
+        from ..cache.audio_player import (
+            AudioPlayerWidget,  # noqa: F401 - used dynamically
+        )
         from ..cache.cache_json_viewer import CacheJsonViewer
+        from ..cache.font_viewer import (
+            FontViewerWidget,  # noqa: F401 - used dynamically
+        )
         from ..cache.obj_viewer import ObjViewerPanel
-        from ..cache.font_viewer import FontViewerWidget  # noqa: F401 - used dynamically
 
         preview_widget = QWidget()
         preview_layout = QVBoxLayout()
@@ -885,7 +926,11 @@ class JsonTreeViewer(QDialog):
         # Audio
         if working[:4] == b'OggS':
             return 'audio'
-        if working[:3] == b'ID3' or working[:2] in (b'\xff\xfb', b'\xff\xf3', b'\xff\xf2'):
+        if working[:3] == b'ID3' or working[:2] in (
+            b'\xff\xfb',
+            b'\xff\xf3',
+            b'\xff\xf2',
+        ):
             return 'audio'
 
         # Fonts (TrueType/OpenType)
@@ -911,6 +956,7 @@ class JsonTreeViewer(QDialog):
             # Check for texturepack XML (has color/normal/metalness/roughness/emissive elements)
             try:
                 import xml.etree.ElementTree as ET
+
                 root = ET.fromstring(working)
                 tp_elems = ['color', 'normal', 'metalness', 'roughness', 'emissive']
                 if any(root.find(e) is not None for e in tp_elems):
@@ -924,6 +970,7 @@ class JsonTreeViewer(QDialog):
             stripped = working.lstrip()
             if stripped[:1] in (b'{', b'['):
                 import json
+
                 json.loads(working.decode('utf-8'))
                 return 'json'
         except Exception:
@@ -956,7 +1003,8 @@ class JsonTreeViewer(QDialog):
         if container_h < 100:
             container_h = 400
         scaled = pixmap.scaled(
-            container_w, container_h,
+            container_w,
+            container_h,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
@@ -1002,6 +1050,7 @@ class JsonTreeViewer(QDialog):
             # Install global event filter to catch Space for play/pause while audio preview is active
             try:
                 from PyQt6.QtWidgets import QApplication
+
                 QApplication.instance().installEventFilter(self)
                 self._audio_key_filter_installed = True
             except Exception:
@@ -1022,19 +1071,19 @@ class JsonTreeViewer(QDialog):
 
         try:
             font_viewer = FontViewerWidget(data, self)
-            
+
             # Clear previous font widgets
             while self.font_container_layout.count():
                 child = self.font_container_layout.takeAt(0)
                 if child.widget():
                     child.widget().deleteLater()
-            
+
             # Add new font viewer
             self.font_container_layout.addWidget(font_viewer)
             self._hide_loading()
             self.font_wrapper.show()
             self.stop_preview_btn.show()
-            
+
         except Exception as e:
             self._show_text_preview(f'Font error: {e}')
 
@@ -1061,6 +1110,7 @@ class JsonTreeViewer(QDialog):
             if text.strip().startswith('<'):
                 try:
                     import xml.dom.minidom
+
                     dom = xml.dom.minidom.parseString(decompressed)
                     pretty = dom.toprettyxml(indent='  ')
                     lines = [ln for ln in pretty.split('\n') if ln.strip()]
@@ -1079,6 +1129,7 @@ class JsonTreeViewer(QDialog):
             if data[:2] == b'\x1f\x8b':
                 working = gzip_module.decompress(data)
             import json
+
             parsed = json.loads(working.decode('utf-8'))
             self.json_viewer.load_json(parsed)
             self._hide_loading()
@@ -1090,7 +1141,9 @@ class JsonTreeViewer(QDialog):
     def _preview_rbxm(self, data: bytes, title_prefix: str = 'RBXM/RBXMX structure'):
         """Preview raw RBXM/RBXMX structure in the shared RBXM viewer."""
         try:
-            asset_label = '' if self._previewing_value is None else str(self._previewing_value).strip()
+            asset_label = (
+                '' if self._previewing_value is None else str(self._previewing_value).strip()
+            )
             self.rbxm_viewer.load_bytes(data, asset_label=asset_label)
             self._hide_loading()
             self.rbxm_viewer.show()
@@ -1098,7 +1151,9 @@ class JsonTreeViewer(QDialog):
             display = str(self._previewing_value)
             if len(display) > 60:
                 display = display[:57] + '...'
-            self.preview_title_label.setText(f'{title_prefix}: {display}' if display else title_prefix)
+            self.preview_title_label.setText(
+                f'{title_prefix}: {display}' if display else title_prefix
+            )
         except Exception as e:
             self._preview_hex(data, reason=f'RBXM/RBXMX structure parse failed: {e}')
 
@@ -1110,8 +1165,8 @@ class JsonTreeViewer(QDialog):
             lines.append(f'Why is this a Hex Dump?: {reason}')
         lines.append(f'\nFirst {preview_size} bytes (hex dump):\n')
         for i in range(0, preview_size, 16):
-            hex_part = ' '.join(f'{b:02x}' for b in data[i:i + 16])
-            ascii_part = ''.join(chr(b) if 32 <= b < 127 else '.' for b in data[i:i + 16])
+            hex_part = ' '.join(f'{b:02x}' for b in data[i : i + 16])
+            ascii_part = ''.join(chr(b) if 32 <= b < 127 else '.' for b in data[i : i + 16])
             lines.append(f'{i:08x}  {hex_part:<48}  {ascii_part}')
         if len(data) > preview_size:
             lines.append(f'\n... ({len(data) - preview_size} more bytes)')
@@ -1186,7 +1241,9 @@ class JsonTreeViewer(QDialog):
 
                 img_label = QLabel('Loading...')
                 img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                img_label.setStyleSheet('background-color: palette(base); padding: 10px; min-height: 100px;')
+                img_label.setStyleSheet(
+                    'background-color: palette(base); padding: 10px; min-height: 100px;'
+                )
                 img_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 img_label.setProperty('map_name', map_name)
                 img_label.setProperty('map_id', map_id)
@@ -1207,7 +1264,9 @@ class JsonTreeViewer(QDialog):
             for map_name, map_id in maps.items():
                 fetcher = AssetFetcherThread(map_id)
                 fetcher.data_ready.connect(
-                    lambda d, mn=map_name, mid=map_id: self._on_texturepack_texture_fetched(mn, mid, d)
+                    lambda d, mn=map_name, mid=map_id: self._on_texturepack_texture_fetched(
+                        mn, mid, d
+                    )
                 )
                 fetcher.error.connect(
                     lambda e, mn=map_name: self._on_texturepack_texture_error(mn, e)
@@ -1259,7 +1318,9 @@ class JsonTreeViewer(QDialog):
                 image = image.resize((new_width, new_height), Image.Resampling.NEAREST)
 
             qimage = QImage(
-                image.tobytes(), image.width, image.height,
+                image.tobytes(),
+                image.width,
+                image.height,
                 QImage.Format.Format_RGBA8888,
             )
             pixmap = QPixmap.fromImage(qimage)
@@ -1271,7 +1332,9 @@ class JsonTreeViewer(QDialog):
                 container_width = 400
 
             if pixmap.width() > container_width:
-                scaled = pixmap.scaledToWidth(container_width, Qt.TransformationMode.SmoothTransformation)
+                scaled = pixmap.scaledToWidth(
+                    container_width, Qt.TransformationMode.SmoothTransformation
+                )
             else:
                 scaled = pixmap
 
@@ -1421,8 +1484,13 @@ class JsonTreeViewer(QDialog):
         self._stop_preview()
 
     def _stop_all_loaders(self):
-        for loader in (self._asset_fetcher, self._image_loader, self._mesh_loader,
-                       self._animation_loader, self._solidmodel_loader):
+        for loader in (
+            self._asset_fetcher,
+            self._image_loader,
+            self._mesh_loader,
+            self._animation_loader,
+            self._solidmodel_loader,
+        ):
             if loader is not None:
                 try:
                     loader.stop()
@@ -1454,6 +1522,7 @@ class JsonTreeViewer(QDialog):
         """Global event filter to catch space key and toggle audio play/pause."""
         try:
             from PyQt6.QtCore import QEvent
+
             if event.type() == QEvent.Type.KeyPress:
                 # Space toggles play/pause when audio preview is active
                 if event.key() == Qt.Key.Key_Space:
@@ -1473,6 +1542,7 @@ class JsonTreeViewer(QDialog):
         try:
             if self._audio_key_filter_installed:
                 from PyQt6.QtWidgets import QApplication
+
                 QApplication.instance().removeEventFilter(self)
                 self._audio_key_filter_installed = False
         except Exception:
@@ -1645,7 +1715,9 @@ class JsonTreeViewer(QDialog):
 
     def _show_replacer_notification(self, title: str, message: str):
         """Show the replacer success popup unless it is disabled in settings."""
-        if self.config_manager is not None and not getattr(self.config_manager, 'show_replacer_notifications', True):
+        if self.config_manager is not None and not getattr(
+            self.config_manager, 'show_replacer_notifications', True
+        ):
             return
 
         dialog = QMessageBox(self)
@@ -1661,7 +1733,9 @@ class JsonTreeViewer(QDialog):
         dialog.exec()
 
     def _maybe_close_after_replace(self):
-        if self.config_manager is None or getattr(self.config_manager, 'close_viewer_on_replace', True):
+        if self.config_manager is None or getattr(
+            self.config_manager, 'close_viewer_on_replace', True
+        ):
             self.close()
 
     def _import_as_replace_ids(self):
@@ -1677,13 +1751,17 @@ class JsonTreeViewer(QDialog):
             )
             self._maybe_close_after_replace()
         else:
-            QMessageBox.information(self, 'Info', 'No valid values selected (numeric or links/paths)')
+            QMessageBox.information(
+                self, 'Info', 'No valid values selected (numeric or links/paths)'
+            )
 
     def _import_as_replacement(self):
         """Import selected value as replacement ID."""
         vals = self._get_selected_values()
         if not vals:
-            QMessageBox.information(self, 'Info', 'No valid values selected (numeric or links/paths)')
+            QMessageBox.information(
+                self, 'Info', 'No valid values selected (numeric or links/paths)'
+            )
             return
         if len(vals) > 1:
             reply = QMessageBox.question(

@@ -6,8 +6,8 @@ import webbrowser
 
 import requests
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
-from PyQt6.QtWidgets import QDialog, QLabel, QHBoxLayout, QVBoxLayout, QPushButton
 from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from .metadata import APP_VERSION
 
@@ -43,7 +43,9 @@ def _show_update_dialog(tag: str, html_url: str) -> None:
 
     _top = QApplication.topLevelWidgets()
     parent = next((w for w in _top if w.isVisible()), None)
-    _on_top = any(w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) for w in _top)
+    _on_top = any(
+        w.isVisible() and bool(w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) for w in _top
+    )
     dialog = QDialog(parent)
     if _on_top:
         dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
