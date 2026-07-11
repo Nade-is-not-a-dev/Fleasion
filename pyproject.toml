@@ -7,7 +7,7 @@ name = 'Fleasion'
 version = '2.2.1'
 description = 'Roblox asset interceptor and replacer with PyQt6 GUI'
 readme = 'README.md'
-requires-python = '>=3.12'
+requires-python = '>=3.14'
 dependencies = [
     'cryptography>=42.0.0',
     'certifi>=2024.7.4',
@@ -32,13 +32,6 @@ dependencies = [
     "browser-cookie3>=0.20.1; platform_system == 'Darwin' or platform_system == 'Linux'",
     "colorama>=0.4.6",
 ]
-
-# Optional / removed:
-# mitmproxy - replaced by custom asyncio proxy (proxy/server.py)
-#   Reason: mitmproxy local: mode uses WinDivert (breaks VPNs, adds overhead on
-#   ALL Roblox traffic). Our custom proxy uses WinINet PAC file - only routes
-#   assetdelivery.roblox.com and Roblox CDN hosts through the proxy, everything
-#   else goes DIRECT. Compatible with VPNs (loopback is never VPN-routed).
 
 [project.scripts]
 fleasion = 'fleasion:main'
