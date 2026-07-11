@@ -41,7 +41,8 @@ dependencies = [
 #   else goes DIRECT. Compatible with VPNs (loopback is never VPN-routed).
 
 [project.scripts]
-Fleasion = 'fleasion:main'
+fleasion = 'fleasion:main'
+app = 'fleasion:main'
 build = 'fleasion.scripts.build:main'
 
 [dependency-groups]
