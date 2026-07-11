@@ -154,15 +154,16 @@ def _run_pyinstaller_spec(spec_path: str, *, env: dict[str, str] | None = None) 
     build_env = os.environ.copy()
     if env:
         build_env.update(env)
+    command = [
+        sys.executable,
+        '-m',
+        'fleasion.scripts._pyinstaller',
+    ]
+    if os.environ.get('FLEASION_CLEAN_BUILD') == '1':
+        command.append('--clean')
+    command.extend(['--noconfirm', spec_path])
     subprocess.run(
-        [
-            sys.executable,
-            '-m',
-            'PyInstaller',
-            '--clean',
-            '--noconfirm',
-            spec_path,
-        ],
+        command,
         check=True,
         env=build_env,
     )

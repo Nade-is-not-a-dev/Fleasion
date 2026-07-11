@@ -168,11 +168,11 @@ def test_macos_build_bundles_arch_specific_proxy_helpers():
     assert 'HELPER_ARM64_EXEC_NAME="${HELPER_EXEC_NAME}-arm64"' in script
     assert 'HELPER_X86_EXEC_NAME="${HELPER_EXEC_NAME}-x86_64"' in script
     assert (
-        'MACOS_TARGET_ARCH="$target_arch" macos_uv run --python "$macos_python_path" build'
+        'MACOS_TARGET_ARCH="$target_arch" macos_uv run --python "$macos_python_path" build --clean'
         in script
     )
     assert (
-        'x86_uv run --python "$x86_python_path" build'
+        'x86_uv run --python "$x86_python_path" build --clean'
         in script
     )
     assert 'FleasionDarwinProxyHelper.spec' in spec
