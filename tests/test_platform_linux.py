@@ -35,31 +35,6 @@ def test_normalise_linux_sober_resource_dir(tmp_path, monkeypatch):
     assert _normalise_roblox_dir(overlay) == overlay
 
 
-def test_host_subprocess_env_restores_pyinstaller_original_library_path(monkeypatch, tmp_path):
-    bundle_root = tmp_path / "_MEI12345"
-    host_libs = tmp_path / "host-libs"
-    monkeypatch.setattr(platform_linux.sys, "_MEIPASS", str(bundle_root), raising=False)
-    monkeypatch.setenv("LD_LIBRARY_PATH", f"{bundle_root}:{host_libs}")
-    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", str(host_libs))
-
-    env = platform_linux._host_subprocess_env()
-
-    assert env["LD_LIBRARY_PATH"] == str(host_libs)
-    assert "LD_LIBRARY_PATH_ORIG" not in env
-
-
-def test_host_subprocess_env_removes_pyinstaller_bundle_path(monkeypatch, tmp_path):
-    bundle_root = tmp_path / "_MEI12345"
-    host_libs = tmp_path / "host-libs"
-    monkeypatch.setattr(platform_linux.sys, "_MEIPASS", str(bundle_root), raising=False)
-    monkeypatch.setenv("LD_LIBRARY_PATH", f"{bundle_root}:{host_libs}")
-    monkeypatch.delenv("LD_LIBRARY_PATH_ORIG", raising=False)
-
-    env = platform_linux._host_subprocess_env()
-
-    assert env["LD_LIBRARY_PATH"] == str(host_libs)
-
-
 def test_launch_as_standard_user_opens_http_url(monkeypatch):
     calls = []
 

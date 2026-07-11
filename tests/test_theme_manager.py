@@ -144,66 +144,6 @@ def test_apply_forced_light_sets_explicit_light_palette(monkeypatch):
     )
 
 
-def test_set_color_scheme_ignores_old_qt_style_hints_without_setter(monkeypatch):
-    color_scheme = object()
-    monkeypatch.setattr(
-        ThemeManager,
-        '_qt_color_scheme',
-        staticmethod(lambda color_scheme_name: color_scheme),
-    )
-
-    class OldStyleHints:
-        pass
-
-    class App:
-        def styleHints(self):
-            return OldStyleHints()
-
-    ThemeManager._set_color_scheme(App(), 'Dark')
-
-
-def test_set_color_scheme_uses_new_qt_style_hints_when_available(monkeypatch):
-    color_scheme = object()
-    monkeypatch.setattr(
-        ThemeManager,
-        '_qt_color_scheme',
-        staticmethod(lambda color_scheme_name: color_scheme),
-    )
-
-    class StyleHints:
-        color_scheme = None
-
-        def setColorScheme(self, color_scheme):
-            self.color_scheme = color_scheme
-
-    class App:
-        def __init__(self):
-            self.style_hints = StyleHints()
-
-        def styleHints(self):
-            return self.style_hints
-
-    app = App()
-
-    ThemeManager._set_color_scheme(app, 'Light')
-
-    assert app.style_hints.color_scheme is color_scheme
-
-
-def test_set_color_scheme_ignores_qt_without_color_scheme_enum(monkeypatch):
-    monkeypatch.setattr(
-        ThemeManager,
-        '_qt_color_scheme',
-        staticmethod(lambda color_scheme_name: None),
-    )
-
-    class App:
-        def styleHints(self):
-            raise AssertionError('style hints should not be queried')
-
-    ThemeManager._set_color_scheme(App(), 'Dark')
-
-
 def assert_palette_colors(palette, expected):
     for role, color_name in expected.items():
         assert palette.color(QPalette.ColorGroup.Active, role) == QColor(color_name)

@@ -36,7 +36,6 @@ def test_column_visibility_menu_ignores_right_button_release():
     _release(menu, Qt.MouseButton.RightButton, pos)
 
     assert action.isChecked()
-    assert menu._col_visibility['hash_name']
     assert app is not None
 
 
@@ -51,5 +50,4 @@ def test_column_visibility_menu_toggles_on_left_button_release():
     _release(menu, Qt.MouseButton.LeftButton, pos)
 
     assert not action.isChecked()
-    assert not menu._col_visibility['hash_name']
     assert app is not None

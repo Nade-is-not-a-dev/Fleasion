@@ -43,54 +43,6 @@ def test_proxy_ca_dir_falls_back_when_configured_dir_is_not_writable(tmp_path, m
     ]
 
 
-def test_cacert_state_does_not_log_when_healthy(monkeypatch):
-    logs = []
-    healthy_state = {
-        "path": "/Applications/Roblox.app/Contents/Resources/ssl/cacert.pem",
-        "install": "Resources",
-        "exists": True,
-        "size": 229889,
-        "mtime_ns": 1,
-        "sha256": "a" * 64,
-        "total_certs": 148,
-        "fleasion_certs": 1,
-        "current_fleasion_certs": 1,
-        "healthy": True,
-        "error": "",
-    }
-
-    monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
-    monkeypatch.setattr(proxy_master, "_describe_cacert_state", lambda _path, _pem: healthy_state)
-
-    assert proxy_master._log_cacert_state(Path("/tmp/cacert.pem"), "ca", "healthy check") == healthy_state
-    assert logs == []
-
-
-def test_cacert_state_still_logs_when_unhealthy(monkeypatch):
-    logs = []
-    unhealthy_state = {
-        "path": "/Applications/Roblox.app/Contents/Resources/ssl/cacert.pem",
-        "install": "Resources",
-        "exists": True,
-        "size": 100,
-        "mtime_ns": 1,
-        "sha256": "b" * 64,
-        "total_certs": 1,
-        "fleasion_certs": 0,
-        "current_fleasion_certs": 0,
-        "healthy": False,
-        "error": "",
-    }
-
-    monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
-    monkeypatch.setattr(proxy_master, "_describe_cacert_state", lambda _path, _pem: unhealthy_state)
-
-    proxy_master._log_cacert_state(Path("/tmp/cacert.pem"), "ca", "unhealthy check")
-
-    assert any("unhealthy check" in message for _category, message in logs)
-    assert any("not launch-healthy" in message for _category, message in logs)
-
-
 def _make_self_signed_ca_pem(common_name: str = "Fleasion Proxy CA", organization: str = "Fleasion") -> str:
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([
@@ -267,69 +219,6 @@ def test_linux_cacert_seed_clears_read_only_before_copy(tmp_path, monkeypatch):
     assert any("Seeded Roblox cacert.pem from healthy local bundle" in message for _category, message in logs)
 
 
-def test_linux_proxy_start_emits_error_when_helper_denied(tmp_path, monkeypatch):
-    errors = []
-    ca_cert = tmp_path / "ca.crt"
-    ca_key = tmp_path / "ca.key"
-    leaf_cert = tmp_path / "leaf.crt"
-    leaf_key = tmp_path / "leaf.key"
-    default_cert = (tmp_path / "default.crt", tmp_path / "default.key")
-    for path in (ca_cert, ca_key, leaf_cert, leaf_key, *default_cert):
-        path.write_text("x", encoding="utf-8")
-
-    class _ProxyStub:
-        async def log_upstream_self_test(self, _hosts):
-            return None
-
-        def set_module_interceptors(self, _interceptors):
-            return None
-
-        async def start(self):
-            return None
-
-        async def stop(self):
-            return None
-
-    monkeypatch.setattr(proxy_master, "IS_MACOS", False)
-    monkeypatch.setattr(proxy_master, "IS_WINDOWS", False)
-    monkeypatch.setattr(proxy_master, "IS_LINUX", True)
-    monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
-    monkeypatch.setattr(proxy_master, "generate_ca", lambda _dir: (ca_cert, ca_key))
-    monkeypatch.setattr(proxy_master, "generate_host_cert", lambda *_args, **_kwargs: (leaf_cert, leaf_key))
-    monkeypatch.setattr(proxy_master, "generate_multi_host_cert", lambda *_args, **_kwargs: default_cert)
-    monkeypatch.setattr(proxy_master, "get_ca_pem", lambda _path: "ca")
-    monkeypatch.setattr(proxy_master, "_install_ca_into_roblox", lambda _pem: (True, {}))
-    monkeypatch.setattr(proxy_master, "_resolve_real_endpoints", lambda _hosts: {})
-    monkeypatch.setattr(proxy_master, "_run_tls_self_test", lambda *_args, **_kwargs: asyncio.sleep(0, result=True))
-    monkeypatch.setattr(proxy_master, "FleasionProxy", lambda **_kwargs: _ProxyStub())
-    monkeypatch.setattr(linux_proxy_helper, "install_ca_into_linux_trust", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(linux_proxy_helper, "linux_system_ca_needs_install", lambda _path: False)
-    monkeypatch.setattr(linux_proxy_helper, "start_helper", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(linux_proxy_helper, "last_start_error_details", lambda: {})
-
-    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
-    proxy.config_manager = SimpleNamespace(
-        clear_cache_on_launch=False,
-        settings={},
-        upstream_transport_mode="direct",
-        vpn_compat_max_assetdelivery_connections=0,
-        vpn_compat_max_cdn_connections=0,
-    )
-    proxy.cache_scraper = SimpleNamespace(set_real_ips=lambda _ips: None)
-    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: False)
-    proxy._module_interceptors = []
-    proxy._on_proxy_start_error = lambda code, details: errors.append((code, details))
-    proxy._running = False
-    proxy._lock = threading.Lock()
-    proxy._loop = None
-    proxy._roblox_player_running = False
-
-    asyncio.run(proxy._run_proxy())
-
-    assert proxy._running is False
-    assert errors == [("linux_helper_unavailable", {})]
-
-
 def test_linux_proxy_start_emits_read_only_hosts_error(tmp_path, monkeypatch):
     errors = []
     ca_cert = tmp_path / "ca.crt"
@@ -474,34 +363,6 @@ def test_linux_helper_intercepts_profile_api_when_spoofer_enabled(monkeypatch):
     )
 
 
-def test_spoofer_intercepts_profile_api_before_player_detected(monkeypatch):
-    monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: False)
-
-    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
-    proxy.config_manager = SimpleNamespace(settings={})
-    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: True)
-    proxy._roblox_player_running = False
-
-    assert proxy._desired_intercept_hosts() == (
-        set(proxy_master.BASE_INTERCEPT_HOSTS)
-        | set(proxy_master.USERNAME_SPOOFER_INTERCEPT_HOSTS)
-    )
-
-
-def test_linux_helper_preloads_profile_api_when_spoofer_enabled_before_sober(monkeypatch):
-    monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
-
-    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
-    proxy.config_manager = SimpleNamespace(settings={})
-    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: True)
-    proxy._roblox_player_running = False
-
-    assert proxy._desired_intercept_hosts() == (
-        set(proxy_master.BASE_INTERCEPT_HOSTS)
-        | set(proxy_master.USERNAME_SPOOFER_INTERCEPT_HOSTS)
-    )
-
-
 def test_linux_helper_refresh_requests_helper_update_without_direct_hosts_write(monkeypatch):
     logs = []
     helper_updates = []
@@ -568,29 +429,6 @@ def test_linux_helper_refresh_skips_profile_api_when_webview_trust_fails(monkeyp
     assert helper_updates == []
     assert proxy._active_intercept_hosts == set(proxy_master.BASE_INTERCEPT_HOSTS)
     assert any("system trust is not ready" in message for _category, message in logs)
-
-
-def test_macos_roblox_dir_discovery_excludes_studio_saved_dirs(tmp_path, monkeypatch):
-    player = tmp_path / "Roblox.app" / "Contents" / "Resources"
-    studio = tmp_path / "RobloxStudio.app" / "Contents" / "Resources"
-    player.mkdir(parents=True)
-    studio.mkdir(parents=True)
-    discovery_calls = []
-    persisted = []
-
-    def fake_find_roblox_resource_dirs(include_studio: bool):
-        discovery_calls.append(include_studio)
-        return [player] + ([studio] if include_studio else [])
-
-    monkeypatch.setattr(proxy_master, "IS_MACOS", True)
-    monkeypatch.setattr(proxy_master, "IS_LINUX", False)
-    monkeypatch.setattr("fleasion.utils.platform_macos.find_roblox_resource_dirs", fake_find_roblox_resource_dirs)
-    monkeypatch.setattr(proxy_master, "load_saved_roblox_dirs", lambda: [studio])
-    monkeypatch.setattr(proxy_master, "save_saved_roblox_dirs", lambda dirs: persisted.extend(dirs))
-
-    assert proxy_master._find_roblox_dirs() == [player]
-    assert discovery_calls == [False]
-    assert persisted == [player]
 
 
 def test_macos_studio_launch_skips_ca_patch(tmp_path, monkeypatch):

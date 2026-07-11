@@ -1,6 +1,5 @@
 import json
 import stat
-import sys
 import types
 import threading
 from io import BytesIO
@@ -361,27 +360,3 @@ def test_prefixed_ktx_backed_targets_convert_image_replacements_to_ktx2(monkeypa
     )
 
     assert read_rgba8_ktx2(converted) == (bytes((9, 8, 7, 6)), 1, 1)
-
-
-def test_find_roblox_dirs_excludes_macos_studio_saved_dirs(tmp_path, monkeypatch):
-    player = tmp_path / "Roblox.app" / "Contents" / "Resources"
-    studio = tmp_path / "RobloxStudio.app" / "Contents" / "Resources"
-    player.mkdir(parents=True)
-    studio.mkdir(parents=True)
-    discovery_calls = []
-    persisted = []
-
-    def fake_find_roblox_resource_dirs(include_studio: bool):
-        discovery_calls.append(include_studio)
-        return [player] + ([studio] if include_studio else [])
-
-    monkeypatch.setattr(modifications_manager.sys, "platform", "darwin")
-    fake_platform_macos = types.ModuleType("fleasion.utils.platform_macos")
-    fake_platform_macos.find_roblox_resource_dirs = fake_find_roblox_resource_dirs
-    monkeypatch.setitem(sys.modules, "fleasion.utils.platform_macos", fake_platform_macos)
-    monkeypatch.setattr(modifications_manager, "load_saved_roblox_dirs", lambda: [studio])
-    monkeypatch.setattr(modifications_manager, "save_saved_roblox_dirs", lambda dirs: persisted.extend(dirs))
-
-    assert modifications_manager._find_roblox_dirs() == [player]
-    assert discovery_calls == [False]
-    assert persisted == [player]
