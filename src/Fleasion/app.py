@@ -1643,6 +1643,10 @@ def main():
 
     # Create Qt application
     app = QApplication(sys.argv)
+    # Qt normally follows each desktop's dialog conventions (GNOME/KDE/Windows),
+    # which changes the visual order of standard buttons. Fleasion uses the
+    # Windows order everywhere so confirmations have a stable layout.
+    app.setStyleSheet('QDialogButtonBox, QMessageBox { button-layout: 0; }')
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)

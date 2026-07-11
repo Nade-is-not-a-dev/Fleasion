@@ -3245,7 +3245,8 @@ class CacheViewerTab(QWidget):
             self,
             'Export All',
             f'Export {format_count(assets, "asset")} to the export folder?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
         )
 
         if reply != QMessageBox.StandardButton.Yes:
@@ -3299,7 +3300,8 @@ class CacheViewerTab(QWidget):
             self,
             'Delete Assets',
             f"Delete {format_count(count, 'asset')}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
@@ -3316,7 +3318,8 @@ class CacheViewerTab(QWidget):
             self,
             'Delete Database',
             'This will delete all cached assets AND the database index.\nThis cannot be undone. Continue?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
         )
 
         if reply == QMessageBox.StandardButton.Yes:

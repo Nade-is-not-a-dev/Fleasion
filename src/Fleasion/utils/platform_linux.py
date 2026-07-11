@@ -181,7 +181,7 @@ def wait_for_roblox_exit(timeout: float = 10.0) -> bool:
 
 def _delete_path(path: Path, messages: list[str], label: str) -> None:
     if not path.exists():
-        messages.append(f'{label} not found')
+        messages.append(f'{label} already deleted')
         return
     try:
         if path.is_dir():

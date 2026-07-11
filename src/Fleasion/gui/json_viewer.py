@@ -1691,6 +1691,7 @@ class JsonTreeViewer(QDialog):
                 'Multiple Values',
                 f'Only the first value ({vals[0]}) will be used. Continue?',
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return

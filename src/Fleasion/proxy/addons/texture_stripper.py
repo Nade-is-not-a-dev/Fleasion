@@ -473,21 +473,15 @@ class TextureStripper:
         failed_count = 0
 
         for target_id in unique_targets:
-            if int(target_id) in self._predownloaded:
-                continue  # Already handled (e.g. from a previous call)
-
             local_path = self._PREDOWNLOAD_DIR / f'{target_id}.dat'
             legacy_path = self._PREDOWNLOAD_DIR / f'{target_id}.bin'
 
-            # If file already exists on disk from a previous session, reuse it.
-            # Check both new (.dat) and legacy (.bin) extension.
+            # Do not trust a previous-session file until the accessibility
+            # check below establishes that this target actually needs the
+            # private/local route. Public non-animation assets must remain ID
+            # swaps; otherwise TexturePack XML is served as texture bytes.
             if legacy_path.exists() and legacy_path.stat().st_size > 0:
                 legacy_path.rename(local_path)
-            if local_path.exists() and local_path.stat().st_size > 0:
-                self._predownloaded[int(target_id)] = str(local_path)
-                private_count += 1
-                log_buffer.log('Replacer', f'Reusing cached pre-download for {target_id}')
-                continue
 
             # Quick accessibility check — needs auth cookie just to use the API.
             # A 200 here means the asset is publicly downloadable (no place-ID
@@ -500,13 +494,21 @@ class TextureStripper:
             )
             if _data:
                 # 200 — publicly accessible.
-                # Always save to disk so the rig-conversion path can intercept
-                # the CDN response instead of a raw ID swap.
-                try:
-                    local_path.write_bytes(_data)
-                    self._predownloaded[int(target_id)] = str(local_path)
-                    log_buffer.log('Replacer', f'Cached public asset {target_id} for rig conversion ({len(_data)} bytes)')
-                except Exception:
+                # Only animations require a local copy for rig conversion.
+                # All other public assets use the normal ID swap.
+                needs_rig_conversion = any(
+                    value == target_id and self._is_anim_replacement_key(key)
+                    for key, value in replacements.items()
+                )
+                if needs_rig_conversion:
+                    try:
+                        local_path.write_bytes(_data)
+                        self._predownloaded[int(target_id)] = str(local_path)
+                        log_buffer.log('Replacer', f'Cached public animation {target_id} for rig conversion ({len(_data)} bytes)')
+                    except Exception:
+                        self._checked_public.add(int(target_id))
+                else:
+                    self._predownloaded.pop(int(target_id), None)
                     self._checked_public.add(int(target_id))
                 public_count += 1
                 continue
@@ -522,6 +524,11 @@ class TextureStripper:
                 continue
 
             # 403 — private asset, download via place-ID bypass
+            if local_path.exists() and local_path.stat().st_size > 0:
+                self._predownloaded[int(target_id)] = str(local_path)
+                private_count += 1
+                log_buffer.log('Replacer', f'Reusing cached private pre-download for {target_id}')
+                continue
             log_buffer.log('Replacer', f'Replacement asset {target_id} is private, pre-downloading...')
             data, dl_status = scraper._fetch_asset_with_place_id_retry(
                 str(target_id), extra_headers=dict(extra) if extra else None,
@@ -919,6 +926,15 @@ class TextureStripper:
             for orig_id, repl_id in list(replacements.items()):
                 predownloaded = self._predownloaded.get(int(repl_id))
                 if predownloaded is not None:
+                    # A TexturePack API download is an XML manifest, not a
+                    # texture payload. Never route it to Color/Normal/ORM CDN
+                    # requests; retain the parent ID replacement instead.
+                    try:
+                        head = Path(predownloaded).read_bytes()[:2048].lower()
+                    except OSError:
+                        head = b''
+                    if b'<texturepack_version>' in head:
+                        continue
                     del replacements[orig_id]
                     local_replacements[orig_id] = predownloaded
 
@@ -971,6 +987,7 @@ class TextureStripper:
         # Dropping a slot from the batch breaks the entire TexturePack in Roblox;
         # serving a 1×1 blank KTX2 keeps the pack intact for the other slots.
         # Matches "parentId:mapIndex" and wildcard "TexturePack:N" removal keys.
+        synthetic_slot_removals: set[int | str] = set()
         if removals:
             tp_slot_removals = {
                 r for r in removals
@@ -984,7 +1001,11 @@ class TextureStripper:
                     removals = set(removals) - tp_slot_removals
                     local_replacements = dict(local_replacements)
                     for r in tp_slot_removals:
-                        local_replacements[r] = blank
+                        # An explicit replacement for this slot wins over a
+                        # removal inherited from another enabled config.
+                        if r not in local_replacements:
+                            local_replacements[r] = blank
+                            synthetic_slot_removals.add(r)
                     log_buffer.log('TexPack', f'Routing {format_count(tp_slot_removals, "slot removal")} to blank placeholder')
 
         _slot_target_ids: set[int] = set()
@@ -1005,7 +1026,26 @@ class TextureStripper:
         for old_idx, e in enumerate(data):
             if not isinstance(e, dict):
                 continue
-            if self._should_remove(e, removals, _texpack_request_slots.get(old_idx)):
+            map_index = _texpack_request_slots.get(old_idx)
+            aid = self._normalize_asset_id(e.get('assetId'))
+            slot_key = f'{aid}:{map_index}' if (aid is not None and map_index is not None) else None
+            wildcard_key = f'TexturePack:{map_index}' if map_index is not None else None
+            replacement_keys = (
+                ([slot_key] if slot_key else [])
+                + ([wildcard_key] if wildcard_key else [])
+                + ([aid] if aid is not None else [])
+                + self._get_type_keys(e)
+            )
+            if self._is_anim_entry(e):
+                replacement_keys += [k for k in self._VIRTUAL_ANIM_RIG]
+            has_replacement = any(
+                key in source and not (
+                    source is local_replacements and key in synthetic_slot_removals
+                )
+                for key in replacement_keys
+                for source in (replacements, cdn_replacements, local_replacements)
+            )
+            if not has_replacement and self._should_remove(e, removals, map_index):
                 continue
             new_idx = len(filtered_data)
             filtered_data.append(e)
@@ -1068,27 +1108,46 @@ class TextureStripper:
             slot_key = f'{aid}:{map_index}' if (aid is not None and map_index is not None) else None
             wildcard_key = f'TexturePack:{map_index}' if map_index is not None else None
 
-            # ID/type replacement — slot-specific match takes priority over whole-asset
+            # Resolve specificity across *all* replacement modes before doing
+            # anything. An exact local/CDN rule must prevent a broader type ID
+            # rule from rewriting the request to a shared asset, otherwise the
+            # exact override becomes attached to CDN URLs used by every asset
+            # rewritten by that type rule.
+            replacement_key_groups = (
+                ([slot_key] if slot_key else []),
+                ([aid] if aid is not None else []),
+                ([wildcard_key] if wildcard_key else []),
+                type_keys,
+            )
+            winning_keys = next(
+                (
+                    keys for keys in replacement_key_groups
+                    if any(key in source for key in keys
+                           for source in (replacements, cdn_replacements, local_replacements))
+                ),
+                [],
+            )
+            winning_local_key = next(
+                (key for key in winning_keys if key in local_replacements), None
+            )
+            winning_cdn_key = next(
+                (key for key in winning_keys if key in cdn_replacements), None
+            )
             matched = None
-            if slot_key and slot_key in replacements:
-                matched = slot_key
-            elif wildcard_key and wildcard_key in replacements:
-                matched = wildcard_key
-            elif aid in replacements:
-                matched = aid
-            else:
-                for tk in type_keys:
-                    if tk in replacements:
-                        matched = tk
-                        break
+            if winning_local_key is None and winning_cdn_key is None:
+                matched = next((key for key in winning_keys if key in replacements), None)
             if matched is not None:
                 replacement_id = replacements[matched]
                 
-                is_texpack_match = (':' in str(matched)) or (e.get('assetTypeId') == 63) or (
-                    self._REVERSE.get(str(e.get('assetType', '')).lower()) == 63
-                )
-                
-                if is_texpack_match and req_id and aid and str(replacement_id).isdigit():
+                # Only a slot/sub-asset rule represents a single image that
+                # needs downloading and KTX2 conversion.  Whole TexturePack
+                # ID/type rules must keep the normal parent-ID swap below so
+                # Roblox resolves every map from the replacement pack.  Treating
+                # a whole pack as an image downloads its XML and serves that XML
+                # for every slot, effectively removing all textures.
+                is_texpack_slot_match = matched in (slot_key, wildcard_key)
+
+                if is_texpack_slot_match and req_id and aid and str(replacement_id).isdigit():
                     scraper = self._cache_scraper
                     if scraper:
                         local_tgt = None
@@ -1151,19 +1210,31 @@ class TextureStripper:
                             continue
                         # Composite failed — fall through to normal routing as best-effort
 
-                all_keys = ([slot_key] if slot_key else []) + ([wildcard_key] if wildcard_key else []) + [aid] + type_keys
+                # Only the globally winning specificity may route this asset.
+                # Prefer explicit local content, then CDN, then the ID rule
+                # already handled above when conflicting configs use the same
+                # key at the same specificity.
+                all_keys = list(winning_keys)
                 # For animation entries, also check virtual rig-filter keys as fallback
                 if self._is_anim_entry(e):
                     all_keys = all_keys + [k for k in self._VIRTUAL_ANIM_RIG]
 
-                cdn_key = next((k for k in all_keys if k in cdn_replacements), None)
-                local_key = next((k for k in all_keys if k in local_replacements), None)
-                if cdn_key is not None:
-                    is_texpack_cdn = (':' in str(cdn_key)) or (e.get('assetTypeId') == 63) or (
-                        self._REVERSE.get(str(e.get('assetType', '')).lower()) == 63
+                cdn_key = winning_cdn_key
+                # Prefer real local replacements over blank routes synthesized
+                # from removal rules. A synthesized route is only a fallback
+                # when no replacement of any kind matched this asset.
+                local_key = (
+                    winning_local_key
+                    if winning_local_key not in synthetic_slot_removals
+                    else None
+                )
+                if local_key is None and matched is None and cdn_key is None:
+                    local_key = next(
+                        (k for k in all_keys
+                         if k in local_replacements and k in synthetic_slot_removals),
+                        None,
                     )
-                    self._route_cdn(f'{batch_id}_{req_id}', aid, cdn_replacements[cdn_key], is_solidmodel, is_texpack_cdn)
-                elif local_key is not None:
+                if local_key is not None:
                     # Check if this replacement specifically targets a TexturePack slot or type
                     is_texpack = (':' in str(local_key)) or (e.get('assetTypeId') == 63) or (
                         self._REVERSE.get(str(e.get('assetType', '')).lower()) == 63
@@ -1189,6 +1260,11 @@ class TextureStripper:
                             _required_rig = 'any'
                         with self._anim_lock:
                             self._anim_local_pending[f'{batch_id}_{req_id}'] = (str(_repl_local_path), _required_rig)
+                elif cdn_key is not None:
+                    is_texpack_cdn = (':' in str(cdn_key)) or (e.get('assetTypeId') == 63) or (
+                        self._REVERSE.get(str(e.get('assetType', '')).lower()) == 63
+                    )
+                    self._route_cdn(f'{batch_id}_{req_id}', aid, cdn_replacements[cdn_key], is_solidmodel, is_texpack_cdn)
 
         if modified:
             result = _dumps(data)
@@ -1310,7 +1386,10 @@ class TextureStripper:
 
                         slot_key = f'{aid}:{map_index}'
                         wildcard_key = f'TexturePack:{map_index}'
-                        all_keys = [slot_key, wildcard_key, aid] + self._get_type_keys(req_item)
+                        # Match the request-side specificity order so an exact
+                        # asset override always beats a TexturePack wildcard or
+                        # type fallback during response recovery as well.
+                        all_keys = [slot_key, aid, wildcard_key] + self._get_type_keys(req_item)
                         local_key = next((k for k in all_keys if k in local_replacements), None)
                         cdn_key = next((k for k in all_keys if k in cdn_replacements), None)
                         if local_key is not None:

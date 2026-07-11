@@ -1549,6 +1549,7 @@ class ReplacerConfigWindow(QDialog):
                     'Delete',
                     f"Delete '{current}'?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     self.config_manager.delete_config(current)
@@ -2217,6 +2218,7 @@ class ReplacerConfigWindow(QDialog):
                     self, 'URL Check Failed',
                     f'Could not verify CDN URL:\n{e}\n\nAdd anyway?',
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
                 )
                 if reply != QMessageBox.StandardButton.Yes:
                     return None
@@ -2309,6 +2311,7 @@ class ReplacerConfigWindow(QDialog):
                 'Delete Group',
                 'Delete selected groups and all nested contents?',
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return

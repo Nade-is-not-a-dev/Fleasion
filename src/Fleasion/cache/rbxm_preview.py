@@ -715,7 +715,13 @@ class RbxmPreviewWidget(QWidget):
         inst = self._item_to_instance.get(id(item))
         if inst is None:
             return
-        if QMessageBox.question(self, 'Delete Instance', f'Delete {inst.label()} and its children?') != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(
+            self,
+            'Delete Instance',
+            f'Delete {inst.label()} and its children?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        ) != QMessageBox.StandardButton.Yes:
             return
 
         parent_item = item.parent()

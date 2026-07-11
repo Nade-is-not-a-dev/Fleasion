@@ -1692,6 +1692,7 @@ class RandoStuffTab(QWidget):
             "Remove Account",
             f"Remove '{username}' from the list?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
