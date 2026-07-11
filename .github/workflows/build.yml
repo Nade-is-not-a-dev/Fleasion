@@ -97,11 +97,11 @@ jobs:
 
       - name: Build Windows package
         if: runner.os == 'Windows'
-        run: uv run pyinstaller --clean --noconfirm Fleasion.spec
+        run: uv run build
 
       - name: Build Linux package
         if: runner.os == 'Linux'
-        run: uv run pyinstaller --clean --noconfirm Fleasion.spec
+        run: uv run build
 
       - name: Prepare Linux executable
         if: runner.os == 'Linux'

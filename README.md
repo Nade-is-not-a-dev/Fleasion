@@ -34,8 +34,8 @@ cd fleasion
 # Run the application (auto-installs all dependencies)
 uv run Fleasion
 
-# (OPTIONAL) Compile as a standalone Windows executable or Linux binary
-uv run pyinstaller Fleasion.spec
+# (OPTIONAL) Compile as a standalone application
+uv run build
 
 # (OPTIONAL) Build the native macOS application bundle
 ./scripts/build_macos.sh

@@ -30,6 +30,7 @@ dependencies = [
     "platformdirs>=4.0.0",
     "win11toast>=0.36.3; platform_system == 'Windows'",
     "browser-cookie3>=0.20.1; platform_system == 'Darwin' or platform_system == 'Linux'",
+    "colorama>=0.4.6",
 ]
 
 # Optional / removed:
@@ -41,6 +42,7 @@ dependencies = [
 
 [project.scripts]
 Fleasion = 'fleasion:main'
+build = 'fleasion.scripts.build:main'
 
 [dependency-groups]
 dev = [

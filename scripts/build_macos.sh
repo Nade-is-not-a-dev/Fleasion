@@ -349,7 +349,7 @@ build_current_arch() {
     rm -rf "$UV_MACOS_PROJECT_ENVIRONMENT"
     macos_uv sync --locked --python "$macos_python_path" --group dev
 
-    MACOS_TARGET_ARCH="$target_arch" macos_uv run --python "$macos_python_path" pyinstaller --clean --noconfirm Fleasion.spec
+    MACOS_TARGET_ARCH="$target_arch" macos_uv run --python "$macos_python_path" build
 
     verify_app_bundle "$APP_PATH" "Build"
     require_archs "$EXEC_PATH" "$target_arch"
@@ -384,7 +384,7 @@ build_x86_64() {
     x86_uv sync --locked --python "$x86_python_path" --group dev
 
     MACOS_TARGET_ARCH=x86_64 \
-    x86_uv run --python "$x86_python_path" pyinstaller --clean --noconfirm Fleasion.spec
+    x86_uv run --python "$x86_python_path" build
 
     verify_app_bundle "$APP_PATH" "Intel build"
     require_archs "$EXEC_PATH" x86_64
