@@ -154,15 +154,16 @@ def _run_pyinstaller_spec(spec_path: str, *, env: dict[str, str] | None = None) 
     build_env = os.environ.copy()
     if env:
         build_env.update(env)
+    command = [
+        sys.executable,
+        '-m',
+        'fleasion.scripts._pyinstaller',
+    ]
+    if os.environ.get('FLEASION_CLEAN_BUILD') == '1':
+        command.append('--clean')
+    command.extend(['--noconfirm', spec_path])
     subprocess.run(
-        [
-            sys.executable,
-            '-m',
-            'PyInstaller',
-            '--clean',
-            '--noconfirm',
-            spec_path,
-        ],
+        command,
         check=True,
         env=build_env,
     )
@@ -257,19 +258,19 @@ _bundled_legacy_macos_helper = Path('dist/fleasion-proxy-helper')
 _bundled_linux_helper = Path('dist/fleasion-linux-proxy-helper')
 
 datas: list[CollectionEntry] = [
-    ('src/Fleasion/fleasionlogoHR.ico', '.'),
-    ('src/Fleasion/fleasionlogoHR.icns', '.'),
-    ('src/Fleasion/macos_proxy_helper_daemon.py', '.'),
-    ('src/Fleasion/cache/tools/animpreview', 'tools/animpreview'),
-    ('src/Fleasion/modifications/bundled/empty.mp3', 'Fleasion/modifications/bundled'),
-    ('src/Fleasion/modifications/bundled/empty.ogg', 'Fleasion/modifications/bundled'),
-    ('src/Fleasion/modifications/bundled/empty.mesh', 'Fleasion/modifications/bundled'),
-    ('src/Fleasion/modifications/bundled/empty.tex', 'Fleasion/modifications/bundled'),
+    ('src/fleasion/fleasionlogoHR.ico', '.'),
+    ('src/fleasion/fleasionlogoHR.icns', '.'),
+    ('src/fleasion/macos_proxy_helper_daemon.py', '.'),
+    ('src/fleasion/cache/tools/animpreview', 'tools/animpreview'),
+    ('src/fleasion/modifications/bundled/empty.mp3', 'fleasion/modifications/bundled'),
+    ('src/fleasion/modifications/bundled/empty.ogg', 'fleasion/modifications/bundled'),
+    ('src/fleasion/modifications/bundled/empty.mesh', 'fleasion/modifications/bundled'),
+    ('src/fleasion/modifications/bundled/empty.tex', 'fleasion/modifications/bundled'),
 ]
 datas.extend(copy_metadata('Fleasion'))
 binaries: list[CollectionEntry] = []
 if sys.platform == 'win32':
-    binaries.append(('src/Fleasion/cache/tools/ktx_to_png/ktx.dll', '.'))
+    binaries.append(('src/fleasion/cache/tools/ktx_to_png/ktx.dll', '.'))
 hiddenimports: list[str] = []
 
 # Keep Qt collection narrow. collect_all('PyQt6') pulls in QML/QtQuick,
@@ -323,7 +324,7 @@ elif sys.platform.startswith('linux'):
             'Fleasion.spec could not build the Linux proxy helper.'
         )
     datas.append((str(_bundled_linux_helper), '.'))
-    datas.append(('src/Fleasion/linux_proxy_helper_daemon.py', '.'))
+    datas.append(('src/fleasion/linux_proxy_helper_daemon.py', '.'))
 
 a = Analysis(
     ['launcher.py'],
@@ -386,9 +387,9 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=(
-        ['src/Fleasion/fleasionlogoHR.ico']
+        ['src/fleasion/fleasionlogoHR.ico']
         if sys.platform == 'win32'
-        else ['src/Fleasion/fleasionlogoHR.icns']
+        else ['src/fleasion/fleasionlogoHR.icns']
         if sys.platform == 'darwin'
         else None
     ),
@@ -406,7 +407,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
         name='Fleasion.app',
-        icon='src/Fleasion/fleasionlogoHR.icns',
+        icon='src/fleasion/fleasionlogoHR.icns',
         bundle_identifier='com.fleasion.app',
         info_plist={
             'CFBundleDisplayName': 'Fleasion',

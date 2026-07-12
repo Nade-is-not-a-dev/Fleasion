@@ -9,8 +9,8 @@ from urllib.parse import unquote
 
 import pytest
 
-from Fleasion.gui import rando_stuff_tab
-from Fleasion.utils import roblox_auth
+from fleasion.gui import rando_stuff_tab
+from fleasion.utils import roblox_auth
 
 
 class _FakeRequest:

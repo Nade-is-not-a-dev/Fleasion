@@ -8,33 +8,33 @@ from pathlib import Path
 from unittest.mock import patch
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_MANAGER_PATH = _REPO_ROOT / 'src' / 'Fleasion' / 'config' / 'manager.py'
+_MANAGER_PATH = _REPO_ROOT / 'src' / 'fleasion' / 'config' / 'manager.py'
 
 class ConfigManagerEncodingTests(unittest.TestCase):
     def _load_manager_for(self, root: Path):
         config_dir = root / 'FleasionNT'
 
-        fleasion_pkg = types.ModuleType('Fleasion')
+        fleasion_pkg = types.ModuleType('fleasion')
         fleasion_pkg.__path__ = []
-        config_pkg = types.ModuleType('Fleasion.config')
+        config_pkg = types.ModuleType('fleasion.config')
         config_pkg.__path__ = []
-        utils_pkg = types.ModuleType('Fleasion.utils')
+        utils_pkg = types.ModuleType('fleasion.utils')
         utils_pkg.__path__ = []
-        paths_module = types.ModuleType('Fleasion.utils.paths')
+        paths_module = types.ModuleType('fleasion.utils.paths')
         paths_module.CONFIG_DIR = config_dir
         paths_module.CONFIG_FILE = config_dir / 'settings.json'
         paths_module.CONFIGS_FOLDER = config_dir / 'configs'
 
-        module_name = 'Fleasion.config.manager'
+        module_name = 'fleasion.config.manager'
         spec = importlib.util.spec_from_file_location(module_name, _MANAGER_PATH)
         module = importlib.util.module_from_spec(spec)
         with patch.dict(
             sys.modules,
             {
-                'Fleasion': fleasion_pkg,
-                'Fleasion.config': config_pkg,
-                'Fleasion.utils': utils_pkg,
-                'Fleasion.utils.paths': paths_module,
+                'fleasion': fleasion_pkg,
+                'fleasion.config': config_pkg,
+                'fleasion.utils': utils_pkg,
+                'fleasion.utils.paths': paths_module,
                 module_name: module,
             },
         ):

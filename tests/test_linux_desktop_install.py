@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from Fleasion import __version__ as APP_VERSION
-from Fleasion.utils import platform_linux
+from fleasion import __version__ as APP_VERSION
+from fleasion.utils import platform_linux
 
 
 def test_install_desktop_entries_writes_user_launcher_and_removes_deprecated(tmp_path, monkeypatch):

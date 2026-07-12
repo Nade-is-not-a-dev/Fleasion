@@ -1,6 +1,6 @@
-from Fleasion import app as app_module
-from Fleasion import __version__ as APP_VERSION
-from Fleasion.app import (
+from fleasion import app as app_module
+from fleasion import __version__ as APP_VERSION
+from fleasion.app import (
     _handle_single_instance_command,
     _linux_hosts_nix_snippet,
     _looks_like_macos_fleasion_command,
@@ -38,7 +38,7 @@ def test_fleasion_process_matching_rejects_linux_proxy_helper_commands():
         '/usr/bin/python3 /project/launcher.py --linux-proxy-helper --backend-port 8443'
     )
     assert not _looks_like_macos_fleasion_command(
-        '/usr/bin/python3 /project/src/Fleasion/linux_proxy_helper_daemon.py --backend-port 8443'
+        '/usr/bin/python3 /project/src/fleasion/linux_proxy_helper_daemon.py --backend-port 8443'
     )
 
 

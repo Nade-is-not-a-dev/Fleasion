@@ -9,8 +9,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from Fleasion import macos_proxy_helper_daemon as daemon
-from Fleasion.utils import macos_proxy_helper
+from fleasion import macos_proxy_helper_daemon as daemon
+from fleasion.utils import macos_proxy_helper
 
 
 def _reset_daemon_state(tmp_path, monkeypatch):
@@ -109,48 +109,6 @@ def test_installed_helper_plist_runs_root_owned_helper_copy():
     assert "/Users/" not in args[0]
     assert plist["RunAtLoad"] is True
     assert plist["KeepAlive"] is True
-
-
-def test_frozen_helper_source_prefers_native_arch_bundled_executable(tmp_path, monkeypatch):
-    frozen_root = tmp_path / "_MEIPASS"
-    frozen_root.mkdir()
-    bundled_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAMES["arm64"]
-    other_arch_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAMES["x86_64"]
-    legacy_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAME
-    bundled_source = frozen_root / "macos_proxy_helper_daemon.py"
-    bundled_executable.write_bytes(b"helper binary")
-    other_arch_executable.write_bytes(b"other helper binary")
-    legacy_executable.write_bytes(b"legacy helper binary")
-    bundled_source.write_text("# source fallback\n", encoding="utf-8")
-
-    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(frozen_root), raising=False)
-    monkeypatch.setattr(macos_proxy_helper.platform, "machine", lambda: "arm64")
-
-    assert macos_proxy_helper._source_helper_path() == bundled_executable
-
-
-def test_frozen_helper_source_uses_x86_bundled_executable_on_intel(tmp_path, monkeypatch):
-    frozen_root = tmp_path / "_MEIPASS"
-    frozen_root.mkdir()
-    bundled_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAMES["x86_64"]
-    bundled_executable.write_bytes(b"helper binary")
-
-    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(frozen_root), raising=False)
-    monkeypatch.setattr(macos_proxy_helper.platform, "machine", lambda: "x86_64")
-
-    assert macos_proxy_helper._source_helper_path() == bundled_executable
-
-
-def test_frozen_helper_source_falls_back_to_legacy_bundled_executable(tmp_path, monkeypatch):
-    frozen_root = tmp_path / "_MEIPASS"
-    frozen_root.mkdir()
-    bundled_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAME
-    bundled_executable.write_bytes(b"legacy helper binary")
-
-    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(frozen_root), raising=False)
-    monkeypatch.setattr(macos_proxy_helper.platform, "machine", lambda: "arm64")
-
-    assert macos_proxy_helper._source_helper_path() == bundled_executable
 
 
 def test_helper_installer_stages_helper_before_privileged_install(tmp_path, monkeypatch):

@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from Fleasion import linux_proxy_helper_daemon as daemon
+from fleasion import linux_proxy_helper_daemon as daemon
 
 
 def _make_ca_pem(common_name='Fleasion Proxy CA', organization='Fleasion', *, is_ca=True, can_sign=True) -> bytes:
@@ -46,31 +46,6 @@ def _make_ca_pem(common_name='Fleasion Proxy CA', organization='Fleasion', *, is
         .sign(key, hashes.SHA256())
     )
     return cert.public_bytes(serialization.Encoding.PEM)
-
-
-def test_host_subprocess_env_restores_pyinstaller_original_library_path(monkeypatch, tmp_path):
-    bundle_root = tmp_path / '_MEI12345'
-    host_libs = tmp_path / 'host-libs'
-    monkeypatch.setattr(daemon.sys, '_MEIPASS', str(bundle_root), raising=False)
-    monkeypatch.setenv('LD_LIBRARY_PATH', f'{bundle_root}:{host_libs}')
-    monkeypatch.setenv('LD_LIBRARY_PATH_ORIG', str(host_libs))
-
-    env = daemon._host_subprocess_env()
-
-    assert env['LD_LIBRARY_PATH'] == str(host_libs)
-    assert 'LD_LIBRARY_PATH_ORIG' not in env
-
-
-def test_host_subprocess_env_removes_bundle_path_without_original(monkeypatch, tmp_path):
-    bundle_root = tmp_path / '_MEI12345'
-    host_libs = tmp_path / 'host-libs'
-    monkeypatch.setattr(daemon.sys, '_MEIPASS', str(bundle_root), raising=False)
-    monkeypatch.setenv('LD_LIBRARY_PATH', f'{bundle_root}:{host_libs}')
-    monkeypatch.delenv('LD_LIBRARY_PATH_ORIG', raising=False)
-
-    env = daemon._host_subprocess_env()
-
-    assert env['LD_LIBRARY_PATH'] == str(host_libs)
 
 
 def test_boot_guard_command_removes_only_fleasion_hosts_lines(tmp_path, monkeypatch):

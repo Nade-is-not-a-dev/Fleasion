@@ -7,15 +7,15 @@ from pathlib import Path
 
 
 def _load_platform_windows(monkeypatch, registry_command: str | None = None):
-    source = Path(__file__).resolve().parents[1] / "src" / "Fleasion" / "utils" / "platform_windows.py"
+    source = Path(__file__).resolve().parents[1] / "src" / "fleasion" / "utils" / "platform_windows.py"
 
-    paths = types.ModuleType("Fleasion.utils.paths")
+    paths = types.ModuleType("fleasion.utils.paths")
     paths.ROBLOX_PROCESS = "RobloxPlayerBeta.exe"
     paths.ROBLOX_STUDIO_PROCESS = "RobloxStudioBeta.exe"
     paths.STORAGE_DB = ""
     paths.STORAGE_DB_GDK = ""
 
-    logging = types.ModuleType("Fleasion.utils.logging")
+    logging = types.ModuleType("fleasion.utils.logging")
     logging.log_buffer = types.SimpleNamespace(log=lambda *_args, **_kwargs: None)
 
     winreg = types.ModuleType("winreg")
@@ -40,13 +40,13 @@ def _load_platform_windows(monkeypatch, registry_command: str | None = None):
     winreg.QueryValueEx = _query_value_ex
 
     monkeypatch.setattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE, raising=False)
-    monkeypatch.setitem(sys.modules, "Fleasion", types.ModuleType("Fleasion"))
-    monkeypatch.setitem(sys.modules, "Fleasion.utils", types.ModuleType("Fleasion.utils"))
-    monkeypatch.setitem(sys.modules, "Fleasion.utils.paths", paths)
-    monkeypatch.setitem(sys.modules, "Fleasion.utils.logging", logging)
+    monkeypatch.setitem(sys.modules, "fleasion", types.ModuleType("fleasion"))
+    monkeypatch.setitem(sys.modules, "fleasion.utils", types.ModuleType("fleasion.utils"))
+    monkeypatch.setitem(sys.modules, "fleasion.utils.paths", paths)
+    monkeypatch.setitem(sys.modules, "fleasion.utils.logging", logging)
     monkeypatch.setitem(sys.modules, "winreg", winreg)
 
-    module_name = "Fleasion.utils.platform_windows_under_test"
+    module_name = "fleasion.utils.platform_windows_under_test"
     spec = importlib.util.spec_from_file_location(module_name, source)
     module = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, module_name, module)

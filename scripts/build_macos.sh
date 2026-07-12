@@ -17,17 +17,19 @@ HELPER_ARM64_EXEC_NAME="${HELPER_EXEC_NAME}-arm64"
 HELPER_X86_EXEC_NAME="${HELPER_EXEC_NAME}-x86_64"
 
 MACOS_TARGET_ARCH="${MACOS_TARGET_ARCH:-universal2}"
-MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.15}"
+MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
 PYINSTALLER_CONFIG_DIR="${PYINSTALLER_CONFIG_DIR:-/tmp/fleasion-pyinstaller}"
 UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/fleasion-uv-cache}"
 UV_MACOS_PROJECT_ENVIRONMENT="${UV_MACOS_PROJECT_ENVIRONMENT:-.tools/venv-macos}"
 UV_MACOS_PYTHON_INSTALL_DIR="${UV_MACOS_PYTHON_INSTALL_DIR:-.tools/pythons-macos}"
-UV_MACOS_PYTHON_VERSION="${UV_MACOS_PYTHON_VERSION:-3.12}"
+UV_MACOS_PYTHON_VERSION="${UV_MACOS_PYTHON_VERSION:-3.14}"
+UV_MACOS_PYTHON_PLATFORM="${UV_MACOS_PYTHON_PLATFORM:-aarch64-apple-darwin}"
 UV_X86_CACHE_DIR="${UV_X86_CACHE_DIR:-/tmp/fleasion-uv-cache-x86}"
 UV_X86_PROJECT_ENVIRONMENT="${UV_X86_PROJECT_ENVIRONMENT:-.tools/venv-x86}"
 UV_X86_PYTHON_INSTALL_DIR="${UV_X86_PYTHON_INSTALL_DIR:-.tools/pythons-x86}"
-UV_X86_PYTHON_VERSION="${UV_X86_PYTHON_VERSION:-3.12}"
+UV_X86_PYTHON_VERSION="${UV_X86_PYTHON_VERSION:-3.14}"
 UV_X86_PYTHON="${UV_X86_PYTHON:-cpython-${UV_X86_PYTHON_VERSION}-macos-x86_64-none}"
+UV_X86_PYTHON_PLATFORM="${UV_X86_PYTHON_PLATFORM:-x86_64-apple-darwin}"
 UV_X86_VERSION="${UV_X86_VERSION:-$(uv --version 2>/dev/null | sed -n 's/^uv \([^ ]*\).*/\1/p')}"
 UV_X86_VERSION="${UV_X86_VERSION:-0.11.18}"
 UV_X86_DIR=".tools/uv-x86_64-apple-darwin"
@@ -307,49 +309,45 @@ verify_app_archs() {
 
 verify_macos_compatibility() {
     app_path="$1"
-    unavailable_frameworks="$(mktemp /tmp/fleasion-unavailable-frameworks.XXXXXX)"
     incompatible_minos="$(mktemp /tmp/fleasion-incompatible-minos.XXXXXX)"
 
     find "$app_path" -type f -print | while IFS= read -r file_path; do
         archs="$(lipo -archs "$file_path" 2>/dev/null || true)"
-        case " $archs " in *" x86_64 "*) ;; *) continue ;; esac
-
-        if otool -arch x86_64 -L "$file_path" 2>/dev/null | grep -q "/System/Library/Frameworks/UniformTypeIdentifiers.framework"; then
-            printf '%s\n' "$file_path" >> "$unavailable_frameworks"
-        fi
-        minos="$(otool -arch x86_64 -l "$file_path" 2>/dev/null | awk '
-            /LC_BUILD_VERSION/ { build = 1; version_min = 0; next }
-            /LC_VERSION_MIN_MACOSX/ { version_min = 1; build = 0; next }
-            build && /minos/ { print $2; exit }
-            version_min && /version/ { print $2; exit }
-        ')"
-        if [ -n "$minos" ] && ! version_lte "$minos" "$MACOSX_DEPLOYMENT_TARGET"; then
-            printf '%s: macOS %s\n' "$file_path" "$minos" >> "$incompatible_minos"
-        fi
+        for arch in $archs; do
+            case "$arch" in arm64|x86_64) ;; *) continue ;; esac
+            minos="$(otool -arch "$arch" -l "$file_path" 2>/dev/null | awk '
+                /LC_BUILD_VERSION/ { build = 1; version_min = 0; next }
+                /LC_VERSION_MIN_MACOSX/ { version_min = 1; build = 0; next }
+                build && /minos/ { print $2; exit }
+                version_min && /version/ { print $2; exit }
+            ')"
+            if [ -n "$minos" ] && ! version_lte "$minos" "$MACOSX_DEPLOYMENT_TARGET"; then
+                printf '%s [%s]: macOS %s\n' "$file_path" "$arch" "$minos" \
+                    >> "$incompatible_minos"
+            fi
+        done
     done
 
-    if [ -s "$unavailable_frameworks" ]; then
-        echo "App links frameworks unavailable on macOS 10.15 Catalina:" >&2
-        sed -n '1,40p' "$unavailable_frameworks" >&2
-        rm -f "$unavailable_frameworks" "$incompatible_minos"
-        exit 1
-    fi
     if [ -s "$incompatible_minos" ]; then
         echo "App contains binaries requiring newer than macOS ${MACOSX_DEPLOYMENT_TARGET}:" >&2
         sed -n '1,40p' "$incompatible_minos" >&2
-        rm -f "$unavailable_frameworks" "$incompatible_minos"
+        rm -f "$incompatible_minos"
         exit 1
     fi
-    rm -f "$unavailable_frameworks" "$incompatible_minos"
+    rm -f "$incompatible_minos"
 }
 
 build_current_arch() {
     target_arch="$1"
     macos_python_path="$(find_macos_python)"
     rm -rf "$UV_MACOS_PROJECT_ENVIRONMENT"
-    macos_uv sync --locked --python "$macos_python_path" --group dev
+    macos_uv sync \
+        --locked \
+        --python "$macos_python_path" \
+        --python-platform "$UV_MACOS_PYTHON_PLATFORM" \
+        --group dev
 
-    MACOS_TARGET_ARCH="$target_arch" macos_uv run --python "$macos_python_path" pyinstaller --clean --noconfirm Fleasion.spec
+    MACOS_TARGET_ARCH="$target_arch" macos_uv run --python "$macos_python_path" build --clean
 
     verify_app_bundle "$APP_PATH" "Build"
     require_archs "$EXEC_PATH" "$target_arch"
@@ -381,10 +379,14 @@ build_x86_64() {
 
     x86_python_path="$(find_x86_python)"
     rm -rf "$UV_X86_PROJECT_ENVIRONMENT"
-    x86_uv sync --locked --python "$x86_python_path" --group dev
+    x86_uv sync \
+        --locked \
+        --python "$x86_python_path" \
+        --python-platform "$UV_X86_PYTHON_PLATFORM" \
+        --group dev
 
     MACOS_TARGET_ARCH=x86_64 \
-    x86_uv run --python "$x86_python_path" pyinstaller --clean --noconfirm Fleasion.spec
+    x86_uv run --python "$x86_python_path" build --clean
 
     verify_app_bundle "$APP_PATH" "Intel build"
     require_archs "$EXEC_PATH" x86_64

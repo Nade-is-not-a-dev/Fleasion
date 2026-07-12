@@ -20,7 +20,7 @@ If you're on Linux and having issues with launching the GUI, please install `Por
 
 ## Requirements for Building from Source
 
-- **Windows 10+, macOS, or Linux with Sober Flatpak**
+- **Windows 10+, macOS 11+, or Linux with Sober Flatpak**
 - [**uv**](https://docs.astral.sh/uv/) package manager
 - Linux desktop installs need `pkexec`/Polkit available (installed by default on Mint and most desktop distributions)
 
@@ -29,13 +29,13 @@ If you're on Linux and having issues with launching the GUI, please install `Por
 ```bash
 # Clone the repository
 git clone https://github.com/fleasion/Fleasion.git
-cd fleasion
+cd Fleasion
 
 # Run the application (auto-installs all dependencies)
-uv run Fleasion
+uv run fleasion
 
-# (OPTIONAL) Compile as a standalone Windows executable or Linux binary
-uv run pyinstaller Fleasion.spec
+# (OPTIONAL) Compile as a standalone application
+uv run build
 
 # (OPTIONAL) Build the native macOS application bundle
 ./scripts/build_macos.sh
@@ -212,7 +212,7 @@ Fleasion can be configured to launch automatically via **Settings -> Run on Boot
 ├── scripts/
 │   └── build_macos.sh  # Helper script for building the macOS app bundle
 ├── src/
-│   └── Fleasion/
+│   └── fleasion/
 │       ├── __init__.py                   # Package marker
 │       ├── app.py                        # Application entrypoint, lifecycle, and startup wiring
 │       ├── macos_proxy_helper_daemon.py  # macOS helper daemon for the privileged proxy relay

@@ -3,10 +3,10 @@ from types import SimpleNamespace
 
 from PyQt6.QtWidgets import QSystemTrayIcon
 
-from Fleasion import tray as tray_module
-from Fleasion import app as app_module
-from Fleasion.utils import platform_macos
-from Fleasion.tray import SystemTray
+from fleasion import tray as tray_module
+from fleasion import app as app_module
+from fleasion.utils import platform_macos
+from fleasion.tray import SystemTray
 
 
 class _DashboardStub:

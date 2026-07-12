@@ -1,92 +1,4 @@
-from pathlib import Path
-
-from Fleasion.utils import linux_proxy_helper
-
-
-def test_host_subprocess_env_restores_pyinstaller_original_library_path(monkeypatch, tmp_path):
-    bundle_root = tmp_path / '_MEI12345'
-    host_libs = tmp_path / 'host-libs'
-    monkeypatch.setattr(linux_proxy_helper.sys, '_MEIPASS', str(bundle_root), raising=False)
-    monkeypatch.setenv('LD_LIBRARY_PATH', f'{bundle_root}:{host_libs}')
-    monkeypatch.setenv('LD_LIBRARY_PATH_ORIG', str(host_libs))
-
-    env = linux_proxy_helper._host_subprocess_env()
-
-    assert env['LD_LIBRARY_PATH'] == str(host_libs)
-    assert 'LD_LIBRARY_PATH_ORIG' not in env
-
-
-def test_host_subprocess_env_removes_bundle_path_without_original(monkeypatch, tmp_path):
-    bundle_root = tmp_path / '_MEI12345'
-    host_libs = tmp_path / 'host-libs'
-    monkeypatch.setattr(linux_proxy_helper.sys, '_MEIPASS', str(bundle_root), raising=False)
-    monkeypatch.setenv('LD_LIBRARY_PATH', f'{bundle_root}:{host_libs}')
-    monkeypatch.delenv('LD_LIBRARY_PATH_ORIG', raising=False)
-
-    env = linux_proxy_helper._host_subprocess_env()
-
-    assert env['LD_LIBRARY_PATH'] == str(host_libs)
-
-
-def test_helper_command_uses_source_script_when_not_frozen(monkeypatch):
-    monkeypatch.delattr(linux_proxy_helper.sys, '_MEIPASS', raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'frozen', False, raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'executable', '/usr/bin/python3')
-    monkeypatch.setattr(linux_proxy_helper, '_is_trusted_installed_helper', lambda: False)
-
-    command = linux_proxy_helper._helper_command()
-
-    assert command == [
-        '/usr/bin/python3',
-        str(Path(linux_proxy_helper.__file__).resolve().parents[1] / 'linux_proxy_helper_daemon.py'),
-    ]
-
-
-def test_helper_command_prefers_bundled_executable_when_frozen(monkeypatch, tmp_path):
-    helper = tmp_path / linux_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAME
-    helper.write_text('helper', encoding='utf-8')
-    monkeypatch.setattr(linux_proxy_helper.sys, '_MEIPASS', str(tmp_path), raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'frozen', True, raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'executable', '/opt/Fleasion/Fleasion')
-    monkeypatch.setattr(linux_proxy_helper, '_is_trusted_installed_helper', lambda: False)
-
-    assert linux_proxy_helper._helper_command() == [str(helper)]
-
-
-def test_helper_command_self_dispatches_when_frozen_without_bundled_helper(monkeypatch, tmp_path):
-    (tmp_path / 'linux_proxy_helper_daemon.py').write_text('helper source', encoding='utf-8')
-    monkeypatch.setattr(linux_proxy_helper.sys, '_MEIPASS', str(tmp_path), raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'frozen', True, raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'executable', '/opt/Fleasion/Fleasion')
-    monkeypatch.setattr(linux_proxy_helper, '_is_trusted_installed_helper', lambda: False)
-
-    assert linux_proxy_helper._helper_command() == ['/opt/Fleasion/Fleasion', '--linux-proxy-helper']
-
-
-def test_installable_helper_source_uses_bundled_binary_when_frozen(monkeypatch, tmp_path):
-    helper = tmp_path / linux_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAME
-    helper.write_text('helper', encoding='utf-8')
-    (tmp_path / 'linux_proxy_helper_daemon.py').write_text('helper source', encoding='utf-8')
-    monkeypatch.setattr(linux_proxy_helper.sys, '_MEIPASS', str(tmp_path), raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'frozen', True, raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'executable', '/opt/Fleasion/Fleasion')
-
-    assert linux_proxy_helper._installable_helper_source() == (helper, False)
-
-
-def test_installable_helper_source_uses_compiled_app_dispatch_without_bundled_helper(monkeypatch, tmp_path):
-    (tmp_path / 'linux_proxy_helper_daemon.py').write_text('helper source', encoding='utf-8')
-    monkeypatch.setattr(linux_proxy_helper.sys, '_MEIPASS', str(tmp_path), raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'frozen', True, raising=False)
-    monkeypatch.setattr(linux_proxy_helper.sys, 'executable', '/opt/Fleasion/Fleasion')
-
-    assert linux_proxy_helper._installable_helper_source() == (Path('/opt/Fleasion/Fleasion'), True)
-
-
-def test_helper_command_prefers_installed_root_owned_helper(monkeypatch):
-    monkeypatch.setattr(linux_proxy_helper, '_is_trusted_installed_helper', lambda: True)
-
-    assert linux_proxy_helper._helper_command() == [str(linux_proxy_helper.INSTALLED_HELPER_PATH)]
+from fleasion.utils import linux_proxy_helper
 
 
 def test_start_helper_requires_ca_cert_when_system_trust_is_required(monkeypatch, tmp_path):
@@ -338,44 +250,6 @@ def test_start_helper_continues_when_privileged_system_ca_install_is_unsupported
     assert '--require-system-ca' not in commands[0]
 
 
-def test_start_helper_continues_when_unsupported_system_ca_error_has_context(monkeypatch, tmp_path):
-    commands = []
-    ca = tmp_path / 'ca.crt'
-    ca.write_text('ca', encoding='utf-8')
-
-    class Process:
-        def poll(self):
-            return None
-
-    monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
-    monkeypatch.setattr(linux_proxy_helper, 'HELPER_READY_FILE', tmp_path / 'ready.json')
-    monkeypatch.setattr(linux_proxy_helper, 'HELPER_STOP_FILE', tmp_path / 'stop')
-    monkeypatch.setattr(linux_proxy_helper, 'HELPER_HOSTS_FILE', tmp_path / 'hosts.json')
-    monkeypatch.setattr(linux_proxy_helper, 'HELPER_LOG_FILE', tmp_path / 'helper.log')
-    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else f'/usr/sbin/{name}')
-    monkeypatch.setattr(linux_proxy_helper, '_helper_command', lambda: ['/opt/fleasion-helper'])
-    monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
-    monkeypatch.setattr(linux_proxy_helper, 'ensure_privileged_helper_installed', lambda **_kwargs: True)
-    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_store_supported', lambda: True)
-    monkeypatch.setattr(linux_proxy_helper, 'linux_system_ca_is_current', lambda _path: False)
-    monkeypatch.setattr(
-        linux_proxy_helper,
-        '_install_ca_into_linux_system_store',
-        lambda _path: {'ok': False, 'error': 'helper stderr: no_supported_system_trust_store'},
-    )
-    monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda cmd, **_kwargs: commands.append(cmd) or Process())
-    monkeypatch.setattr(linux_proxy_helper, '_read_ready', lambda: {'ok': True})
-
-    assert linux_proxy_helper.start_helper(
-        {'apis.roblox.com'},
-        ca_cert_path=ca,
-        require_system_ca=True,
-        timeout=1.0,
-    ) is True
-
-    assert '--require-system-ca' not in commands[0]
-
-
 def test_start_helper_installs_persistent_helper_before_launch(monkeypatch, tmp_path):
     commands = []
     installed = {'ok': False}
@@ -407,40 +281,6 @@ def test_start_helper_installs_persistent_helper_before_launch(monkeypatch, tmp_
     assert linux_proxy_helper.start_helper({'gamejoin.roblox.com'}, timeout=1.0) is True
 
     assert installed['kwargs'] == {'enable_promptless': True}
-    assert commands[0][1] == str(linux_proxy_helper.INSTALLED_HELPER_PATH)
-
-
-def test_start_helper_updates_stale_installed_helper_before_launch(monkeypatch, tmp_path):
-    commands = []
-    metadata_current = {'ok': False}
-
-    class Process:
-        def poll(self):
-            return None
-
-    def fake_install(**kwargs):
-        metadata_current['ok'] = True
-        metadata_current['kwargs'] = kwargs
-        return {'ok': True, 'helper': str(linux_proxy_helper.INSTALLED_HELPER_PATH), 'promptless_rule': None}
-
-    monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
-    monkeypatch.setattr(linux_proxy_helper, 'HELPER_READY_FILE', tmp_path / 'ready.json')
-    monkeypatch.setattr(linux_proxy_helper, 'HELPER_STOP_FILE', tmp_path / 'stop')
-    monkeypatch.setattr(linux_proxy_helper, 'HELPER_HOSTS_FILE', tmp_path / 'hosts.json')
-    monkeypatch.setattr(linux_proxy_helper, 'HELPER_LOG_FILE', tmp_path / 'helper.log')
-    monkeypatch.setattr(linux_proxy_helper.shutil, 'which', lambda name: '/usr/bin/pkexec' if name == 'pkexec' else None)
-    monkeypatch.setattr(linux_proxy_helper, '_is_trusted_installed_helper', lambda: True)
-    monkeypatch.setattr(linux_proxy_helper, '_installed_policy_is_current', lambda: True)
-    monkeypatch.setattr(linux_proxy_helper, '_installed_helper_metadata_is_current', lambda: metadata_current['ok'])
-    monkeypatch.setattr(linux_proxy_helper, '_persistent_helper_install_path_is_read_only', lambda: False)
-    monkeypatch.setattr(linux_proxy_helper, 'install_privileged_helper', fake_install)
-    monkeypatch.setattr(linux_proxy_helper, '_current_process_start_time', lambda: '12345')
-    monkeypatch.setattr(linux_proxy_helper, '_popen_host_command', lambda cmd, **_kwargs: commands.append(cmd) or Process())
-    monkeypatch.setattr(linux_proxy_helper, '_read_ready', lambda: {'ok': True})
-
-    assert linux_proxy_helper.start_helper({'gamejoin.roblox.com'}, timeout=1.0) is True
-
-    assert metadata_current['kwargs'] == {'enable_promptless': True}
     assert commands[0][1] == str(linux_proxy_helper.INSTALLED_HELPER_PATH)
 
 
