@@ -20,7 +20,7 @@ If you're on Linux and having issues with launching the GUI, please install `Por
 
 ## Requirements for Building from Source
 
-- **Windows 10+, macOS, or Linux with Sober Flatpak**
+- **Windows 10+, macOS 11+, or Linux with Sober Flatpak**
 - [**uv**](https://docs.astral.sh/uv/) package manager
 - Linux desktop installs need `pkexec`/Polkit available (installed by default on Mint and most desktop distributions)
 
@@ -29,10 +29,10 @@ If you're on Linux and having issues with launching the GUI, please install `Por
 ```bash
 # Clone the repository
 git clone https://github.com/fleasion/Fleasion.git
-cd fleasion
+cd Fleasion
 
 # Run the application (auto-installs all dependencies)
-uv run Fleasion
+uv run fleasion
 
 # (OPTIONAL) Compile as a standalone application
 uv run build
