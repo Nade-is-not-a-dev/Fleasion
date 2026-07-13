@@ -1205,6 +1205,11 @@ class ModificationManager(QObject):
         value = self.global_settings.get('framerate_cap')
         if value is None:
             value = self.fast_flags.get('framerate_cap')
+        if value is None:
+            # A legacy Fleasion version could leave an XML cap without a
+            # corresponding saved setting. Reflect the actual active value in
+            # the UI instead of presenting it as "Default".
+            value = self.global_settings_manager.read_framerate_cap()
         try:
             return 0 if value in (None, '', 'Default') else int(value)
         except TypeError, ValueError:
@@ -1223,6 +1228,10 @@ class ModificationManager(QObject):
             self.global_settings_manager.write(framerate)
         else:
             self.global_settings_manager.restore()
+
+    def reset_framerate_cap(self) -> None:
+        """Handle an explicit UI request to return Roblox to its default cap."""
+        self.global_settings_manager.reset_framerate_cap()
 
     def write_fast_flags(self, settings: dict) -> None:
         """Update and write fast-flags to disk."""
@@ -1259,7 +1268,10 @@ class ModificationManager(QObject):
 
         if framerate is not None:
             try:
-                self.sync_saved_global_settings()
+                if framerate:
+                    self.sync_saved_global_settings()
+                else:
+                    self.reset_framerate_cap()
                 log_buffer.log('Modifications', 'Applied queued framerate cap after Roblox exit')
             except Exception as exc:
                 log_buffer.log('Modifications', f'Error applying queued framerate cap: {exc}')

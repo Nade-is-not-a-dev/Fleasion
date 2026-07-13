@@ -2175,8 +2175,10 @@ class FFlagSection(QWidget):
             # Queue the modification instead of writing immediately
             self._manager.pending_modifications_queue.enqueue_framerate_cap(value)
         else:
-            # Write immediately
-            run_in_thread(self._manager.sync_saved_global_settings)()
+            if value:
+                run_in_thread(self._manager.sync_saved_global_settings)()
+            else:
+                run_in_thread(self._manager.reset_framerate_cap)()
 
     def _schedule_write(self, *_args):
         self._debounce_timer.start()
@@ -2337,6 +2339,7 @@ class FFlagSection(QWidget):
         self._grass_motion.setValue(0)
         self._framerate_cap.setValue(0)
         self._manager.framerate_cap = 0
+        self._manager.reset_framerate_cap()
 
         self._manager.fast_flags_enabled = False
 

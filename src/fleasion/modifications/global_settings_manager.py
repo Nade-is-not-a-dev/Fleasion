@@ -16,6 +16,7 @@ from pathlib import Path
 from ..utils import USER_HOME, format_count, log_buffer
 
 GLOBAL_SETTINGS_REL = Path('GlobalBasicSettings_13.xml')
+DEFAULT_FRAMERATE_CAP = 60
 
 
 class GlobalSettingsManager:
@@ -129,6 +130,14 @@ class GlobalSettingsManager:
             log_buffer.log('GlobalSettings', f'Error reading XML: {e}')
             return None
 
+    def read_framerate_cap(self) -> int | None:
+        """Return the first active persisted cap, if Roblox has one."""
+        for roblox_dir in self._user_roblox_dirs:
+            cap = self._read_framerate_cap(roblox_dir / GLOBAL_SETTINGS_REL)
+            if cap is not None:
+                return cap
+        return None
+
     def _write_framerate_cap(self, xml_path: Path, framerate: int) -> None:
         """Write the FramerateCap value to GlobalBasicSettings_13.xml."""
         if not xml_path.exists():
@@ -207,6 +216,36 @@ class GlobalSettingsManager:
         log_buffer.log(
             'GlobalSettings',
             f'Wrote FramerateCap={framerate} to {format_count(self._user_roblox_dirs, "Roblox dir")}',
+        )
+
+    def reset_framerate_cap(self) -> None:
+        """Set Roblox's framerate cap to its explicit default of 60 FPS.
+
+        This is intentionally separate from ``restore()``.  Restore is used
+        during lifecycle cleanup and must not overwrite an untracked setting;
+        an explicit UI selection of ``Default`` must correct stale caps left by
+        older Fleasion versions.
+        """
+        reset = 0
+
+        for roblox_dir in self._user_roblox_dirs:
+            dst = roblox_dir / GLOBAL_SETTINGS_REL
+            stash = self._stash_dir / roblox_dir.parent.name / GLOBAL_SETTINGS_REL
+
+            if stash.exists():
+                self._remove_read_only(stash)
+                stash.unlink()
+
+            if dst.exists():
+                self._write_framerate_cap(dst, DEFAULT_FRAMERATE_CAP)
+                reset += 1
+
+        log_buffer.log(
+            'GlobalSettings',
+            (
+                f'Reset FramerateCap={DEFAULT_FRAMERATE_CAP} in '
+                f'{format_count(reset, "Roblox dir")}'
+            ),
         )
 
     def restore(self) -> None:
