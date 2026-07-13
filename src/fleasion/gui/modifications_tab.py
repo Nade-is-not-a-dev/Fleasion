@@ -16,8 +16,10 @@ from PyQt6.QtCore import (
     QTimer,
     pyqtSignal,
 )
+from PyQt6.QtGui import QPainter
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -33,11 +35,13 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QSlider,
     QSpinBox,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -563,6 +567,28 @@ class DropdownComboBox(QComboBox):
         f.setPointSize(8)
         painter.setFont(f)
         painter.drawText(arrow_rect, Qt.AlignmentFlag.AlignCenter, '\u25bc')
+
+
+class CompactBooleanComboBox(QComboBox):
+    """A borderless True/False selector that blends into a table cell."""
+
+    def wheelEvent(self, e):
+        e.ignore()
+
+    def paintEvent(self, e):
+        painter = QPainter(self)
+        if self.hasFocus() or self.underMouse():
+            painter.fillRect(self.rect(), self.palette().alternateBase())
+        painter.setPen(self.palette().text().color())
+        painter.drawText(
+            self.rect().adjusted(4, 0, -18, 0),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self.currentText(),
+        )
+        arrow_x = self.width() - 10
+        arrow_y = self.height() // 2
+        painter.drawLine(arrow_x - 3, arrow_y - 1, arrow_x, arrow_y + 2)
+        painter.drawLine(arrow_x, arrow_y + 2, arrow_x + 3, arrow_y - 1)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1319,11 +1345,15 @@ class CustomFFlagWarningDialog(QDialog):
 class CustomFFlagEditor(QWidget):
     """Fishstrap-style name/value editor backed by Fleasion's proxy settings."""
 
+    _BOOLEAN_FLAG_PREFIXES = ('FFlag', 'DFFlag')
+
     def __init__(self, config_manager=None, proxy_master=None, parent=None):
         super().__init__(parent)
         self._config = config_manager
         self._proxy_master = proxy_master
         self._loading = False
+        self._sort_column: int | None = 0
+        self._sort_ascending = True
         self._setup_ui()
         self._load_flags()
 
@@ -1366,12 +1396,23 @@ class CustomFFlagEditor(QWidget):
         self._table = QTableWidget(0, 2)
         self._table.setHorizontalHeaderLabels(['Name', 'Value'])
         header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
+        header.setSortIndicator(0, Qt.SortOrder.AscendingOrder)
+        header.sectionClicked.connect(self._sort_rows)
+        self._table.setColumnWidth(0, 300)
+        self._table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setMinimumHeight(180)
-        self._table.cellChanged.connect(self._save_table)
+        self._table.cellChanged.connect(self._on_cell_changed)
         layout.addWidget(self._table)
 
         buttons = QHBoxLayout()
@@ -1380,15 +1421,17 @@ class CustomFFlagEditor(QWidget):
         buttons.addWidget(add_button)
 
         import_button = QPushButton('Import JSON…')
-        import_button.clicked.connect(self._import_json)
+        import_menu = QMenu(import_button)
+        import_menu.addAction('From Text…', self._import_json)
+        import_menu.addAction('From File…', self._import_file)
+        import_button.setMenu(import_menu)
         buttons.addWidget(import_button)
 
-        import_file_button = QPushButton('Import File…')
-        import_file_button.clicked.connect(self._import_file)
-        buttons.addWidget(import_file_button)
-
         export_button = QPushButton('Export JSON…')
-        export_button.clicked.connect(self._export_json)
+        export_menu = QMenu(export_button)
+        export_menu.addAction('Copy to Clipboard', self._copy_json)
+        export_menu.addAction('Export as File…', self._export_json)
+        export_button.setMenu(export_menu)
         buttons.addWidget(export_button)
 
         delete_button = QPushButton('Delete Selected')
@@ -1410,8 +1453,10 @@ class CustomFFlagEditor(QWidget):
             for name, value in sorted(flags.items(), key=lambda item: item[0].lower()):
                 row = self._table.rowCount()
                 self._table.insertRow(row)
-                self._table.setItem(row, 0, QTableWidgetItem(name))
-                self._table.setItem(row, 1, QTableWidgetItem(str(value)))
+                name_item = QTableWidgetItem(name)
+                name_item.setToolTip(name)
+                self._table.setItem(row, 0, name_item)
+                self._set_value_editor(row, name, str(value))
         finally:
             self._loading = False
         self._filter_rows(self._search.text())
@@ -1421,11 +1466,68 @@ class CustomFFlagEditor(QWidget):
         flags: dict[str, str] = {}
         for row in range(self._table.rowCount()):
             name_item = self._table.item(row, 0)
-            value_item = self._table.item(row, 1)
             name = name_item.text().strip() if name_item else ''
             if name:
-                flags[name] = value_item.text() if value_item else ''
+                flags[name] = self._value_from_row(row)
         return flags
+
+    @classmethod
+    def _is_boolean_flag(cls, name: str) -> bool:
+        return name.startswith(cls._BOOLEAN_FLAG_PREFIXES)
+
+    def _value_from_row(self, row: int) -> str:
+        value_widget = self._table.cellWidget(row, 1)
+        if isinstance(value_widget, QComboBox):
+            return value_widget.currentText()
+        value_item = self._table.item(row, 1)
+        return value_item.text() if value_item else ''
+
+    def _set_value_editor(self, row: int, name: str, value: str):
+        """Use a True/False selector for boolean flags and text for other flags."""
+        is_boolean = self._is_boolean_flag(name)
+        current_widget = self._table.cellWidget(row, 1)
+        current_is_boolean = isinstance(current_widget, QComboBox)
+        if current_widget is not None and current_is_boolean == is_boolean:
+            if is_boolean:
+                current_widget.setCurrentText(
+                    'True' if str(value).strip().lower() == 'true' else 'False'
+                )
+            return
+
+        was_loading = self._loading
+        self._loading = True
+        try:
+            if current_widget is not None:
+                self._table.removeCellWidget(row, 1)
+                current_widget.deleteLater()
+
+            if is_boolean:
+                self._table.takeItem(row, 1)
+                value_combo = CompactBooleanComboBox()
+                value_combo.addItems(['True', 'False'])
+                value_combo.setCurrentText(
+                    'True' if str(value).strip().lower() == 'true' else 'False'
+                )
+                value_combo.currentTextChanged.connect(self._save_table)
+                self._table.setCellWidget(row, 1, value_combo)
+            else:
+                self._table.setItem(row, 1, QTableWidgetItem(str(value)))
+        finally:
+            self._loading = was_loading
+
+    def _on_cell_changed(self, row: int, column: int):
+        if self._loading:
+            return
+        if column == 0:
+            name_item = self._table.item(row, 0)
+            if name_item is not None:
+                name_item.setToolTip(name_item.text())
+            self._set_value_editor(
+                row,
+                name_item.text() if name_item else '',
+                self._value_from_row(row),
+            )
+        self._save_table()
 
     def _save_table(self, *_args):
         if self._loading or self._config is None:
@@ -1433,6 +1535,7 @@ class CustomFFlagEditor(QWidget):
         self._config.custom_fflags = self._flags_from_table()
         self._refresh_proxy_hosts()
         self._update_status()
+        self._filter_rows(self._search.text())
 
     def _update_status(self):
         if not hasattr(self, '_status'):
@@ -1479,11 +1582,26 @@ class CustomFFlagEditor(QWidget):
     def _add_flag(self):
         dialog = QDialog(self)
         dialog.setWindowTitle('Add Custom FastFlag')
+        dialog.setMinimumWidth(620)
         form = QFormLayout(dialog)
         name_edit = QLineEdit()
+        name_edit.setMinimumWidth(500)
         value_edit = QLineEdit()
+        value_edit.setMinimumWidth(500)
+        value_combo = CompactBooleanComboBox()
+        value_combo.addItems(['True', 'False'])
+        value_stack = QStackedWidget()
+        value_stack.addWidget(value_edit)
+        value_stack.addWidget(value_combo)
         form.addRow('Name', name_edit)
-        form.addRow('Value', value_edit)
+        form.addRow('Value', value_stack)
+
+        def update_add_value_editor(name: str):
+            value_stack.setCurrentWidget(
+                value_combo if self._is_boolean_flag(name.strip()) else value_edit
+            )
+
+        name_edit.textChanged.connect(update_add_value_editor)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -1498,7 +1616,11 @@ class CustomFFlagEditor(QWidget):
             QMessageBox.warning(self, 'Invalid FastFlag', 'FastFlag name cannot be empty.')
             return
         flags = self._flags_from_table()
-        flags[name] = value_edit.text()
+        flags[name] = (
+            value_combo.currentText()
+            if self._is_boolean_flag(name)
+            else value_edit.text()
+        )
         self._set_flags(flags)
 
     def _set_flags(self, flags: dict):
@@ -1552,12 +1674,59 @@ class CustomFFlagEditor(QWidget):
         if not path:
             return
         try:
-            Path(path).write_text(
-                json.dumps(self._flags_from_table(), indent=2, ensure_ascii=False),
-                encoding='utf-8',
-            )
+            Path(path).write_text(self._json_text(), encoding='utf-8')
         except OSError as exc:
             QMessageBox.warning(self, 'Could Not Export FastFlags', str(exc))
+
+    def _json_text(self) -> str:
+        return json.dumps(self._flags_from_table(), indent=2, ensure_ascii=False)
+
+    def _copy_json(self):
+        QApplication.clipboard().setText(self._json_text())
+
+    def _sort_rows(self, column: int):
+        if self._sort_column == column:
+            self._sort_ascending = not self._sort_ascending
+        else:
+            self._sort_column = column
+            self._sort_ascending = True
+
+        rows = [
+            (
+                self._table.item(row, 0).text() if self._table.item(row, 0) else '',
+                self._value_from_row(row),
+            )
+            for row in range(self._table.rowCount())
+        ]
+        rows.sort(
+            key=lambda entry: (
+                entry[column].casefold(),
+                entry[0].casefold(),
+                entry[1].casefold(),
+            ),
+            reverse=not self._sort_ascending,
+        )
+
+        self._loading = True
+        try:
+            self._table.setRowCount(0)
+            for name, value in rows:
+                row = self._table.rowCount()
+                self._table.insertRow(row)
+                name_item = QTableWidgetItem(name)
+                name_item.setToolTip(name)
+                self._table.setItem(row, 0, name_item)
+                self._set_value_editor(row, name, value)
+        finally:
+            self._loading = False
+
+        self._table.horizontalHeader().setSortIndicator(
+            column,
+            Qt.SortOrder.AscendingOrder
+            if self._sort_ascending
+            else Qt.SortOrder.DescendingOrder,
+        )
+        self._filter_rows(self._search.text())
 
     def _delete_selected(self):
         rows = sorted({index.row() for index in self._table.selectedIndexes()}, reverse=True)
@@ -1575,9 +1744,22 @@ class CustomFFlagEditor(QWidget):
         query = str(text or '').strip().lower()
         for row in range(self._table.rowCount()):
             name = self._table.item(row, 0)
-            value = self._table.item(row, 1)
-            haystack = f'{name.text() if name else ""} {value.text() if value else ""}'.lower()
-            self._table.setRowHidden(row, bool(query and query not in haystack))
+            name_text = name.text() if name else ''
+            value_text = self._value_from_row(row)
+            matches = not query or query in name_text.lower() or query in value_text.lower()
+            self._table.setRowHidden(row, not matches)
+        self._resize_table_to_contents()
+
+    def _resize_table_to_contents(self):
+        """Let the outer modifications-page scroll area handle page overflow."""
+        header_height = self._table.horizontalHeader().height()
+        row_height = sum(
+            self._table.rowHeight(row)
+            for row in range(self._table.rowCount())
+            if not self._table.isRowHidden(row)
+        )
+        content_height = header_height + row_height + (self._table.frameWidth() * 2)
+        self._table.setFixedHeight(max(180, content_height))
 
 
 class FFlagSection(QWidget):
@@ -1766,18 +1948,19 @@ class FFlagSection(QWidget):
         self._preset_container.setLayout(grid)
         layout.addWidget(self._preset_container)
 
-        self._custom_fflag_editor = CustomFFlagEditor(
-            self._config_manager, self._proxy_master, self
-        )
-        layout.addWidget(self._custom_fflag_editor)
-
-        # Reset button
+        # Keep the allowlisted preset reset with the preset controls, above the
+        # separate custom FastFlags editor.
         self._reset_btn = QPushButton('\u21ba Reset All Allowlisted FastFlags')
         self._reset_btn.clicked.connect(self._on_reset_all)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_row.addWidget(self._reset_btn)
         layout.addLayout(btn_row)
+
+        self._custom_fflag_editor = CustomFFlagEditor(
+            self._config_manager, self._proxy_master, self
+        )
+        layout.addWidget(self._custom_fflag_editor)
 
         self.setLayout(layout)
 
