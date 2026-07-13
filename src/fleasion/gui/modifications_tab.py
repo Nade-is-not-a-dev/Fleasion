@@ -1332,7 +1332,7 @@ class CustomFFlagEditor(QWidget):
         layout.setContentsMargins(0, 10, 0, 0)
         layout.setSpacing(7)
 
-        heading = QLabel('<b>Custom FastFlags (Proxy Override)</b>')
+        heading = QLabel('<b>Custom FastFlags</b>')
         layout.addWidget(heading)
 
         warning = QLabel(
@@ -1346,7 +1346,7 @@ class CustomFFlagEditor(QWidget):
         )
         layout.addWidget(warning)
 
-        self._enable_toggle = QCheckBox('Enable custom FastFlags through the Fleasion proxy')
+        self._enable_toggle = QCheckBox('Enable custom FastFlags')
         self._enable_toggle.setChecked(
             bool(self._config and getattr(self._config, 'custom_fflags_enabled', False))
         )
