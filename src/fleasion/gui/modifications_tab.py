@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from functools import partial
@@ -16,13 +17,17 @@ from PyQt6.QtCore import (
     pyqtSignal,
 )
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QGridLayout,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -33,6 +38,8 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSlider,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -1253,13 +1260,342 @@ class ModPreviewDialog(QDialog):
 # ═══════════════════════════════════════════════════════════════════
 
 
+class CustomFFlagWarningDialog(QDialog):
+    """One-time, intentionally slow confirmation for bannable custom flags."""
+
+    CONFIRM_DELAY_SECONDS = 15
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Are you sure?')
+        self.setModal(True)
+        self.setMinimumWidth(520)
+        self._seconds_remaining = self.CONFIRM_DELAY_SECONDS
+
+        layout = QVBoxLayout(self)
+        title = QLabel('<b>Custom FastFlags can get your Roblox account banned.</b>')
+        title.setStyleSheet('color: #d9534f; font-size: 15px;')
+        layout.addWidget(title)
+
+        message = QLabel(
+            'Roblox only permits a small allowlist of local FastFlags. This feature bypasses '
+            'that restriction by modifying Roblox\'s remote ClientSettings response. Fleasion '
+            'cannot determine whether a flag is safe, and the Fleasion contributors accept no '
+            'liability for account moderation, data loss, crashes, or other consequences.\n\n'
+            'Only continue if you understand the risk and accept full responsibility.'
+        )
+        message.setWordWrap(True)
+        layout.addWidget(message)
+
+        self._buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        self._confirm_button = self._buttons.addButton(
+            '', QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        self._confirm_button.setEnabled(False)
+        self._buttons.accepted.connect(self.accept)
+        self._buttons.rejected.connect(self.reject)
+        layout.addWidget(self._buttons)
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self._tick)
+        self._update_confirm_text()
+        self._timer.start()
+
+    def _update_confirm_text(self):
+        if self._seconds_remaining > 0:
+            self._confirm_button.setText(f'I accept the risk ({self._seconds_remaining}s)')
+        else:
+            self._confirm_button.setText('I accept the risk — enable custom FastFlags')
+
+    def _tick(self):
+        self._seconds_remaining = max(0, self._seconds_remaining - 1)
+        self._update_confirm_text()
+        if self._seconds_remaining == 0:
+            self._timer.stop()
+            self._confirm_button.setEnabled(True)
+
+
+class CustomFFlagEditor(QWidget):
+    """Fishstrap-style name/value editor backed by Fleasion's proxy settings."""
+
+    def __init__(self, config_manager=None, proxy_master=None, parent=None):
+        super().__init__(parent)
+        self._config = config_manager
+        self._proxy_master = proxy_master
+        self._loading = False
+        self._setup_ui()
+        self._load_flags()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(7)
+
+        heading = QLabel('<b>Custom FastFlags (Proxy Override)</b>')
+        layout.addWidget(heading)
+
+        warning = QLabel(
+            '⚠ Non-Roblox-allowed FastFlags are bannable. Use this feature entirely at your '
+            'own risk. Fleasion and its contributors accept no liability.'
+        )
+        warning.setWordWrap(True)
+        warning.setStyleSheet(
+            'color: #ef8f8f; background: rgba(180, 45, 45, 0.16); '
+            'border: 1px solid rgba(210, 70, 70, 0.55); padding: 7px;'
+        )
+        layout.addWidget(warning)
+
+        self._enable_toggle = QCheckBox('Enable custom FastFlags through the Fleasion proxy')
+        self._enable_toggle.setChecked(
+            bool(self._config and getattr(self._config, 'custom_fflags_enabled', False))
+        )
+        self._enable_toggle.toggled.connect(self._on_enabled_toggled)
+        self._enable_toggle.setEnabled(self._config is not None and self._proxy_master is not None)
+        layout.addWidget(self._enable_toggle)
+
+        self._status = QLabel()
+        self._status.setWordWrap(True)
+        layout.addWidget(self._status)
+
+        self._search = QLineEdit()
+        self._search.setPlaceholderText('Search custom FastFlags…')
+        self._search.textChanged.connect(self._filter_rows)
+        layout.addWidget(self._search)
+
+        self._table = QTableWidget(0, 2)
+        self._table.setHorizontalHeaderLabels(['Name', 'Value'])
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._table.setMinimumHeight(180)
+        self._table.cellChanged.connect(self._save_table)
+        layout.addWidget(self._table)
+
+        buttons = QHBoxLayout()
+        add_button = QPushButton('Add New…')
+        add_button.clicked.connect(self._add_flag)
+        buttons.addWidget(add_button)
+
+        import_button = QPushButton('Import JSON…')
+        import_button.clicked.connect(self._import_json)
+        buttons.addWidget(import_button)
+
+        import_file_button = QPushButton('Import File…')
+        import_file_button.clicked.connect(self._import_file)
+        buttons.addWidget(import_file_button)
+
+        export_button = QPushButton('Export JSON…')
+        export_button.clicked.connect(self._export_json)
+        buttons.addWidget(export_button)
+
+        delete_button = QPushButton('Delete Selected')
+        delete_button.clicked.connect(self._delete_selected)
+        buttons.addWidget(delete_button)
+        buttons.addStretch()
+        layout.addLayout(buttons)
+
+        if self._config is None or self._proxy_master is None:
+            self._status.setText('The Fleasion proxy must be available to enable custom FastFlags.')
+        else:
+            self._update_status()
+
+    def _load_flags(self):
+        flags = dict(getattr(self._config, 'custom_fflags', {}) or {}) if self._config else {}
+        self._loading = True
+        try:
+            self._table.setRowCount(0)
+            for name, value in sorted(flags.items(), key=lambda item: item[0].lower()):
+                row = self._table.rowCount()
+                self._table.insertRow(row)
+                self._table.setItem(row, 0, QTableWidgetItem(name))
+                self._table.setItem(row, 1, QTableWidgetItem(str(value)))
+        finally:
+            self._loading = False
+        self._filter_rows(self._search.text())
+        self._update_status()
+
+    def _flags_from_table(self) -> dict[str, str]:
+        flags: dict[str, str] = {}
+        for row in range(self._table.rowCount()):
+            name_item = self._table.item(row, 0)
+            value_item = self._table.item(row, 1)
+            name = name_item.text().strip() if name_item else ''
+            if name:
+                flags[name] = value_item.text() if value_item else ''
+        return flags
+
+    def _save_table(self, *_args):
+        if self._loading or self._config is None:
+            return
+        self._config.custom_fflags = self._flags_from_table()
+        self._refresh_proxy_hosts()
+        self._update_status()
+
+    def _update_status(self):
+        if not hasattr(self, '_status'):
+            return
+        count = len(self._flags_from_table()) if hasattr(self, '_table') else 0
+        enabled = bool(self._config and getattr(self._config, 'custom_fflags_enabled', False))
+        if enabled:
+            self._status.setText(
+                f'Active — {count} saved custom FastFlag(s) will override Roblox ClientSettings.'
+            )
+            self._status.setStyleSheet('color: #67c587;')
+        else:
+            self._status.setText(
+                f'Inactive — {count} custom FastFlag(s) saved. Re-enable to restore all overrides.'
+            )
+            self._status.setStyleSheet('color: #999;')
+
+    def _refresh_proxy_hosts(self):
+        if self._proxy_master is None:
+            return
+        try:
+            self._proxy_master.refresh_custom_fflag_interception()
+        except Exception as exc:
+            log_buffer.log('CustomFFlags', f'Could not refresh proxy interception: {exc}')
+
+    def _on_enabled_toggled(self, checked: bool):
+        if self._config is None or self._proxy_master is None:
+            return
+
+        if checked and not self._config.custom_fflags_warning_accepted:
+            warning = CustomFFlagWarningDialog(self)
+            if warning.exec() != QDialog.DialogCode.Accepted:
+                self._enable_toggle.blockSignals(True)
+                self._enable_toggle.setChecked(False)
+                self._enable_toggle.blockSignals(False)
+                self._update_status()
+                return
+            self._config.custom_fflags_warning_accepted = True
+
+        self._config.custom_fflags_enabled = checked
+        self._refresh_proxy_hosts()
+        self._update_status()
+
+    def _add_flag(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Add Custom FastFlag')
+        form = QFormLayout(dialog)
+        name_edit = QLineEdit()
+        value_edit = QLineEdit()
+        form.addRow('Name', name_edit)
+        form.addRow('Value', value_edit)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        name_edit.setFocus()
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        name = name_edit.text().strip()
+        if not name:
+            QMessageBox.warning(self, 'Invalid FastFlag', 'FastFlag name cannot be empty.')
+            return
+        flags = self._flags_from_table()
+        flags[name] = value_edit.text()
+        self._set_flags(flags)
+
+    def _set_flags(self, flags: dict):
+        if self._config is None:
+            return
+        self._config.custom_fflags = flags
+        self._refresh_proxy_hosts()
+        self._load_flags()
+
+    def _import_mapping(self, payload):
+        from ..proxy.addons.custom_fflags import normalize_custom_fflags
+
+        if not isinstance(payload, dict):
+            raise ValueError('The JSON root must be an object of FastFlag name/value pairs.')
+        normalized = normalize_custom_fflags(payload)
+        if len(normalized) != len(payload):
+            raise ValueError('Every FastFlag value must be a string, number, or boolean.')
+        merged = self._flags_from_table()
+        merged.update(normalized)
+        self._set_flags(merged)
+
+    def _import_json(self):
+        text, ok = QInputDialog.getMultiLineText(
+            self,
+            'Import Custom FastFlags',
+            'Paste a JSON object:',
+            '{\n  "DFIntTaskSchedulerTargetFps": "20"\n}',
+        )
+        if not ok:
+            return
+        try:
+            self._import_mapping(json.loads(text))
+        except (json.JSONDecodeError, ValueError) as exc:
+            QMessageBox.warning(self, 'Invalid FastFlag JSON', str(exc))
+
+    def _import_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, 'Import Custom FastFlags', '', 'JSON Files (*.json);;All Files (*)'
+        )
+        if not path:
+            return
+        try:
+            self._import_mapping(json.loads(Path(path).read_text(encoding='utf-8')))
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            QMessageBox.warning(self, 'Could Not Import FastFlags', str(exc))
+
+    def _export_json(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, 'Export Custom FastFlags', 'ClientAppSettings.json', 'JSON Files (*.json)'
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(
+                json.dumps(self._flags_from_table(), indent=2, ensure_ascii=False),
+                encoding='utf-8',
+            )
+        except OSError as exc:
+            QMessageBox.warning(self, 'Could Not Export FastFlags', str(exc))
+
+    def _delete_selected(self):
+        rows = sorted({index.row() for index in self._table.selectedIndexes()}, reverse=True)
+        if not rows:
+            return
+        self._loading = True
+        try:
+            for row in rows:
+                self._table.removeRow(row)
+        finally:
+            self._loading = False
+        self._save_table()
+
+    def _filter_rows(self, text: str):
+        query = str(text or '').strip().lower()
+        for row in range(self._table.rowCount()):
+            name = self._table.item(row, 0)
+            value = self._table.item(row, 1)
+            haystack = f'{name.text() if name else ""} {value.text() if value else ""}'.lower()
+            self._table.setRowHidden(row, bool(query and query not in haystack))
+
+
 class FFlagSection(QWidget):
     """The complete Fast Flags section content with all controls."""
 
-    def __init__(self, manager: ModificationManager, roblox_monitor=None, parent=None):
+    def __init__(
+        self,
+        manager: ModificationManager,
+        roblox_monitor=None,
+        config_manager=None,
+        proxy_master=None,
+        parent=None,
+    ):
         super().__init__(parent)
         self._manager = manager
         self._roblox_monitor = roblox_monitor
+        self._config_manager = config_manager
+        self._proxy_master = proxy_master
 
         self._debounce_timer = QTimer()
         self._debounce_timer.setSingleShot(True)
@@ -1426,17 +1762,29 @@ class FFlagSection(QWidget):
         grid.addWidget(self._framerate_cap, row, 1)
         row += 1
 
-        layout.addLayout(grid)
+        self._preset_container = QWidget()
+        self._preset_container.setLayout(grid)
+        layout.addWidget(self._preset_container)
+
+        self._custom_fflag_editor = CustomFFlagEditor(
+            self._config_manager, self._proxy_master, self
+        )
+        layout.addWidget(self._custom_fflag_editor)
 
         # Reset button
-        reset_btn = QPushButton('\u21ba Reset All Fast Flags')
-        reset_btn.clicked.connect(self._on_reset_all)
+        self._reset_btn = QPushButton('\u21ba Reset All Allowlisted FastFlags')
+        self._reset_btn.clicked.connect(self._on_reset_all)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        btn_row.addWidget(reset_btn)
+        btn_row.addWidget(self._reset_btn)
         layout.addLayout(btn_row)
 
         self.setLayout(layout)
+
+    def set_presets_enabled(self, enabled: bool):
+        """Enable the allowlisted/local controls without disabling the proxy editor."""
+        self._preset_container.setEnabled(enabled)
+        self._reset_btn.setEnabled(enabled)
 
     def _on_mesh_lod_toggle(self, checked):
         self._mesh_lod_slider.setEnabled(checked)
@@ -1642,10 +1990,19 @@ class FFlagSection(QWidget):
 class ModificationsTab(QWidget):
     """The entire Modifications tab, added to the dashboard's QTabWidget."""
 
-    def __init__(self, mod_manager: ModificationManager, roblox_monitor=None, parent=None):
+    def __init__(
+        self,
+        mod_manager: ModificationManager,
+        roblox_monitor=None,
+        config_manager=None,
+        proxy_master=None,
+        parent=None,
+    ):
         super().__init__(parent)
         self._manager = mod_manager
         self._roblox_monitor = roblox_monitor
+        self._config_manager = config_manager
+        self._proxy_master = proxy_master
         self._row_widgets: dict[str, ModRowWidget] = {}  # target_path -> widget
         self._custom_rows: list[ModRowWidget] = []
 
@@ -1681,7 +2038,7 @@ class ModificationsTab(QWidget):
         self._container_layout.setContentsMargins(10, 10, 10, 10)
 
         # ── Fast Flags ───────────────────────────────────────────
-        self._fflag_toggle = QCheckBox('Enable Fast Flags')
+        self._fflag_toggle = QCheckBox('Enable allowlisted FastFlag presets')
         self._fflag_toggle.setChecked(self._manager.fast_flags_enabled)
         self._fflag_toggle.toggled.connect(self._on_fflag_toggle)
 
@@ -1690,8 +2047,13 @@ class ModificationsTab(QWidget):
             expanded=False,
             header_widgets=[self._fflag_toggle],
         )
-        self._fflag_widget = FFlagSection(self._manager, self._roblox_monitor)
-        self._fflag_widget.setEnabled(self._manager.fast_flags_enabled)
+        self._fflag_widget = FFlagSection(
+            self._manager,
+            self._roblox_monitor,
+            self._config_manager,
+            self._proxy_master,
+        )
+        self._fflag_widget.set_presets_enabled(self._manager.fast_flags_enabled)
         fflag_section.add_widget(self._fflag_widget)
 
         self._container_layout.addWidget(fflag_section)
@@ -2008,7 +2370,7 @@ class ModificationsTab(QWidget):
 
     def _on_fflag_toggle(self, checked: bool):
         self._manager.fast_flags_enabled = checked
-        self._fflag_widget.setEnabled(checked)
+        self._fflag_widget.set_presets_enabled(checked)
         if checked:
             # Immediately write current settings
             self._fflag_widget._schedule_write()

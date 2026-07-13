@@ -368,6 +368,13 @@ def _relaunch_as_admin(extra_args: str = '', parent_hwnd: int | None = None) -> 
         existing_args.append(f'--fleasion-user-localappdata={local_appdata}')
     if extra_args.strip():
         existing_args.extend(extra_args.strip().split())
+    # ShellExecuteEx returns as soon as the elevated child is created, while
+    # this normal-user Qt process can still own the single-instance slot.  Let
+    # the elevated copy request a clean exit from that parent before it tries
+    # to claim the slot; otherwise it falls into the duplicate-instance dialog
+    # and no dashboard is shown.
+    if '--kill-others' not in existing_args:
+        existing_args.append('--kill-others')
 
     if getattr(sys, 'frozen', False):
         # Compiled .exe — sys.executable is the .exe itself

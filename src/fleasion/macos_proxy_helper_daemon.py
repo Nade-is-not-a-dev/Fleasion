@@ -24,7 +24,7 @@ import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-HELPER_VERSION = 4
+HELPER_VERSION = 5
 HELPER_CAPABILITIES = ('hosts', 'relay', 'patch_ca')
 HOSTS_FILE = '/etc/hosts'
 HOSTS_MARKER = '# Fleasion proxy entry'
@@ -32,6 +32,8 @@ ALLOWED_HOSTS = {
     'apis.roblox.com',
     'assetdelivery.roblox.com',
     'contentdelivery.roblox.com',
+    'clientsettings.roblox.com',
+    'clientsettingscdn.roblox.com',
     'fts.rbxcdn.com',
     'gamejoin.roblox.com',
 }

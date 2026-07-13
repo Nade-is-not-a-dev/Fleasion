@@ -23,7 +23,9 @@ Key design principle - minimal modification:
 
 import asyncio
 import gzip
+import hashlib
 import logging
+import re
 import ssl
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -58,14 +60,21 @@ ASSET_DELIVERY_HOST = 'assetdelivery.roblox.com'
 GAMEJOIN_HOST = 'gamejoin.roblox.com'
 PROFILE_API_HOST = 'apis.roblox.com'
 PROFILE_API_PATH_FRAGMENT = '/v1/user/profiles/get-profiles'
+CLIENT_SETTINGS_HOSTS: frozenset = frozenset(
+    {'clientsettingscdn.roblox.com', 'clientsettings.roblox.com'}
+)
 CDN_HOSTS: frozenset = frozenset({'fts.rbxcdn.com', 'contentdelivery.roblox.com'})
 BASE_INTERCEPT_HOSTS: frozenset = frozenset({ASSET_DELIVERY_HOST, GAMEJOIN_HOST, *CDN_HOSTS})
 USERNAME_SPOOFER_INTERCEPT_HOSTS: frozenset = frozenset({PROFILE_API_HOST})
-INTERCEPT_HOSTS: frozenset = BASE_INTERCEPT_HOSTS | USERNAME_SPOOFER_INTERCEPT_HOSTS
+CUSTOM_FFLAGS_INTERCEPT_HOSTS: frozenset = CLIENT_SETTINGS_HOSTS
+INTERCEPT_HOSTS: frozenset = (
+    BASE_INTERCEPT_HOSTS | USERNAME_SPOOFER_INTERCEPT_HOSTS | CUSTOM_FFLAGS_INTERCEPT_HOSTS
+)
 ASSET_TRAFFIC_MISSING_DIAGNOSTIC_SECONDS = 20.0
 
 _ZSTD_MAGIC = b'\x28\xb5\x2f\xfd'
 _GZIP_MAGIC = b'\x1f\x8b'
+_DCZ_DICTIONARY_PATH_RE = re.compile(r'/([0-9a-f]{64})\.dcz(?:$|[?])', re.IGNORECASE)
 
 
 @dataclass
@@ -102,15 +111,72 @@ def _decompress_body(body: bytes, headers: Dict[bytes, bytes]) -> bytes:
     return body
 
 
-def _build_modified_response(status_line: bytes, headers: Dict[bytes, bytes], body: bytes) -> bytes:
-    """Build an HTTP response with a MODIFIED body (uncompressed, explicit content-length).
-    Only used when we actually change the response bytes.
+def _dcz_dictionary_sha256(path: str) -> str | None:
+    """Return the public Roblox compression-dictionary hash from a ``.dcz`` URL."""
+    match = _DCZ_DICTIONARY_PATH_RE.search(str(path or ''))
+    return match.group(1).lower() if match else None
+
+
+def _decompress_dcz(body: bytes, dictionary: bytes) -> bytes | None:
+    """Decode a Compression Dictionary Transport Zstandard payload.
+
+    ``dcz`` is regular Zstandard encoded against a dictionary advertised by the
+    client.  Roblox publishes these dictionaries under ClientSettings, so a
+    proxy can safely preserve the representation rather than returning an
+    incompatible identity response to a client that requested ``dcz``.
+    """
+    try:
+        import zstandard
+
+        # Roblox publishes raw dictionary content rather than a serialized
+        # full-dictionary frame.  Auto-detection can misclassify newer
+        # dictionaries, causing otherwise valid Player ClientSettings bodies
+        # to fail decompression.
+        zstd_dictionary = zstandard.ZstdCompressionDict(
+            dictionary,
+            dict_type=zstandard.DICT_TYPE_RAWCONTENT,
+        )
+        return zstandard.ZstdDecompressor(dict_data=zstd_dictionary).decompress(
+            body, max_output_size=64 * 1024 * 1024
+        )
+    except Exception:
+        return None
+
+
+def _compress_dcz(body: bytes, dictionary: bytes) -> bytes | None:
+    """Encode a modified ClientSettings document using the client's ``dcz`` dictionary."""
+    try:
+        import zstandard
+
+        zstd_dictionary = zstandard.ZstdCompressionDict(
+            dictionary,
+            dict_type=zstandard.DICT_TYPE_RAWCONTENT,
+        )
+        return zstandard.ZstdCompressor(dict_data=zstd_dictionary).compress(body)
+    except Exception:
+        return None
+
+
+def _build_modified_response(
+    status_line: bytes,
+    headers: Dict[bytes, bytes],
+    body: bytes,
+    content_encoding: bytes | None = None,
+) -> bytes:
+    """Build a response with a modified body and an explicit content length.
+
+    Bodies are normally served without a content encoding after modification.
+    A ``dcz`` ClientSettings body is the exception: retaining that encoding is
+    required because the requester advertised a shared Zstandard dictionary.
     """
     lines = [status_line]
     skip = {
         b'transfer-encoding',
         b'content-length',
         b'content-encoding',
+        b'content-md5',
+        b'etag',
+        b'x-signature-ed25519',
         b'proxy-connection',
         b'proxy-authenticate',
         b'proxy-authorization',
@@ -118,6 +184,8 @@ def _build_modified_response(status_line: bytes, headers: Dict[bytes, bytes], bo
     for k, v in headers.items():
         if k not in skip:
             lines.append(k + b': ' + v)
+    if content_encoding is not None:
+        lines.append(b'content-encoding: ' + content_encoding)
     lines.append(b'content-length: ' + str(len(body)).encode())
     return b'\r\n'.join(lines) + b'\r\n\r\n' + body
 
@@ -150,6 +218,12 @@ def _parse_status_code(status_line: bytes) -> int:
         return int(status_line.split(b' ', 2)[1])
     except Exception:
         return 0
+
+
+def _without_conditional_client_settings_headers(headers: Dict[bytes, bytes]) -> Dict[bytes, bytes]:
+    """Make one ClientSettings request fetch a current body instead of HTTP 304."""
+    conditional_headers = {b'if-none-match', b'if-modified-since'}
+    return {key: value for key, value in headers.items() if key not in conditional_headers}
 
 
 def _body_log_snippet(body: bytes, limit: int = 256) -> str:
@@ -566,9 +640,11 @@ class FleasionProxy:
         wire_preserving_passthrough: bool = False,
         vpn_compat_max_assetdelivery_connections: int = 16,
         vpn_compat_max_cdn_connections: int = 32,
+        custom_fflag_modifier=None,
     ) -> None:
         self.texture_stripper = texture_stripper
         self.cache_scraper = cache_scraper
+        self.custom_fflag_modifier = custom_fflag_modifier
         self.port = port
         self._module_interceptors: List = []
         if upstream_endpoints is None:
@@ -582,6 +658,7 @@ class FleasionProxy:
         )
         self._sni_diagnostics_seen: set[str] = set()
         self._fallback_diagnostics_seen: set[tuple[str, str]] = set()
+        self._client_settings_dictionary_cache: Dict[str, bytes] = {}
         self._wire_preserving_passthrough = bool(wire_preserving_passthrough)
         self._last_gamejoin_time: float = 0.0
         self._last_asset_traffic_time: float = 0.0
@@ -592,6 +669,8 @@ class FleasionProxy:
         self._upstream_host_limits = {
             ASSET_DELIVERY_HOST: asyncio.Semaphore(asset_limit),
             PROFILE_API_HOST: asyncio.Semaphore(asset_limit),
+            'clientsettingscdn.roblox.com': asyncio.Semaphore(asset_limit),
+            'clientsettings.roblox.com': asyncio.Semaphore(asset_limit),
             'contentdelivery.roblox.com': asyncio.Semaphore(asset_limit),
             'fts.rbxcdn.com': asyncio.Semaphore(cdn_limit),
         }
@@ -1000,6 +1079,69 @@ class FleasionProxy:
                 pass
             return False
 
+        async def fetch_client_settings_dictionary(dictionary_sha256: str) -> bytes | None:
+            """Fetch and cache a public Roblox shared-compression dictionary."""
+            if not re.fullmatch(r'[0-9a-f]{64}', dictionary_sha256):
+                return None
+            cached = self._client_settings_dictionary_cache.get(dictionary_sha256)
+            if cached is not None:
+                return cached
+
+            dictionary_host = 'clientsettings.roblox.com'
+            connection = await self._connect_upstream(dictionary_host)
+            dictionary_reader, dictionary_writer = connection.reader, connection.writer
+            if dictionary_reader is None or dictionary_writer is None:
+                log_buffer.log(
+                    'CustomFFlags',
+                    'Could not retrieve the Roblox compression dictionary: '
+                    f'{connection.error or "upstream connection failed"}',
+                )
+                return None
+
+            try:
+                request = (
+                    f'GET /v2/compression-dictionaries/{dictionary_sha256} HTTP/1.1\r\n'
+                    f'Host: {dictionary_host}\r\n'
+                    'Accept: application/octet-stream\r\n'
+                    'Accept-Encoding: identity\r\n'
+                    'User-Agent: Fleasion/1.0\r\n'
+                    'Connection: close\r\n\r\n'
+                ).encode('ascii')
+                dictionary_writer.write(request)
+                await dictionary_writer.drain()
+                response = await _read_headers_raw(dictionary_reader)
+                if response is None:
+                    log_buffer.log('CustomFFlags', 'Roblox compression dictionary returned no response')
+                    return None
+                status_code = _parse_status_code(response.first_line)
+                if not 200 <= status_code < 300:
+                    log_buffer.log(
+                        'CustomFFlags',
+                        f'Roblox compression dictionary returned HTTP {status_code}',
+                    )
+                    return None
+                dictionary = _decompress_body(
+                    (await _read_body_wire(dictionary_reader, response.headers)).payload,
+                    response.headers,
+                )
+                if hashlib.sha256(dictionary).hexdigest() != dictionary_sha256:
+                    log_buffer.log(
+                        'CustomFFlags',
+                        'Roblox compression dictionary integrity check failed; preserving original response',
+                    )
+                    return None
+                self._client_settings_dictionary_cache[dictionary_sha256] = dictionary
+                return dictionary
+            except (ConnectionResetError, BrokenPipeError, asyncio.IncompleteReadError, OSError) as exc:
+                log_buffer.log('CustomFFlags', f'Roblox compression dictionary fetch failed: {exc}')
+                return None
+            finally:
+                try:
+                    dictionary_writer.close()
+                    await dictionary_writer.wait_closed()
+                except Exception:
+                    pass
+
         try:
             while True:
                 # ── Read request ─────────────────────────────────────────────
@@ -1023,6 +1165,30 @@ class FleasionProxy:
                 is_batch = host == ASSET_DELIVERY_HOST and b'/v1/assets/batch' in req_first
                 _gamejoin_flow: Optional[ProxyFlow] = None
                 _profile_flow: Optional[ProxyFlow] = None
+                upstream_req_first = req_first
+                upstream_req_headers = req_headers
+
+                if (
+                    host in CLIENT_SETTINGS_HOSTS
+                    and self.custom_fflag_modifier is not None
+                    and self.custom_fflag_modifier.is_enabled()
+                    and self.custom_fflag_modifier.handles_path(path)
+                ):
+                    encoding = req_headers.get(b'accept-encoding', b'').decode(
+                        'ascii', errors='replace'
+                    )
+                    log_buffer.log(
+                        'CustomFFlags',
+                        f'Processing ClientSettings response for {path[:160]} (accept={encoding or "identity"})',
+                    )
+                    if self.custom_fflag_modifier.requires_fresh_response():
+                        upstream_req_headers = _without_conditional_client_settings_headers(
+                            req_headers
+                        )
+                        log_buffer.log(
+                            'CustomFFlags',
+                            'Requesting one fresh ClientSettings response for updated custom FastFlags',
+                        )
 
                 if host == ASSET_DELIVERY_HOST or host in CDN_HOSTS:
                     self._note_asset_traffic()
@@ -1213,11 +1379,17 @@ class FleasionProxy:
                     # Forward request as-is.
                     if not await ensure_upstream(path):
                         break
-                    if self._wire_preserving_passthrough:
+                    if (
+                        self._wire_preserving_passthrough
+                        and upstream_req_first == req_first
+                        and upstream_req_headers is req_headers
+                    ):
                         up_writer.write(req_raw.raw_header_block + req_body.wire)
                     else:
                         up_writer.write(
-                            _reassemble_raw_request(req_first, req_headers, req_body_raw)
+                            _reassemble_raw_request(
+                                upstream_req_first, upstream_req_headers, req_body_raw
+                            )
                         )
 
                 try:
@@ -1271,6 +1443,7 @@ class FleasionProxy:
                 # We only modify if: solidmodel injection is requested.
                 # All other responses are forwarded raw (preserving content-encoding).
                 response_modified = False
+                modified_content_encoding: bytes | None = None
 
                 if is_batch:
                     # Batch response: forward raw to Roblox, decompress only for addon hooks
@@ -1444,6 +1617,60 @@ class FleasionProxy:
                             full_url, path, resp_body_for_cache, ct
                         )
 
+                elif (
+                    host in CLIENT_SETTINGS_HOSTS
+                    and self.custom_fflag_modifier is not None
+                    and self.custom_fflag_modifier.is_enabled()
+                    and self.custom_fflag_modifier.handles_path(path)
+                    and 200 <= status_code < 300
+                    and resp_body_raw
+                ):
+                    content_encoding = resp_headers.get(b'content-encoding', b'').lower()
+                    if content_encoding == b'dcz':
+                        dictionary_sha256 = _dcz_dictionary_sha256(path)
+                        dictionary = (
+                            await fetch_client_settings_dictionary(dictionary_sha256)
+                            if dictionary_sha256 is not None
+                            else None
+                        )
+                        resp_body_plain = (
+                            _decompress_dcz(resp_body_raw, dictionary)
+                            if dictionary is not None
+                            else None
+                        )
+                        if resp_body_plain is None:
+                            log_buffer.log(
+                                'CustomFFlags',
+                                'Could not decode dictionary-compressed ClientSettings; preserving original response',
+                            )
+                        else:
+                            modified_settings = self.custom_fflag_modifier.modify_response(
+                                path, resp_body_plain
+                            )
+                            if modified_settings != resp_body_plain:
+                                recompressed = _compress_dcz(modified_settings, dictionary)
+                                if recompressed is None:
+                                    log_buffer.log(
+                                        'CustomFFlags',
+                                        'Could not re-encode dictionary-compressed ClientSettings; preserving original response',
+                                    )
+                                else:
+                                    resp_body_raw = recompressed
+                                    modified_content_encoding = b'dcz'
+                                    response_modified = True
+                                    log_buffer.log(
+                                        'CustomFFlags',
+                                        'Re-encoded custom FastFlags with the Roblox dcz dictionary',
+                                    )
+                    else:
+                        resp_body_plain = _decompress_body(resp_body_raw, resp_headers)
+                        modified_settings = self.custom_fflag_modifier.modify_response(
+                            path, resp_body_plain
+                        )
+                        if modified_settings != resp_body_plain:
+                            resp_body_raw = modified_settings
+                            response_modified = True
+
                 if (
                     host == GAMEJOIN_HOST
                     and _gamejoin_flow is not None
@@ -1483,8 +1710,14 @@ class FleasionProxy:
 
                 # ── Forward response to Roblox ────────────────────────────────
                 if response_modified:
-                    # We changed the bytes, send as uncompressed with new content-length
-                    writer.write(_build_modified_response(resp_first, resp_headers, resp_body_raw))
+                    writer.write(
+                        _build_modified_response(
+                            resp_first,
+                            resp_headers,
+                            resp_body_raw,
+                            content_encoding=modified_content_encoding,
+                        )
+                    )
                 else:
                     if self._wire_preserving_passthrough:
                         writer.write(resp_raw.raw_header_block + resp_body.wire)

@@ -688,7 +688,12 @@ class ReplacerConfigWindow(QDialog):
         if self._mod_manager is not None:
             from .modifications_tab import ModificationsTab
 
-            modifications_tab = ModificationsTab(self._mod_manager, self.roblox_monitor)
+            modifications_tab = ModificationsTab(
+                self._mod_manager,
+                self.roblox_monitor,
+                config_manager=self.config_manager,
+                proxy_master=self.proxy_master,
+            )
             self.tab_widget.addTab(modifications_tab, 'Modifications')
 
         # Create Rando Stuff tab

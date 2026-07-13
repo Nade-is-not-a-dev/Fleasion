@@ -170,6 +170,34 @@ class ConfigManagerEncodingTests(unittest.TestCase):
             self.assertTrue(manager.desktop_integration)
             self.assertEqual(manager.export_naming, ['name', 'id'])
 
+    def test_custom_fflags_are_risk_gated_disabled_and_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_manager_module = self._load_manager_for(Path(tmp))
+            manager = config_manager_module.ConfigManager()
+
+            self.assertFalse(manager.custom_fflags_enabled)
+            self.assertFalse(manager.custom_fflags_warning_accepted)
+            self.assertEqual(manager.custom_fflags, {})
+
+            manager.custom_fflags = {
+                'DFIntTaskSchedulerTargetFps': 20,
+                'FFlagExample': True,
+                'invalid': ['nested'],
+            }
+            manager.custom_fflags_warning_accepted = True
+            manager.custom_fflags_enabled = True
+
+            reloaded = config_manager_module.ConfigManager()
+            self.assertTrue(reloaded.custom_fflags_enabled)
+            self.assertTrue(reloaded.custom_fflags_warning_accepted)
+            self.assertEqual(
+                reloaded.custom_fflags,
+                {
+                    'DFIntTaskSchedulerTargetFps': '20',
+                    'FFlagExample': 'True',
+                },
+            )
+
     def test_dummy_replacement_ids_are_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_manager_module = self._load_manager_for(Path(tmp))

@@ -60,6 +60,7 @@ from ..utils import (
     STORAGE_DB_GDK,
     delete_cache,
     format_count,
+    is_roblox_running,
     log_buffer,
     run_in_thread,
     terminate_roblox,
@@ -82,11 +83,12 @@ from ..utils.windows import (
     get_roblox_studio_exe_path,
     launch_as_standard_user,
 )
-from .addons import CacheScraper, TextureStripper, UsernameSpoofer
+from .addons import CacheScraper, CustomFFlagModifier, TextureStripper, UsernameSpoofer
 from .server import (
     ASSET_DELIVERY_HOST,
     BASE_INTERCEPT_HOSTS,
     CDN_HOSTS,
+    CUSTOM_FFLAGS_INTERCEPT_HOSTS,
     GAMEJOIN_HOST,
     INTERCEPT_HOSTS,
     USERNAME_SPOOFER_INTERCEPT_HOSTS,
@@ -2861,6 +2863,9 @@ class ProxyMaster:
         # Wire scraper into cache_manager for private asset downloads
         self.cache_manager.set_scraper(self.cache_scraper)
         self.username_spoofer = UsernameSpoofer(config_manager)
+        self.custom_fflag_modifier = CustomFFlagModifier(
+            config_manager, reload_settings_from_disk=True
+        )
 
         self._texture_stripper: Optional[TextureStripper] = None
 
@@ -2946,6 +2951,13 @@ class ProxyMaster:
         spoofer_enabled = spoofer is not None and spoofer.is_enabled()
         if spoofer_enabled:
             hosts.update(USERNAME_SPOOFER_INTERCEPT_HOSTS)
+        custom_modifier = getattr(self, 'custom_fflag_modifier', None)
+        # Install the ClientSettings routes before Roblox launches so the
+        # Player's startup fetch is caught.  The request-level modifier passes
+        # PCClientBootstrapper through unchanged, avoiding the bootstrapper
+        # failure that a Player-only process gate was meant to prevent.
+        if custom_modifier is not None and custom_modifier.is_enabled():
+            hosts.update(CUSTOM_FFLAGS_INTERCEPT_HOSTS)
         return hosts
 
     def _startup_intercept_hosts(self) -> set[str]:
@@ -2971,7 +2983,7 @@ class ProxyMaster:
         self.refresh_username_spoofer_interception()
 
     def refresh_username_spoofer_interception(self) -> None:
-        """Add or remove the profile API hosts entry as the spoofer is enabled."""
+        """Refresh hosts entries for optional proxy-backed features."""
         desired_hosts = self._desired_intercept_hosts()
         with self._lock:
             if desired_hosts == self._active_intercept_hosts:
@@ -3046,6 +3058,22 @@ class ProxyMaster:
                 'Hosts',
                 f'Active intercepts updated: {", ".join(sorted(desired_hosts))}',
             )
+
+    def refresh_custom_fflag_interception(self) -> None:
+        """Apply the current custom FastFlag proxy toggle immediately."""
+        self.prime_custom_fflag_cache()
+        self.refresh_username_spoofer_interception()
+
+    def prime_custom_fflag_cache(self) -> bool:
+        """Preload startup-only custom FastFlags while Roblox is closed."""
+        custom_modifier = getattr(self, 'custom_fflag_modifier', None)
+        if (
+            custom_modifier is None
+            or not custom_modifier.is_enabled()
+            or is_roblox_running()
+        ):
+            return False
+        return custom_modifier.prime_windows_flag_cache()
 
     def _emit_proxy_start_error(self, code: str, details: dict) -> None:
         """Forward startup failures to the app layer for user-facing dialogs."""
@@ -3383,7 +3411,15 @@ class ProxyMaster:
             return
 
         # ── Optional cache clear on launch ───────────────────────────────
-        if self.config_manager.clear_cache_on_launch:
+        custom_fflags_active = bool(
+            getattr(self.config_manager, 'custom_fflags_enabled', False)
+        )
+        if custom_fflags_active and is_roblox_running():
+            log_buffer.log(
+                'Cleanup',
+                'Custom FastFlags are active and Roblox is already running; skipping cache clear',
+            )
+        elif self.config_manager.clear_cache_on_launch:
             log_buffer.log('Cleanup', 'Clear cache on launch enabled - deleting cache')
 
             def _delete_and_log():
@@ -3394,6 +3430,9 @@ class ProxyMaster:
             run_in_thread(_delete_and_log)()
         else:
             log_buffer.log('Cleanup', 'Cache clear on launch disabled - skipping')
+
+        if custom_fflags_active:
+            self.prime_custom_fflag_cache()
 
         # ── Certificate setup ─────────────────────────────────────────────
         log_buffer.log('Certificate', 'Generating/loading CA certificates...')
@@ -3565,6 +3604,7 @@ class ProxyMaster:
             wire_preserving_passthrough=self._effective_wire_preserving_passthrough(),
             vpn_compat_max_assetdelivery_connections=asset_connection_limit,
             vpn_compat_max_cdn_connections=cdn_connection_limit,
+            custom_fflag_modifier=getattr(self, 'custom_fflag_modifier', None),
         )
         with self._lock:
             interceptors = list(self._module_interceptors)

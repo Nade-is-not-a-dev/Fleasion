@@ -118,6 +118,9 @@ DEFAULT_SETTINGS = {
     'auto_delete_cache_on_exit': True,
     'clear_cache_on_launch': True,
     'proxy_features_enabled': True,
+    'custom_fflags_enabled': False,
+    'custom_fflags_warning_accepted': False,
+    'custom_fflags': {},
     'macos_auth_source': '',
     'upstream_transport_mode': 'auto',
     'upstream_http_connect_host': '',
@@ -176,6 +179,23 @@ def _json_loads(raw: bytes | str) -> Any:
 def _write_json(path: Path, data: Any) -> None:
     with path.open('w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
+
+
+def _normalize_custom_fflags(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for raw_name, raw_value in value.items():
+        name = str(raw_name).strip()
+        if not name:
+            continue
+        if isinstance(raw_value, bool):
+            normalized[name] = 'True' if raw_value else 'False'
+        elif isinstance(raw_value, str):
+            normalized[name] = raw_value
+        elif isinstance(raw_value, int | float):
+            normalized[name] = str(raw_value)
+    return normalized
 
 
 class ConfigManager:
@@ -491,6 +511,36 @@ class ConfigManager:
     def proxy_features_enabled(self, value: bool):
         """Set proxy feature toggle."""
         self.settings['proxy_features_enabled'] = value
+        self._save_settings()
+
+    @property
+    def custom_fflags_enabled(self) -> bool:
+        """Whether remote ClientSettings responses should receive custom overrides."""
+        return bool(self.settings.get('custom_fflags_enabled', False))
+
+    @custom_fflags_enabled.setter
+    def custom_fflags_enabled(self, value: bool):
+        self.settings['custom_fflags_enabled'] = bool(value)
+        self._save_settings()
+
+    @property
+    def custom_fflags_warning_accepted(self) -> bool:
+        """Whether the one-time custom FastFlag risk warning was accepted."""
+        return bool(self.settings.get('custom_fflags_warning_accepted', False))
+
+    @custom_fflags_warning_accepted.setter
+    def custom_fflags_warning_accepted(self, value: bool):
+        self.settings['custom_fflags_warning_accepted'] = bool(value)
+        self._save_settings()
+
+    @property
+    def custom_fflags(self) -> dict[str, str]:
+        """Return a normalized copy of the saved custom FastFlags."""
+        return _normalize_custom_fflags(self.settings.get('custom_fflags', {}))
+
+    @custom_fflags.setter
+    def custom_fflags(self, value: dict):
+        self.settings['custom_fflags'] = _normalize_custom_fflags(value)
         self._save_settings()
 
     @property

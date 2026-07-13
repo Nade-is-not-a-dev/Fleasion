@@ -34,6 +34,8 @@ ALLOWED_PROXY_HOSTS = frozenset(
         'apis.roblox.com',
         'assetdelivery.roblox.com',
         'contentdelivery.roblox.com',
+        'clientsettings.roblox.com',
+        'clientsettingscdn.roblox.com',
         'fts.rbxcdn.com',
         'gamejoin.roblox.com',
     }
