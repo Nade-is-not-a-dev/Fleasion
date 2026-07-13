@@ -95,6 +95,16 @@ jobs:
           choco install upx -y --no-progress
           upx --version
 
+      - name: Test macOS proxy helper
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >
+          uv run pytest -q
+          tests/test_macos_proxy_helper.py
+          tests/test_logging.py
+          tests/test_autostart.py
+
       - name: Build Windows package
         if: runner.os == 'Windows'
         run: uv run build

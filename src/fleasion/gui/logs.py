@@ -1,5 +1,7 @@
 """Logs window."""
 
+import sys
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QKeySequence, QShortcut, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
@@ -14,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..utils import LOGS_DIR, get_icon_path, log_buffer, open_folder, time_tracker
+from ..utils.macos_proxy_helper import HELPER_LOG_DIR
 
 
 class LogsWindow(QDialog):
@@ -64,6 +67,15 @@ class LogsWindow(QDialog):
         open_folder_btn.setFixedSize(110, 22)
         open_folder_btn.clicked.connect(lambda: open_folder(LOGS_DIR))
         bottom.addWidget(open_folder_btn)
+
+        if sys.platform == 'darwin':
+            bottom.addSpacing(6)
+
+            open_helper_logs_btn = QPushButton('Open Helper Logs')
+            open_helper_logs_btn.setFixedSize(118, 22)
+            open_helper_logs_btn.setToolTip('Open the root-owned macOS proxy helper diagnostics')
+            open_helper_logs_btn.clicked.connect(lambda: open_folder(HELPER_LOG_DIR))
+            bottom.addWidget(open_helper_logs_btn)
 
         bottom.addSpacing(6)
 

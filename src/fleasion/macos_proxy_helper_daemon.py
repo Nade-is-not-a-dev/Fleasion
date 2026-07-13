@@ -206,7 +206,9 @@ def _is_fleasion_ca_cert_block(pem_block):
 def _is_relative_to(child, parent):
     try:
         return os.path.commonpath([str(child), str(parent)]) == str(parent)
-    except OSError, ValueError:
+    # The source helper is also used by `uv run`, where launchd invokes the
+    # system Python rather than Fleasion's Python 3.14 runtime.
+    except (OSError, ValueError):
         return False
 
 

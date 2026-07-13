@@ -1,3 +1,4 @@
+import ast
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
@@ -24,6 +25,12 @@ def _reset_daemon_state(tmp_path, monkeypatch):
     monkeypatch.setattr(daemon, "_active_hosts", set())
     monkeypatch.setattr(daemon, "_last_heartbeat", 0.0)
     return hosts_file, token_file
+
+
+def test_source_helper_remains_compatible_with_pre_314_python_syntax():
+    source = Path(daemon.__file__).read_text(encoding="utf-8")
+
+    ast.parse(source, filename=daemon.__file__, feature_version=(3, 13))
 
 
 def test_helper_only_manages_allowlisted_fleasion_hosts(tmp_path, monkeypatch):
@@ -109,6 +116,46 @@ def test_installed_helper_plist_runs_root_owned_helper_copy():
     assert "/Users/" not in args[0]
     assert plist["RunAtLoad"] is True
     assert plist["KeepAlive"] is True
+    assert plist["StandardOutPath"] == str(macos_proxy_helper.HELPER_STDOUT_LOG_PATH)
+    assert plist["StandardErrorPath"] == str(macos_proxy_helper.HELPER_STDERR_LOG_PATH)
+    assert plist["StandardOutPath"] != plist["StandardErrorPath"]
+    assert plist["StandardErrorPath"] != str(macos_proxy_helper.HELPER_LOG_PATH)
+
+
+def test_frozen_app_uses_framework_helper_not_python_source(tmp_path, monkeypatch):
+    resources = tmp_path / "Fleasion.app" / "Contents" / "Resources"
+    frameworks = resources.parent / "Frameworks"
+    resources.mkdir(parents=True)
+    frameworks.mkdir()
+    (resources / "macos_proxy_helper_daemon.py").write_text("# source fallback\n", encoding="utf-8")
+    helper = frameworks / "fleasion-proxy-helper-arm64"
+    helper.write_text("native helper\n", encoding="utf-8")
+    helper.chmod(0o755)
+
+    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(resources), raising=False)
+    monkeypatch.setattr(macos_proxy_helper.platform, "machine", lambda: "arm64")
+
+    assert macos_proxy_helper._source_helper_path() == helper
+
+
+def test_frozen_app_without_native_helper_does_not_use_python_source(tmp_path, monkeypatch):
+    resources = tmp_path / "Fleasion.app" / "Contents" / "Resources"
+    resources.mkdir(parents=True)
+    (resources / "macos_proxy_helper_daemon.py").write_text("# source fallback\n", encoding="utf-8")
+
+    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(resources), raising=False)
+
+    assert macos_proxy_helper._source_helper_path() == (
+        resources.parent / "Frameworks" / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAME
+    )
+
+
+def test_source_run_uses_python_helper_when_not_frozen(monkeypatch):
+    monkeypatch.delattr(macos_proxy_helper.sys, "_MEIPASS", raising=False)
+
+    assert macos_proxy_helper._source_helper_path() == (
+        Path(macos_proxy_helper.__file__).resolve().parents[1] / "macos_proxy_helper_daemon.py"
+    )
 
 
 def test_helper_installer_stages_helper_before_privileged_install(tmp_path, monkeypatch):
@@ -140,6 +187,12 @@ def test_helper_installer_stages_helper_before_privileged_install(tmp_path, monk
     assert script.index("/usr/bin/xattr -c") > script.index("/usr/bin/install")
     assert "launchctl bootstrap system" in script
     assert "launchctl load -w" in script
+    for log_path in (
+        macos_proxy_helper.HELPER_LOG_PATH,
+        macos_proxy_helper.HELPER_STDOUT_LOG_PATH,
+        macos_proxy_helper.HELPER_STDERR_LOG_PATH,
+    ):
+        assert f"/usr/bin/install -o root -g wheel -m 644 /dev/null {log_path}" in script
 
 
 def _fake_roblox_resources(tmp_path: Path) -> Path:

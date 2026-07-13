@@ -28,7 +28,10 @@ HELPER_BUNDLED_EXECUTABLE_NAMES = {
 HELPER_INSTALL_PATH = Path('/Library/PrivilegedHelperTools') / HELPER_ID
 HELPER_PLIST_PATH = Path('/Library/LaunchDaemons') / f'{HELPER_ID}.plist'
 HELPER_TOKEN_FILE = CONFIG_DIR / 'proxy-helper.token'
-HELPER_LOG_PATH = Path('/Library/Logs/Fleasion.proxy-helper.log')
+HELPER_LOG_DIR = Path('/Library/Logs')
+HELPER_LOG_PATH = HELPER_LOG_DIR / 'Fleasion.proxy-helper.log'
+HELPER_STDOUT_LOG_PATH = HELPER_LOG_DIR / 'Fleasion.proxy-helper.stdout.log'
+HELPER_STDERR_LOG_PATH = HELPER_LOG_DIR / 'Fleasion.proxy-helper.stderr.log'
 REQUIRED_HELPER_VERSION = 4
 REQUIRED_HELPER_CAPABILITIES = {'patch_ca'}
 
@@ -161,23 +164,31 @@ def helper_patch_ca(ca_pem: str, installs: list[dict]) -> dict | None:
 
 
 def _source_helper_path() -> Path:
-    frozen_root = Path(getattr(sys, '_MEIPASS', ''))
-    if frozen_root:
+    frozen_meipass = getattr(sys, '_MEIPASS', None)
+    if frozen_meipass:
+        frozen_root = Path(frozen_meipass)
         machine = platform.machine().lower()
         helper_names = [
             HELPER_BUNDLED_EXECUTABLE_NAMES.get(machine),
             HELPER_BUNDLED_EXECUTABLE_NAME,
         ]
         helper_names.extend(HELPER_BUNDLED_EXECUTABLE_NAMES.values())
-        for helper_name in helper_names:
-            if not helper_name:
-                continue
-            bundled_executable = frozen_root / helper_name
-            if bundled_executable.exists():
-                return bundled_executable
-        bundled_source = frozen_root / 'macos_proxy_helper_daemon.py'
-        if bundled_source.exists():
-            return bundled_source
+        # PyInstaller puts data files in Resources but native executables in
+        # Frameworks inside a macOS .app bundle.  Installing the bundled Python
+        # source as a fallback makes launchd depend on a system Python and can
+        # fail before the helper has a chance to write its own log.
+        bundle_roots = (frozen_root.parent / 'Frameworks', frozen_root)
+        for bundle_root in bundle_roots:
+            for helper_name in helper_names:
+                if not helper_name:
+                    continue
+                bundled_executable = bundle_root / helper_name
+                if bundled_executable.is_file() and os.access(bundled_executable, os.X_OK):
+                    return bundled_executable
+
+        # Return a useful missing path so install_helper can show a clear
+        # packaged-build error instead of silently installing Python source.
+        return frozen_root.parent / 'Frameworks' / HELPER_BUNDLED_EXECUTABLE_NAME
     return Path(__file__).resolve().parents[1] / 'macos_proxy_helper_daemon.py'
 
 
@@ -200,8 +211,11 @@ def _build_plist() -> bytes:
             'KeepAlive': True,
             'ProcessType': 'Background',
             'ThrottleInterval': 2,
-            'StandardOutPath': str(HELPER_LOG_PATH),
-            'StandardErrorPath': str(HELPER_LOG_PATH),
+            # Keep launchd output separate from the helper's rotating application
+            # log.  A crash before Python configures its logger is then still
+            # captured in stderr instead of leaving the reported log empty.
+            'StandardOutPath': str(HELPER_STDOUT_LOG_PATH),
+            'StandardErrorPath': str(HELPER_STDERR_LOG_PATH),
         },
         fmt=plistlib.FMT_XML,
         sort_keys=True,
@@ -249,6 +263,31 @@ def install_helper() -> tuple[bool, str]:
             '-m',
             '755',
             str(HELPER_INSTALL_PATH.parent),
+        ],
+        [
+            '/usr/bin/install',
+            '-d',
+            '-o',
+            'root',
+            '-g',
+            'wheel',
+            '-m',
+            '755',
+            str(HELPER_LOG_DIR),
+        ],
+        *[
+            [
+                '/usr/bin/install',
+                '-o',
+                'root',
+                '-g',
+                'wheel',
+                '-m',
+                '644',
+                '/dev/null',
+                str(log_path),
+            ]
+            for log_path in (HELPER_LOG_PATH, HELPER_STDOUT_LOG_PATH, HELPER_STDERR_LOG_PATH)
         ],
         [
             '/usr/bin/install',
@@ -359,7 +398,12 @@ exit 0
             log_buffer.log('ProxyHelper', 'macOS proxy helper installed and ready')
             return True, ''
         time.sleep(0.25)
-    detail = f'The helper was installed but did not become ready. Check {HELPER_LOG_PATH}.'
+    detail = (
+        'The helper was installed but did not become ready. '
+        'Diagnostic logs were created at:\n'
+        f'  {HELPER_LOG_PATH}\n'
+        f'  {HELPER_STDERR_LOG_PATH}'
+    )
     if install_output:
         detail += f'\n\nLaunch output:\n{install_output}'
     return False, detail
