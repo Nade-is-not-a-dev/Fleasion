@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMessageBox,
     QMenu,
     QPushButton,
@@ -51,6 +52,7 @@ from PyQt6.QtWidgets import (
 
 from ..cache.tools.ktx_to_png import convert as ktx_to_png, strip_prefixed_ktx
 from ..modifications.manager import ModificationManager, normalise_target_path
+from ..modifications.fflag_profiles import FastFlagProfileManager
 from ..modifications.platform_targets import (
     read_current_platform_original_asset,
     target_path_for_current_platform,
@@ -1342,6 +1344,171 @@ class CustomFFlagWarningDialog(QDialog):
             self._confirm_button.setEnabled(True)
 
 
+class FastFlagProfilesDialog(QDialog):
+    """Manage named, on-disk FastFlag profiles without hiding the current editor."""
+
+    def __init__(self, flags: dict[str, str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Custom FastFlag Profiles')
+        self.setMinimumWidth(560)
+        self._flags = dict(flags)
+        self._profiles = FastFlagProfileManager()
+        self.loaded_flags: dict[str, str] | None = None
+        self._setup_ui()
+        self._refresh_profiles()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+        description = QLabel(
+            'Save the current custom FastFlags as a reusable JSON profile. Loading can replace '
+            'the editor or merge the profile into it.'
+        )
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        save_row = QHBoxLayout()
+        self._name = QLineEdit()
+        self._name.setPlaceholderText('Profile name')
+        save_row.addWidget(self._name)
+        save_button = QPushButton('Save Current')
+        save_button.clicked.connect(self._save_profile)
+        save_row.addWidget(save_button)
+        layout.addLayout(save_row)
+
+        self._profile_list = QListWidget()
+        self._profile_list.itemSelectionChanged.connect(self._on_selection_changed)
+        self._profile_list.itemDoubleClicked.connect(lambda _item: self._load_profile())
+        layout.addWidget(self._profile_list)
+
+        self._replace_flags = QCheckBox('Replace current flags when loading')
+        self._replace_flags.setChecked(True)
+        self._replace_flags.setToolTip('Turn this off to merge the profile into the current flags.')
+        layout.addWidget(self._replace_flags)
+
+        actions = QHBoxLayout()
+        self._load_button = QPushButton('Load')
+        self._load_button.clicked.connect(self._load_profile)
+        actions.addWidget(self._load_button)
+        self._update_button = QPushButton('Update from Current')
+        self._update_button.clicked.connect(self._update_profile)
+        actions.addWidget(self._update_button)
+        self._copy_button = QPushButton('Copy JSON')
+        self._copy_button.clicked.connect(self._copy_profile)
+        actions.addWidget(self._copy_button)
+        self._rename_button = QPushButton('Rename…')
+        self._rename_button.clicked.connect(self._rename_profile)
+        actions.addWidget(self._rename_button)
+        self._delete_button = QPushButton('Delete')
+        self._delete_button.clicked.connect(self._delete_profile)
+        actions.addWidget(self._delete_button)
+        layout.addLayout(actions)
+
+        close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close.rejected.connect(self.reject)
+        layout.addWidget(close)
+        self._set_actions_enabled(False)
+
+    def _selected_name(self) -> str | None:
+        item = self._profile_list.currentItem()
+        return item.text() if item is not None else None
+
+    def _set_actions_enabled(self, enabled: bool):
+        for button in (
+            self._load_button,
+            self._update_button,
+            self._copy_button,
+            self._rename_button,
+            self._delete_button,
+        ):
+            button.setEnabled(enabled)
+
+    def _on_selection_changed(self):
+        name = self._selected_name()
+        self._set_actions_enabled(name is not None)
+        if name:
+            self._name.setText(name)
+
+    def _refresh_profiles(self, selected: str | None = None):
+        selected = selected or self._selected_name()
+        self._profile_list.clear()
+        for name in self._profiles.list_profiles():
+            self._profile_list.addItem(name)
+        if selected:
+            matches = self._profile_list.findItems(selected, Qt.MatchFlag.MatchExactly)
+            if matches:
+                self._profile_list.setCurrentItem(matches[0])
+        self._set_actions_enabled(self._selected_name() is not None)
+
+    def _show_error(self, action: str, exc: Exception):
+        QMessageBox.warning(self, f'Could Not {action} Profile', str(exc))
+
+    def _save_profile(self):
+        try:
+            name = self._profiles.save(self._name.text(), self._flags)
+        except (OSError, ValueError) as exc:
+            self._show_error('Save', exc)
+            return
+        self._refresh_profiles(name)
+
+    def _load_profile(self):
+        name = self._selected_name()
+        if not name:
+            return
+        try:
+            flags = self._profiles.load(name)
+        except (OSError, ValueError) as exc:
+            self._show_error('Load', exc)
+            return
+        self.loaded_flags = flags if self._replace_flags.isChecked() else {**self._flags, **flags}
+        self.accept()
+
+    def _update_profile(self):
+        name = self._selected_name()
+        if not name:
+            return
+        try:
+            self._profiles.save(name, self._flags)
+        except (OSError, ValueError) as exc:
+            self._show_error('Update', exc)
+
+    def _copy_profile(self):
+        name = self._selected_name()
+        if not name:
+            return
+        try:
+            QApplication.clipboard().setText(json.dumps(self._profiles.load(name), indent=2))
+        except (OSError, ValueError) as exc:
+            self._show_error('Copy', exc)
+
+    def _rename_profile(self):
+        old_name = self._selected_name()
+        if not old_name:
+            return
+        new_name, ok = QInputDialog.getText(self, 'Rename FastFlag Profile', 'New name:', text=old_name)
+        if not ok:
+            return
+        try:
+            name = self._profiles.rename(old_name, new_name)
+        except (OSError, ValueError) as exc:
+            self._show_error('Rename', exc)
+            return
+        self._refresh_profiles(name)
+
+    def _delete_profile(self):
+        name = self._selected_name()
+        if not name:
+            return
+        if QMessageBox.question(self, 'Delete FastFlag Profile', f'Delete “{name}”?') != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self._profiles.delete(name)
+        except (OSError, ValueError) as exc:
+            self._show_error('Delete', exc)
+            return
+        self._refresh_profiles()
+
+
 class CustomFFlagEditor(QWidget):
     """Fishstrap-style name/value editor backed by Fleasion's proxy settings."""
 
@@ -1362,7 +1529,7 @@ class CustomFFlagEditor(QWidget):
         layout.setContentsMargins(0, 10, 0, 0)
         layout.setSpacing(7)
 
-        heading = QLabel('<b>Custom FastFlags</b>')
+        heading = QLabel('<b>Custom FastFlags (LIVE EDITING)</b>')
         layout.addWidget(heading)
 
         warning = QLabel(
@@ -1433,6 +1600,10 @@ class CustomFFlagEditor(QWidget):
         export_menu.addAction('Export as File…', self._export_json)
         export_button.setMenu(export_menu)
         buttons.addWidget(export_button)
+
+        profiles_button = QPushButton('Profiles…')
+        profiles_button.clicked.connect(self._show_profiles)
+        buttons.addWidget(profiles_button)
 
         delete_button = QPushButton('Delete Selected')
         delete_button.clicked.connect(self._delete_selected)
@@ -1683,6 +1854,11 @@ class CustomFFlagEditor(QWidget):
 
     def _copy_json(self):
         QApplication.clipboard().setText(self._json_text())
+
+    def _show_profiles(self):
+        dialog = FastFlagProfilesDialog(self._flags_from_table(), self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.loaded_flags is not None:
+            self._set_flags(dialog.loaded_flags)
 
     def _sort_rows(self, column: int):
         if self._sort_column == column:

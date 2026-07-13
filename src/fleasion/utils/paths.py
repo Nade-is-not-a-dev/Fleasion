@@ -95,6 +95,7 @@ CONFIG_DIR = _get_config_dir()
 APP_CACHE_DIR = CONFIG_DIR / 'cache'
 CONFIG_FILE = CONFIG_DIR / 'settings.json'
 CONFIGS_FOLDER = CONFIG_DIR / 'configs'
+FASTFLAG_PROFILES_FOLDER = CONFIG_DIR / 'FastFlagProfiles'
 LOGS_DIR = CONFIG_DIR / 'logs'
 LOG_FILE = LOGS_DIR / 'fleasion.log'
 
