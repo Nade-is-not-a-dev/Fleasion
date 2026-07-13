@@ -2453,6 +2453,17 @@ class ModificationsTab(QWidget):
 
         # ── R6 Default Avatar Meshes ─────────────────────────────
         self._mesh_section = CollapsibleSection('R6 Default Avatar Meshes', expanded=True)
+        if sys.platform.startswith('linux'):
+            sober_mesh_warning = QLabel(
+                '<b>Linux / Sober limitation:</b> R6 default avatar mesh replacements '
+                'do not work in Sober. Sober developers have stated that Sober\'s '
+                'asset_overlay does not respect R6 mesh replacements because of '
+                'concerns around inappropriate meshes and cheats.'
+            )
+            sober_mesh_warning.setWordWrap(True)
+            sober_mesh_warning.setContentsMargins(8, 4, 8, 8)
+            sober_mesh_warning.setStyleSheet('color: #ffcc66;')
+            self._mesh_section.add_widget(sober_mesh_warning)
         for name, path in AVATAR_MESHES:
             row = ModRowWidget(self._manager, name, path, file_filter=MESH_FILTER)
             self._mesh_section.add_widget(row)
