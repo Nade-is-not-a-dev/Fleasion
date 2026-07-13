@@ -1898,7 +1898,7 @@ class RandoStuffTab(QWidget):
             QMessageBox.warning(self, 'Error', 'Could not decrypt the stored cookie.')
             return
         username = acc.get('username', '(unknown)')
-        if not IS_WINDOWS:
+        if IS_MACOS:
             self._last_switched_account = acc
             self._set_selected_account(username)
             log_buffer.log(
