@@ -34,6 +34,12 @@ HELPER_STDOUT_LOG_PATH = HELPER_LOG_DIR / 'Fleasion.proxy-helper.stdout.log'
 HELPER_STDERR_LOG_PATH = HELPER_LOG_DIR / 'Fleasion.proxy-helper.stderr.log'
 REQUIRED_HELPER_VERSION = 4
 REQUIRED_HELPER_CAPABILITIES = {'patch_ca'}
+# A first launch of a root-owned helper can be held briefly by macOS execution
+# policy checks even after launchd has spawned it.  Keep this comfortably above
+# that cold-start window, while still giving a real installation failure a
+# bounded, actionable outcome.
+HELPER_READY_TIMEOUT_SECONDS = 45.0
+HELPER_READY_POLL_SECONDS = 0.25
 
 
 def _ensure_token() -> str:
@@ -114,6 +120,32 @@ def helper_is_ready(*, require_ca_patch: bool = True) -> bool:
         )
         return False
     return True
+
+
+def _helper_readiness_diagnostic() -> tuple[bool, str]:
+    """Return readiness plus the reason a newly-installed helper is not ready."""
+    try:
+        status = _request('status', timeout=1.0)
+    except Exception as exc:
+        return False, f'Could not contact the helper control service: {type(exc).__name__}: {exc}'
+
+    try:
+        backend_ok = int(status.get('backend_port', 0)) == MACOS_PROXY_BACKEND_PORT
+    except TypeError, ValueError:
+        backend_ok = False
+    if not backend_ok:
+        return (
+            False,
+            'Helper reported an unexpected backend port: '
+            f'{status.get("backend_port")!r} (expected {MACOS_PROXY_BACKEND_PORT})',
+        )
+    if not helper_has_required_ca_patch(status):
+        return (
+            False,
+            'Helper is missing required CA patch support: '
+            f'version={status.get("version")!r}, capabilities={status.get("capabilities")!r}',
+        )
+    return True, ''
 
 
 def helper_apply_hosts(hosts: set[str]) -> bool:
@@ -392,18 +424,30 @@ exit 0
             detail or f'Helper installer exited with code {result.returncode}.',
         )
 
-    deadline = time.monotonic() + 15.0
+    deadline = time.monotonic() + HELPER_READY_TIMEOUT_SECONDS
+    next_progress_log = time.monotonic() + 5.0
+    last_readiness_problem = ''
     while time.monotonic() < deadline:
-        if helper_is_ready():
+        ready, readiness_problem = _helper_readiness_diagnostic()
+        if ready:
             log_buffer.log('ProxyHelper', 'macOS proxy helper installed and ready')
             return True, ''
-        time.sleep(0.25)
+        last_readiness_problem = readiness_problem
+        if time.monotonic() >= next_progress_log:
+            log_buffer.log(
+                'ProxyHelper',
+                f'Waiting for macOS proxy helper readiness: {readiness_problem}',
+            )
+            next_progress_log += 5.0
+        time.sleep(HELPER_READY_POLL_SECONDS)
     detail = (
-        'The helper was installed but did not become ready. '
+        f'The helper was installed but did not become ready within {HELPER_READY_TIMEOUT_SECONDS:.0f} seconds. '
         'Diagnostic logs were created at:\n'
         f'  {HELPER_LOG_PATH}\n'
         f'  {HELPER_STDERR_LOG_PATH}'
     )
+    if last_readiness_problem:
+        detail += f'\n\nLast readiness check:\n{last_readiness_problem}'
     if install_output:
         detail += f'\n\nLaunch output:\n{install_output}'
     return False, detail

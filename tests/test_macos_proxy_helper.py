@@ -172,7 +172,7 @@ def test_helper_installer_stages_helper_before_privileged_install(tmp_path, monk
     monkeypatch.setattr(macos_proxy_helper.sys, "platform", "darwin")
     monkeypatch.setattr(macos_proxy_helper, "_source_helper_path", lambda: source)
     monkeypatch.setattr(macos_proxy_helper, "_ensure_token", lambda: "x" * 48)
-    monkeypatch.setattr(macos_proxy_helper, "helper_is_ready", lambda: True)
+    monkeypatch.setattr(macos_proxy_helper, "_helper_readiness_diagnostic", lambda: (True, ""))
     monkeypatch.setattr(macos_proxy_helper.subprocess, "run", fake_run)
 
     ok, detail = macos_proxy_helper.install_helper()
@@ -193,6 +193,49 @@ def test_helper_installer_stages_helper_before_privileged_install(tmp_path, monk
         macos_proxy_helper.HELPER_STDERR_LOG_PATH,
     ):
         assert f"/usr/bin/install -o root -g wheel -m 644 /dev/null {log_path}" in script
+
+
+def test_helper_installer_retries_until_helper_becomes_ready(tmp_path, monkeypatch):
+    source = tmp_path / "macos_proxy_helper_daemon.py"
+    source.write_text("# helper\n", encoding="utf-8")
+    attempts = []
+
+    monkeypatch.setattr(macos_proxy_helper.sys, "platform", "darwin")
+    monkeypatch.setattr(macos_proxy_helper, "_source_helper_path", lambda: source)
+    monkeypatch.setattr(macos_proxy_helper, "_ensure_token", lambda: "x" * 48)
+    monkeypatch.setattr(
+        macos_proxy_helper.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+
+    def readiness():
+        attempts.append(None)
+        if len(attempts) < 3:
+            return False, "Could not contact the helper control service: ConnectionRefusedError"
+        return True, ""
+
+    monkeypatch.setattr(macos_proxy_helper, "_helper_readiness_diagnostic", readiness)
+    monkeypatch.setattr(macos_proxy_helper.time, "sleep", lambda _seconds: None)
+
+    ok, detail = macos_proxy_helper.install_helper()
+
+    assert ok is True, detail
+    assert len(attempts) == 3
+
+
+def test_helper_readiness_diagnostic_preserves_connection_error(monkeypatch):
+    monkeypatch.setattr(
+        macos_proxy_helper,
+        "_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError("connection refused")),
+    )
+
+    ready, detail = macos_proxy_helper._helper_readiness_diagnostic()
+
+    assert ready is False
+    assert "ConnectionRefusedError" in detail
+    assert "connection refused" in detail
 
 
 def _fake_roblox_resources(tmp_path: Path) -> Path:
