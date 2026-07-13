@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from functools import partial
 from pathlib import Path
 
@@ -43,6 +44,7 @@ from PyQt6.QtWidgets import (
     QSlider,
     QSpinBox,
     QStackedWidget,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -58,6 +60,7 @@ from ..modifications.platform_targets import (
     target_path_for_current_platform,
 )
 from ..utils import format_count, log_buffer, open_folder
+from ..utils.http import http_get
 from ..utils.threading import run_in_thread
 from .file_drop import FileDropLineEdit
 from .theme import ThemeManager
@@ -591,6 +594,34 @@ class CompactBooleanComboBox(QComboBox):
         arrow_y = self.height() // 2
         painter.drawLine(arrow_x - 3, arrow_y - 1, arrow_x, arrow_y + 2)
         painter.drawLine(arrow_x, arrow_y + 2, arrow_x + 3, arrow_y - 1)
+
+
+class FastFlagValueDelegate(QStyledItemDelegate):
+    """Create boolean selectors only while their cell is being edited."""
+
+    _BOOLEAN_FLAG_PREFIXES = ('FFlag', 'DFFlag')
+
+    def createEditor(self, parent, option, index):
+        name = str(index.sibling(index.row(), 0).data() or '')
+        if name.startswith(self._BOOLEAN_FLAG_PREFIXES):
+            editor = CompactBooleanComboBox(parent)
+            editor.addItems(['True', 'False'])
+            return editor
+        return super().createEditor(parent, option, index)
+
+    def setEditorData(self, editor, index):
+        if isinstance(editor, QComboBox):
+            editor.setCurrentText(
+                'True' if str(index.data() or '').strip().lower() == 'true' else 'False'
+            )
+            return
+        super().setEditorData(editor, index)
+
+    def setModelData(self, editor, model, index):
+        if isinstance(editor, QComboBox):
+            model.setData(index, editor.currentText())
+            return
+        super().setModelData(editor, model, index)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1509,6 +1540,216 @@ class FastFlagProfilesDialog(QDialog):
         self._refresh_profiles()
 
 
+class FFlagBrowserDialog(QDialog):
+    """Browse the FastFlags currently published for the Roblox desktop client."""
+
+    _SETTINGS_URL = 'https://clientsettingscdn.roblox.com/v2/settings/application/PCDesktopClient'
+    _FAMILIES = (
+        'DFFlag',
+        'DFInt',
+        'DFLog',
+        'DFString',
+        'DFFloat',
+        'FFlag',
+        'FInt',
+        'FLog',
+        'FString',
+        'FFloat',
+    )
+
+    flags_loaded = pyqtSignal(object)
+    load_failed = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Browse Roblox FastFlags')
+        self.setMinimumSize(820, 580)
+        self._flags: dict[str, str] = {}
+        self.selected_flags: dict[str, str] = {}
+        self._setup_ui()
+        self.flags_loaded.connect(self._apply_flags)
+        self.load_failed.connect(self._show_load_error)
+        self._refresh()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+
+        description = QLabel(
+            'Browse the FastFlags currently published for Roblox PC. Select one or more flags '
+            'to add them to your live custom FastFlag list with their current Roblox values.'
+        )
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        controls = QHBoxLayout()
+        self._search = QLineEdit()
+        self._search.setPlaceholderText('Search FastFlag names or current values…')
+        self._search.textChanged.connect(self._filter_rows)
+        controls.addWidget(self._search, 1)
+
+        self._family_filter = QComboBox()
+        self._family_filter.setMinimumWidth(165)
+        self._family_filter.currentIndexChanged.connect(self._filter_rows)
+        controls.addWidget(self._family_filter)
+
+        self._refresh_button = QPushButton('Refresh')
+        self._refresh_button.clicked.connect(self._refresh)
+        controls.addWidget(self._refresh_button)
+        layout.addLayout(controls)
+
+        self._count = QLabel('Retrieving FastFlags…')
+        self._count.setStyleSheet('color: #999;')
+        layout.addWidget(self._count)
+
+        self._table = QTableWidget(0, 2)
+        self._table.setHorizontalHeaderLabels(['Name', 'Current Roblox Value'])
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._table.itemSelectionChanged.connect(self._update_selection_button)
+        layout.addWidget(self._table, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        self._add_button = buttons.addButton('Add Selected', QDialogButtonBox.ButtonRole.AcceptRole)
+        self._add_button.setEnabled(False)
+        self._add_button.clicked.connect(self._add_selected)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    @classmethod
+    def _family_for(cls, name: str) -> str:
+        for family in cls._FAMILIES:
+            if name.startswith(family):
+                return family
+        return 'Other'
+
+    @staticmethod
+    def _extract_flags(payload: object) -> dict[str, str]:
+        """Validate the public ClientSettings response without accepting arbitrary JSON."""
+        if not isinstance(payload, dict):
+            raise ValueError('Roblox returned an invalid FastFlag response.')
+        settings = payload.get('applicationSettings')
+        if not isinstance(settings, dict):
+            raise ValueError('Roblox returned no application FastFlags.')
+
+        flags: dict[str, str] = {}
+        for raw_name, raw_value in settings.items():
+            name = str(raw_name).strip()
+            if not name or not isinstance(raw_value, str | int | float | bool):
+                continue
+            flags[name] = (
+                'True' if raw_value is True else 'False' if raw_value is False else str(raw_value)
+            )
+        if not flags:
+            raise ValueError('Roblox returned no usable FastFlags.')
+        return flags
+
+    def _refresh(self):
+        if self._refresh_button.isEnabled() is False:
+            return
+        self._refresh_button.setEnabled(False)
+        self._count.setText('Retrieving FastFlags…')
+        self._count.setStyleSheet('color: #999;')
+        threading.Thread(target=self._fetch_flags, daemon=True).start()
+
+    def _fetch_flags(self):
+        try:
+            payload = json.loads(http_get(self._SETTINGS_URL, timeout=20))
+            self.flags_loaded.emit(self._extract_flags(payload))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            self.load_failed.emit(f'Could not retrieve Roblox FastFlags: {exc}')
+
+    def _apply_flags(self, flags: dict[str, str]):
+        self._flags = dict(sorted(flags.items(), key=lambda item: item[0].casefold()))
+        current_family = self._family_filter.currentData()
+        family_counts: dict[str, int] = {}
+        for name in self._flags:
+            family = self._family_for(name)
+            family_counts[family] = family_counts.get(family, 0) + 1
+
+        self._family_filter.blockSignals(True)
+        self._family_filter.clear()
+        self._family_filter.addItem('All FastFlags', '')
+        for family in sorted(family_counts):
+            self._family_filter.addItem(f'{family} ({family_counts[family]:,})', family)
+        previous_index = self._family_filter.findData(current_family)
+        self._family_filter.setCurrentIndex(max(0, previous_index))
+        self._family_filter.blockSignals(False)
+        self._refresh_button.setEnabled(True)
+        self._populate_table()
+        self._filter_rows()
+
+    def _show_load_error(self, message: str):
+        self._refresh_button.setEnabled(True)
+        self._count.setText(message)
+        self._count.setStyleSheet('color: #ef8f8f;')
+
+    def _filter_rows(self, *_args):
+        query = self._search.text().strip().casefold()
+        family = self._family_filter.currentData() or ''
+        visible_count = 0
+        self._table.setUpdatesEnabled(False)
+        try:
+            for row, (name, value) in enumerate(self._flags.items()):
+                matches = (not family or self._family_for(name) == family) and (
+                    not query or query in name.casefold() or query in value.casefold()
+                )
+                self._table.setRowHidden(row, not matches)
+                visible_count += matches
+        finally:
+            self._table.setUpdatesEnabled(True)
+
+        if self._flags:
+            self._count.setText(
+                f'Showing {visible_count:,} FastFlags • {len(self._flags):,} retrieved from Roblox'
+            )
+            self._count.setStyleSheet('color: #999;')
+        self._update_selection_button()
+
+    def _populate_table(self):
+        """Populate once per download; search and filters only hide existing rows."""
+        self._table.setUpdatesEnabled(False)
+        self._table.blockSignals(True)
+        try:
+            self._table.setRowCount(len(self._flags))
+            for row, (name, value) in enumerate(self._flags.items()):
+                name_item = QTableWidgetItem(name)
+                name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                name_item.setToolTip(name)
+                self._table.setItem(row, 0, name_item)
+                value_item = QTableWidgetItem(value)
+                value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self._table.setItem(row, 1, value_item)
+        finally:
+            self._table.blockSignals(False)
+            self._table.setUpdatesEnabled(True)
+
+    def _selected_names(self) -> list[str]:
+        return [
+            self._table.item(row, 0).text()
+            for row in sorted({index.row() for index in self._table.selectedIndexes()})
+            if self._table.item(row, 0) is not None
+        ]
+
+    def _update_selection_button(self):
+        selected_count = len(self._selected_names())
+        self._add_button.setText(
+            f'Add Selected ({selected_count})' if selected_count else 'Add Selected'
+        )
+        self._add_button.setEnabled(selected_count > 0)
+
+    def _add_selected(self):
+        self.selected_flags = {
+            name: self._flags[name] for name in self._selected_names() if name in self._flags
+        }
+        if self.selected_flags:
+            self.accept()
+
+
 class CustomFFlagEditor(QWidget):
     """Fishstrap-style name/value editor backed by Fleasion's proxy settings."""
 
@@ -1579,10 +1820,16 @@ class CustomFFlagEditor(QWidget):
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setMinimumHeight(180)
+        self._table.setItemDelegateForColumn(1, FastFlagValueDelegate(self._table))
         self._table.cellChanged.connect(self._on_cell_changed)
         layout.addWidget(self._table)
 
         buttons = QHBoxLayout()
+        browse_button = QPushButton('Browse FastFlags…')
+        browse_button.setToolTip('Browse and add FastFlags currently published by Roblox.')
+        browse_button.clicked.connect(self._browse_fflags)
+        buttons.addWidget(browse_button)
+
         add_button = QPushButton('Add New…')
         add_button.clicked.connect(self._add_flag)
         buttons.addWidget(add_button)
@@ -1618,20 +1865,26 @@ class CustomFFlagEditor(QWidget):
 
     def _load_flags(self):
         flags = dict(getattr(self._config, 'custom_fflags', {}) or {}) if self._config else {}
+        self._replace_table_rows(sorted(flags.items(), key=lambda item: item[0].lower()))
+        self._filter_rows(self._search.text())
+        self._update_status()
+
+    def _replace_table_rows(self, rows: list[tuple[str, str]]):
+        """Bulk-load rows without constructing a widget for every boolean value."""
         self._loading = True
+        self._table.setUpdatesEnabled(False)
+        self._table.blockSignals(True)
         try:
-            self._table.setRowCount(0)
-            for name, value in sorted(flags.items(), key=lambda item: item[0].lower()):
-                row = self._table.rowCount()
-                self._table.insertRow(row)
+            self._table.setRowCount(len(rows))
+            for row, (name, value) in enumerate(rows):
                 name_item = QTableWidgetItem(name)
                 name_item.setToolTip(name)
                 self._table.setItem(row, 0, name_item)
                 self._set_value_editor(row, name, str(value))
         finally:
+            self._table.blockSignals(False)
+            self._table.setUpdatesEnabled(True)
             self._loading = False
-        self._filter_rows(self._search.text())
-        self._update_status()
 
     def _flags_from_table(self) -> dict[str, str]:
         flags: dict[str, str] = {}
@@ -1647,42 +1900,24 @@ class CustomFFlagEditor(QWidget):
         return name.startswith(cls._BOOLEAN_FLAG_PREFIXES)
 
     def _value_from_row(self, row: int) -> str:
-        value_widget = self._table.cellWidget(row, 1)
-        if isinstance(value_widget, QComboBox):
-            return value_widget.currentText()
         value_item = self._table.item(row, 1)
         return value_item.text() if value_item else ''
 
     def _set_value_editor(self, row: int, name: str, value: str):
-        """Use a True/False selector for boolean flags and text for other flags."""
-        is_boolean = self._is_boolean_flag(name)
-        current_widget = self._table.cellWidget(row, 1)
-        current_is_boolean = isinstance(current_widget, QComboBox)
-        if current_widget is not None and current_is_boolean == is_boolean:
-            if is_boolean:
-                current_widget.setCurrentText(
-                    'True' if str(value).strip().lower() == 'true' else 'False'
-                )
-            return
-
+        """Store a lightweight value item; the boolean selector is created only when editing."""
         was_loading = self._loading
         self._loading = True
         try:
-            if current_widget is not None:
-                self._table.removeCellWidget(row, 1)
-                current_widget.deleteLater()
-
-            if is_boolean:
-                self._table.takeItem(row, 1)
-                value_combo = CompactBooleanComboBox()
-                value_combo.addItems(['True', 'False'])
-                value_combo.setCurrentText(
-                    'True' if str(value).strip().lower() == 'true' else 'False'
-                )
-                value_combo.currentTextChanged.connect(self._save_table)
-                self._table.setCellWidget(row, 1, value_combo)
+            value_item = self._table.item(row, 1)
+            normalized_value = (
+                'True' if str(value).strip().lower() == 'true' else 'False'
+                if self._is_boolean_flag(name)
+                else str(value)
+            )
+            if value_item is None:
+                self._table.setItem(row, 1, QTableWidgetItem(normalized_value))
             else:
-                self._table.setItem(row, 1, QTableWidgetItem(str(value)))
+                value_item.setText(normalized_value)
         finally:
             self._loading = was_loading
 
@@ -1794,6 +2029,14 @@ class CustomFFlagEditor(QWidget):
         )
         self._set_flags(flags)
 
+    def _browse_fflags(self):
+        dialog = FFlagBrowserDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected_flags:
+            return
+        flags = self._flags_from_table()
+        flags.update(dialog.selected_flags)
+        self._set_flags(flags)
+
     def _set_flags(self, flags: dict):
         if self._config is None:
             return
@@ -1883,18 +2126,7 @@ class CustomFFlagEditor(QWidget):
             reverse=not self._sort_ascending,
         )
 
-        self._loading = True
-        try:
-            self._table.setRowCount(0)
-            for name, value in rows:
-                row = self._table.rowCount()
-                self._table.insertRow(row)
-                name_item = QTableWidgetItem(name)
-                name_item.setToolTip(name)
-                self._table.setItem(row, 0, name_item)
-                self._set_value_editor(row, name, value)
-        finally:
-            self._loading = False
+        self._replace_table_rows(rows)
 
         self._table.horizontalHeader().setSortIndicator(
             column,
@@ -1908,32 +2140,31 @@ class CustomFFlagEditor(QWidget):
         rows = sorted({index.row() for index in self._table.selectedIndexes()}, reverse=True)
         if not rows:
             return
-        self._loading = True
-        try:
-            for row in rows:
-                self._table.removeRow(row)
-        finally:
-            self._loading = False
+        self._replace_table_rows(
+            [
+                (self._table.item(row, 0).text(), self._value_from_row(row))
+                for row in range(self._table.rowCount())
+                if row not in rows
+            ]
+        )
         self._save_table()
 
     def _filter_rows(self, text: str):
         query = str(text or '').strip().lower()
+        visible_count = 0
         for row in range(self._table.rowCount()):
             name = self._table.item(row, 0)
             name_text = name.text() if name else ''
             value_text = self._value_from_row(row)
             matches = not query or query in name_text.lower() or query in value_text.lower()
             self._table.setRowHidden(row, not matches)
-        self._resize_table_to_contents()
+            visible_count += matches
+        self._resize_table_to_contents(visible_count)
 
-    def _resize_table_to_contents(self):
+    def _resize_table_to_contents(self, visible_count: int):
         """Let the outer modifications-page scroll area handle page overflow."""
         header_height = self._table.horizontalHeader().height()
-        row_height = sum(
-            self._table.rowHeight(row)
-            for row in range(self._table.rowCount())
-            if not self._table.isRowHidden(row)
-        )
+        row_height = self._table.verticalHeader().defaultSectionSize() * visible_count
         content_height = header_height + row_height + (self._table.frameWidth() * 2)
         self._table.setFixedHeight(max(180, content_height))
 
