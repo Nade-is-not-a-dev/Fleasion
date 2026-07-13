@@ -2237,9 +2237,12 @@ def main():
             'scraper, clear cache, and join the Roblox game. Every loaded asset will appear there. '
             'Right-click assets to download them, Replace them, or Replace With them.\n\n'
             'Other tabs are optional tools and settings and are self explanatory.\n\n'
-            'Fleasion is client-sided: only you see your changes. Roblox cannot ban you for local '
-            'asset replacement, and game developers cannot meaningfully detect it. Game moderators '
-            'can still ban users for any reason, so use your own judgment.'
+            'Fleasion is client-sided: only you see your changes. Roblox currently cannot/ '
+            'doesn\'t ban or warn you for local asset replacement, and game developers cannot meaningfully '
+            'detect it. Game moderators can still ban users for any reason, so use your own '
+            'judgment, we take no responsiblity. Roblox has no known detections for fleasion and there '
+            'has been no reported cases of warnings or bans for using it, but Roblox has stated it is '
+            'not permitted.'
         )
         welcome_box.setIcon(QMessageBox.Icon.Information)
         welcome_box.setStandardButtons(QMessageBox.StandardButton.Ok)
