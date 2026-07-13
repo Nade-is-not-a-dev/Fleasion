@@ -18,6 +18,7 @@ def test_start_helper_requires_ca_cert_when_system_trust_is_required(monkeypatch
 
 def test_start_helper_passes_required_system_ca_flag(monkeypatch, tmp_path):
     commands = []
+    popen_kwargs = []
     ca = tmp_path / 'ca.crt'
     ca.write_text('ca', encoding='utf-8')
 
@@ -25,8 +26,9 @@ def test_start_helper_passes_required_system_ca_flag(monkeypatch, tmp_path):
         def poll(self):
             return None
 
-    def fake_popen(cmd, **_kwargs):
+    def fake_popen(cmd, **kwargs):
         commands.append(cmd)
+        popen_kwargs.append(kwargs)
         return Process()
 
     monkeypatch.setattr(linux_proxy_helper, 'CONFIG_DIR', tmp_path)
@@ -67,6 +69,9 @@ def test_start_helper_passes_required_system_ca_flag(monkeypatch, tmp_path):
     assert '--parent-start-time' in commands[0]
     assert '12345' in commands[0]
     assert '--require-system-ca' in commands[0]
+    assert len(popen_kwargs) == 1
+    assert set(popen_kwargs[0]) == {'stdout', 'stderr'}
+    assert 'start_new_session' not in popen_kwargs[0]
 
 
 def test_start_helper_does_not_reinstall_system_ca_when_current(monkeypatch, tmp_path):

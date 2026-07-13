@@ -524,9 +524,13 @@ def start_helper(
 
     with log_file:
         try:
-            process = _popen_host_command(
-                cmd, stdout=log_file, stderr=log_file, start_new_session=True
-            )
+            # Keep pkexec in the GUI's login session.  Detaching it with setsid()
+            # prevents Polkit from associating the request with the active desktop
+            # session; on systems without a fallback text agent it then tries
+            # /dev/tty and exits with code 127.  The helper already watches its
+            # parent PID and removes its hosts entries when that parent exits, so
+            # it does not need a separate session to be cleaned up safely.
+            process = _popen_host_command(cmd, stdout=log_file, stderr=log_file)
         except Exception as exc:
             _set_last_start_error(error=f'could not start Linux proxy helper: {exc}')
             log_buffer.log('ProxyHelper', f'Could not start Linux proxy helper: {exc}')
