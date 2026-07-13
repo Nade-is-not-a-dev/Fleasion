@@ -2110,7 +2110,7 @@ class FFlagSection(QWidget):
             row += 1
 
         # Roblox Framerate Cap (Global Settings) - NOT disabled when FFlagsare off
-        framerate_label = QLabel('Framerate Cap (FPS)')
+        framerate_label = QLabel('Framerate Cap (FPS) (GlobalBasicSettings, NOT an fflag)')
         self._framerate_cap_label = framerate_label  # Store for enable/disable
         grid.addWidget(framerate_label, row, 0)
         self._framerate_cap = NoWheelSpinBox()
