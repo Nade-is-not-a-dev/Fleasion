@@ -22,6 +22,7 @@ If you're on Linux and having issues with launching the GUI, please install `Por
 
 - **Windows 10+, macOS 11+, or Linux with Sober Flatpak**
 - [**uv**](https://docs.astral.sh/uv/) package manager
+- **Python 3.14+**
 - Linux desktop installs need `pkexec`/Polkit available (installed by default on Mint and most desktop distributions)
 
 ### Building from Source
@@ -82,7 +83,7 @@ After applying any changes in the Dashboard, you must **clear your Roblox cache*
 
 ## How It Works
 
-Fleasion runs a lightweight custom asyncio HTTPS proxy on `127.0.0.1:443`. On startup it redirects `assetdelivery.roblox.com` and `fts.rbxcdn.com` to localhost via the system hosts file, installs a locally-generated CA certificate into Roblox's `ssl/cacert.pem` trust bundle so the TLS handshake succeeds, and intercepts all asset traffic. When Roblox requests assets from its CDN, Fleasion can:
+Fleasion runs a lightweight custom asyncio HTTPS proxy on `127.0.0.1:443`. On startup it redirects `assetdelivery.roblox.com` and `fts.rbxcdn.com` to localhost via the system hosts file, installs a locally-generated CA certificate into Roblox's `ssl/cacert.pem` trust bundle so the TLS handshake succeeds, and intercepts all asset traffic. When custom FastFlags are enabled, it also intercepts Roblox ClientSettings requests so those overrides can be applied before the client receives them. When Roblox requests assets from its CDN, Fleasion can:
 
 - **Replace** assets by ID &mdash; swap one asset for another (different texture, audio, etc.)
 - **Remove** assets &mdash; strip textures from the batch request entirely
@@ -93,6 +94,8 @@ All interception happens locally on your machine. Windows runs Fleasion elevated
 On Linux, Fleasion targets the Sober Flatpak client (`org.vinegarhq.Sober`). It uses Sober's asset overlay at `~/.var/app/org.vinegarhq.Sober/data/sober/asset_overlay` and writes Sober FFlags to `~/.var/app/org.vinegarhq.Sober/config/sober/config.json`. Proxy interception needs root permission because Fleasion updates `/etc/hosts` and listens on local port 443.
 
 **VPN compatibility:** Because interception uses the system's hosts file (application layer), it should be compatible with most VPN software, as long as it respects the hosts file.
+
+**Roblox policy and moderation:** Fleasion's normal asset replacement is client-side, so only you see the changes. The project has no known detections or reported warnings/bans for local asset replacement at the time of writing, but Roblox has stated that these modifications are not permitted and game moderators may still take action. Use your own judgment.
 
 ## Features
 
@@ -105,6 +108,17 @@ On Linux, Fleasion targets the Sober Flatpak client (`org.vinegarhq.Sober`). It 
 - Community preset support via PreJsons
 - **Creator name column** in configuration list (off by default)
 - **Asset name display** next to preview button
+
+### Custom FastFlags
+
+Fleasion can override Roblox ClientSettings FastFlags through the proxy while Roblox is running. Open the **Fast Flags** section in the Dashboard's **Modifications** tab to:
+
+- Edit custom FastFlags live, with changes refreshed through the proxy
+- Import and export FastFlags as JSON
+- Save named JSON profiles, then load them by replacing or merging with the current editor
+- Prime the Windows Roblox FastFlag cache so startup-sensitive flags can apply before the first dynamic refresh
+
+**Important:** Custom FastFlags bypass Roblox's small allowlist of locally permitted flags. Roblox can ban your account for using them. Fleasion shows a risk confirmation before enabling the feature; use custom FastFlags entirely at your own risk.
 
 ### Cache Scraper
 
@@ -344,6 +358,7 @@ Settings are stored in:
 | --- | --- |
 | `settings.json` | Application settings |
 | `configs/` | Replacement configuration profiles (JSON) |
+| `FastFlagProfiles/` | Named custom FastFlag profiles (JSON) |
 | `Cache/` | Cached asset files and index |
 | `Exports/` | Exported assets |
 | `PreJsons/` | Community preset data |
