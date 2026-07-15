@@ -113,6 +113,8 @@ else:
     )
     _PLATFORM_TEMP_DIR = Path(os.environ.get('TEMP', r'C:\Windows\Temp'))
 _HOSTS_MARKER = '# Fleasion proxy entry'
+SOBER_CUSTOM_FFLAG_ROUTE_ARM_DELAY_SECONDS = 30.0
+_SOBER_CUSTOM_FFLAG_POLL_SECONDS = 0.25
 
 # Registry key used by Windows to replace files on next reboot
 _PENDING_RENAME_KEY = r'SYSTEM\CurrentControlSet\Control\Session Manager'
@@ -2879,6 +2881,8 @@ class ProxyMaster:
         self._roblox_player_running: bool = False
         self._watchdog_stop: Optional[threading.Event] = None
         self._watchdog_thread: Optional[threading.Thread] = None
+        self._sober_fflag_timer_stop: Optional[threading.Event] = None
+        self._sober_fflag_timer_thread: Optional[threading.Thread] = None
         self._module_interceptors: list = [self.username_spoofer]
         self._cert_refresh_lock = threading.Lock()
         self._last_cert_refresh_by_exe: dict[Path, tuple[float, str]] = {}
@@ -2952,13 +2956,106 @@ class ProxyMaster:
         if spoofer_enabled:
             hosts.update(USERNAME_SPOOFER_INTERCEPT_HOSTS)
         custom_modifier = getattr(self, 'custom_fflag_modifier', None)
-        # Install the ClientSettings routes before Roblox launches so the
-        # Player's startup fetch is caught.  The request-level modifier passes
-        # PCClientBootstrapper through unchanged, avoiding the bootstrapper
-        # failure that a Player-only process gate was meant to prevent.
-        if custom_modifier is not None and custom_modifier.is_enabled():
+        if (
+            custom_modifier is not None
+            and custom_modifier.is_enabled()
+            and self._linux_sober_custom_fflag_routes_ready()
+        ):
             hosts.update(CUSTOM_FFLAGS_INTERCEPT_HOSTS)
         return hosts
+
+    @staticmethod
+    def _sober_boottime() -> float:
+        clock_id = getattr(time, 'CLOCK_BOOTTIME', None)
+        if clock_id is None:
+            return time.monotonic()
+        return time.clock_gettime(clock_id)
+
+    def _linux_sober_custom_fflag_routes_ready(self) -> bool:
+        """Keep Sober's pinned bootstrap fetch outside Fleasion's TLS route."""
+        # Tests (and platform-specific callers) can override one platform flag
+        # without clearing the host platform flag.  Treat the Linux delay as
+        # active only when Linux is the selected platform.
+        if not IS_LINUX or IS_WINDOWS or IS_MACOS:
+            return True
+        from ..utils.platform_linux import sober_main_process
+
+        process = sober_main_process()
+        if process is None:
+            return False
+        _pid, started_at = process
+        return self._sober_boottime() - started_at >= SOBER_CUSTOM_FFLAG_ROUTE_ARM_DELAY_SECONDS
+
+    def _start_linux_sober_custom_fflag_timer(self) -> None:
+        """Arm Linux ClientSettings interception after Sober's bootstrap window."""
+        if not IS_LINUX or (
+            self._sober_fflag_timer_thread and self._sober_fflag_timer_thread.is_alive()
+        ):
+            return
+
+        stop_event = threading.Event()
+        self._sober_fflag_timer_stop = stop_event
+
+        def _poll() -> None:
+            from ..utils.platform_linux import sober_main_process
+
+            previous_process: tuple[int, float] | None = None
+            previous_ready: bool | None = None
+            while not stop_event.is_set():
+                process = sober_main_process()
+                ready = False
+                if process is not None:
+                    _pid, started_at = process
+                    ready = (
+                        self._sober_boottime() - started_at
+                        >= SOBER_CUSTOM_FFLAG_ROUTE_ARM_DELAY_SECONDS
+                    )
+
+                if process != previous_process:
+                    if process is None and previous_process is not None:
+                        log_buffer.log(
+                            'CustomFFlags',
+                            'Sober closed; Linux ClientSettings interception timer reset',
+                        )
+                    elif process is not None:
+                        remaining = max(
+                            0.0,
+                            SOBER_CUSTOM_FFLAG_ROUTE_ARM_DELAY_SECONDS
+                            - (self._sober_boottime() - process[1]),
+                        )
+                        log_buffer.log(
+                            'CustomFFlags',
+                            'Detected Sober engine; delaying Linux ClientSettings interception '
+                            f'for {remaining:.0f} seconds to pass the pinned bootstrap fetch',
+                        )
+                    previous_process = process
+
+                if ready != previous_ready:
+                    if ready:
+                        log_buffer.log(
+                            'CustomFFlags',
+                            'Linux ClientSettings interception armed; custom FastFlags will '
+                            'arrive on Sober\'s 120-second dynamic refresh',
+                        )
+                    self.refresh_username_spoofer_interception()
+                    previous_ready = ready
+                stop_event.wait(_SOBER_CUSTOM_FFLAG_POLL_SECONDS)
+
+        self._sober_fflag_timer_thread = threading.Thread(
+            target=_poll, daemon=True, name='fleasion-sober-fflag-timer'
+        )
+        self._sober_fflag_timer_thread.start()
+
+    def _stop_linux_sober_custom_fflag_timer(self) -> None:
+        if self._sober_fflag_timer_stop is not None:
+            self._sober_fflag_timer_stop.set()
+        if (
+            self._sober_fflag_timer_thread is not None
+            and self._sober_fflag_timer_thread.is_alive()
+        ):
+            self._sober_fflag_timer_thread.join(timeout=2.0)
+        self._sober_fflag_timer_stop = None
+        self._sober_fflag_timer_thread = None
 
     def _startup_intercept_hosts(self) -> set[str]:
         hosts = self._desired_intercept_hosts()
@@ -3346,6 +3443,7 @@ class ProxyMaster:
             self._thread.start()
 
     def stop(self) -> None:
+        self._stop_linux_sober_custom_fflag_timer()
         with self._lock:
             if not self._running and not (self._thread and self._thread.is_alive()):
                 return
@@ -3750,6 +3848,7 @@ class ProxyMaster:
         _schedule_hosts_cleanup_on_reboot()  # Boot guard: power-loss / BSOD
         _upsert_watchdog_task()  # Initial task creation
         self._start_watchdog()  # Keep task pushed 5 s ahead
+        self._start_linux_sober_custom_fflag_timer()
 
         log_buffer.log('Info', '=' * 50)
         log_buffer.log('Info', 'Fleasion Proxy Active')
@@ -3783,6 +3882,7 @@ class ProxyMaster:
         except asyncio.CancelledError, Exception:
             pass  # Normal shutdown path
         finally:
+            self._stop_linux_sober_custom_fflag_timer()
             # Ensure hosts file is cleaned up even if stop() wasn't called
             if self._hosts_installed:
                 self._stop_watchdog()

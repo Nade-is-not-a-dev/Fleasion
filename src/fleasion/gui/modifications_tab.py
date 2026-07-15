@@ -614,6 +614,11 @@ class FastFlagValueDelegate(QStyledItemDelegate):
             editor.setCurrentText(
                 'True' if str(index.data() or '').strip().lower() == 'true' else 'False'
             )
+            # A table double-click creates the combo editor but does not pass
+            # the click on to the combo itself.  Defer opening the popup until
+            # the editor has been installed and shown by the view, otherwise
+            # the first double-click only produces the collapsed editor.
+            QTimer.singleShot(0, editor.showPopup)
             return
         super().setEditorData(editor, index)
 
@@ -1783,6 +1788,20 @@ class CustomFFlagEditor(QWidget):
             'border: 1px solid rgba(210, 70, 70, 0.55); padding: 7px;'
         )
         layout.addWidget(warning)
+
+        if sys.platform.startswith('linux'):
+            sober_delay_warning = QLabel(
+                '⚠ Linux / Sober limitation: Due to Sober security, custom FastFlags are first '
+                'applied about 2 minutes after Sober starts. Live Dynamic FastFlag editing becomes active '
+                '2 minutes after that (4 minutes total). This delay happens every '
+                'time Sober is opened, including after a quick close/reopen.'
+            )
+            sober_delay_warning.setWordWrap(True)
+            sober_delay_warning.setStyleSheet(
+                'color: #ffcc66; background: rgba(190, 145, 30, 0.15); '
+                'border: 1px solid rgba(220, 175, 55, 0.55); padding: 7px;'
+            )
+            layout.addWidget(sober_delay_warning)
 
         self._enable_toggle = QCheckBox('Enable custom FastFlags')
         self._enable_toggle.setChecked(

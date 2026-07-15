@@ -25,6 +25,8 @@ SOBER_ASSET_OVERLAY_DIR = SOBER_DATA_DIR / 'asset_overlay'
 SOBER_LEGACY_EXE_DIR = SOBER_DATA_DIR / 'exe'
 SOBER_CACHE_STORAGE_DIR = SOBER_CACHE_DIR / 'rbx-storage'
 SOBER_PROCESS_NAMES = ('sober', 'Sober', SOBER_APP_ID)
+SOBER_CGROUP_MARKER = 'app-flatpak-org.vinegarhq.Sober'
+PROC_ROOT = Path('/proc')
 DESKTOP_OPENERS = (
     ('xdg-open', ()),
     ('gio', ('open',)),
@@ -82,6 +84,39 @@ def _first_sober_pid() -> int | None:
         pids = _process_pids(name)
         if pids:
             return pids[0]
+    return None
+
+
+def sober_main_process() -> tuple[int, float] | None:
+    """Return the Sober Roblox engine PID and its boot-time start timestamp.
+
+    ``Main`` is the Android/Roblox engine process created by Sober.  Pairing
+    the PID with the kernel start timestamp makes a close/reopen detectable
+    even when the process monitor does not observe a moment with no process.
+    """
+    try:
+        ticks_per_second = float(os.sysconf('SC_CLK_TCK'))
+    except (AttributeError, OSError, ValueError):
+        return None
+    if ticks_per_second <= 0:
+        return None
+
+    for pid in _process_pids('Main'):
+        process_dir = PROC_ROOT / str(pid)
+        try:
+            cgroup = (process_dir / 'cgroup').read_text(
+                encoding='utf-8', errors='replace'
+            )
+            if SOBER_CGROUP_MARKER not in cgroup:
+                continue
+            stat_text = (process_dir / 'stat').read_text(encoding='utf-8', errors='replace')
+            # Field 2 (comm) is parenthesized and can contain spaces.  The
+            # remaining fields begin at field 3, so starttime (field 22) is 19.
+            fields = stat_text.rsplit(')', 1)[1].split()
+            start_ticks = int(fields[19])
+        except (IndexError, OSError, ValueError):
+            continue
+        return pid, start_ticks / ticks_per_second
     return None
 
 

@@ -120,11 +120,12 @@ class CustomFFlagModifier:
             else getattr(self.config_manager, 'custom_fflags', {})
         )
         flags = normalize_custom_fflags(saved_flags)
-        # The first ClientSettings fetch happens during Player startup.  Once
-        # this runtime-only companion flag is delivered, every later dynamic
-        # refresh occurs about once per second rather than waiting for Roblox's
-        # normal 120-second interval.  It deliberately overrides any saved
-        # value and is never persisted to the user's custom flag list.
+        # Roblox/Sober reads the reloader interval before applying the response
+        # it has just fetched. Therefore, when this companion flag first
+        # arrives through Sober's 120-second dynamic fetch, its next wait can
+        # still be 120 seconds. The following refresh uses this one-second
+        # interval. It deliberately overrides any saved value and is never
+        # persisted to the user's custom flag list.
         flags[DYNAMIC_VARIABLE_RELOAD_INTERVAL_FLAG] = DYNAMIC_VARIABLE_RELOAD_INTERVAL_SECONDS
         return flags
 

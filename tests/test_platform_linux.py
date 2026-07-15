@@ -24,6 +24,22 @@ def test_find_sober_resource_dirs_prefers_asset_overlay(tmp_path, monkeypatch):
     assert platform_linux.find_roblox_resource_dirs() == [overlay, legacy]
 
 
+def test_sober_main_process_uses_pid_and_start_time_to_identify_engine(tmp_path, monkeypatch):
+    process = tmp_path / "4242"
+    process.mkdir()
+    (process / "cgroup").write_text(
+        "0::/user.slice/app-flatpak-org.vinegarhq.Sober-test.scope\n", encoding="utf-8"
+    )
+    fields = ["S", *(["0"] * 18), "54321"]
+    (process / "stat").write_text(f"4242 (Main) {' '.join(fields)}\n", encoding="utf-8")
+
+    monkeypatch.setattr(platform_linux, "PROC_ROOT", tmp_path)
+    monkeypatch.setattr(platform_linux, "_process_pids", lambda name: [4242] if name == "Main" else [])
+    monkeypatch.setattr(platform_linux.os, "sysconf", lambda _name: 100)
+
+    assert platform_linux.sober_main_process() == (4242, 543.21)
+
+
 def test_normalise_linux_sober_resource_dir(tmp_path, monkeypatch):
     overlay = tmp_path / "asset_overlay"
     overlay.mkdir()
