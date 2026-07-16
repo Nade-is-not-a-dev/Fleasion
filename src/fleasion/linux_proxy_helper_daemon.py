@@ -200,7 +200,7 @@ def _install_privileged_helper(
         elif source.suffix == '.py':
             python = shutil.which('python3') or '/usr/bin/env python3'
             _copy_root_file(source, INSTALLED_HELPER_SCRIPT_PATH, 0o755)
-            wrapper = f'#!/bin/sh\nexec {shlex.quote(python)} {shlex.quote(str(INSTALLED_HELPER_SCRIPT_PATH))} "$@"\n'
+            wrapper = f'#!/bin/sh\nexec {python} {shlex.quote(str(INSTALLED_HELPER_SCRIPT_PATH))} "$@"\n'
             _write_root_file(INSTALLED_HELPER_PATH, wrapper, 0o755)
         else:
             _copy_root_file(source, INSTALLED_HELPER_PATH, 0o755)
