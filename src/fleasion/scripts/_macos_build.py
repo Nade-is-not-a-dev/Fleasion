@@ -235,10 +235,12 @@ class MacOSBuilder:
         )
         self._require_only_architectures(arm_helper, 'arm64')
         self._require_only_architectures(x86_helper, 'x86_64')
+        helper_names = {arm_helper.name, x86_helper.name}
 
         invalid_files: list[str] = []
         for file_path in self._regular_files(app_path):
-            if file_path in {arm_helper, x86_helper}:
+            # Resources contains symlinks while the scan sees the Frameworks targets.
+            if file_path.name in helper_names:
                 continue
             architectures = self._architectures(file_path)
             if not architectures:

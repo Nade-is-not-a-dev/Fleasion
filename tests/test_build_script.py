@@ -48,6 +48,51 @@ def test_macos_versions_are_normalized_for_comparison() -> None:
     assert _macos_build.MacOSBuilder._version_tuple('11.0.0') == (11, 0, 0)
 
 
+def test_universal_verification_ignores_helper_symlink_targets(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    builder = object.__new__(_macos_build.MacOSBuilder)
+    builder.executable_name = 'Fleasion-v1.0.0'
+    resources = tmp_path / 'Contents/Resources'
+    frameworks = tmp_path / 'Contents/Frameworks'
+    resources.mkdir(parents=True)
+    frameworks.mkdir(parents=True)
+
+    helper_paths: dict[str, Path] = {}
+    framework_helpers: list[Path] = []
+    for architecture in ('arm64', 'x86_64'):
+        helper_name = f'fleasion-proxy-helper-{architecture}'
+        framework_helper = frameworks / helper_name
+        framework_helper.touch()
+        resource_helper = resources / helper_name
+        resource_helper.symlink_to(framework_helper)
+        helper_paths[helper_name] = resource_helper
+        framework_helpers.append(framework_helper)
+
+    def require_architectures(_file_path: Path, *_required: str) -> None:
+        return None
+
+    def require_payload(
+        _app_path: Path,
+        relative_path: str,
+        _build_label: str,
+        *,
+        executable: bool = False,
+    ) -> Path:
+        assert executable
+        return helper_paths[relative_path]
+
+    def require_only_architectures(_file_path: Path, *_required: str) -> None:
+        return None
+
+    monkeypatch.setattr(builder, '_require_architectures', require_architectures)
+    monkeypatch.setattr(builder, '_require_payload', require_payload)
+    monkeypatch.setattr(builder, '_require_only_architectures', require_only_architectures)
+    monkeypatch.setattr(builder, '_regular_files', lambda _app_path: framework_helpers)
+
+    builder._verify_app_architectures(tmp_path)
+
+
 def test_x86_build_uses_the_project_python_pin(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     builder = object.__new__(_macos_build.MacOSBuilder)
     builder.x86_environment_path = tmp_path / 'venv-x86'
