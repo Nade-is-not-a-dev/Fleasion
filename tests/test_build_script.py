@@ -93,6 +93,52 @@ def test_universal_verification_ignores_helper_symlink_targets(
     builder._verify_app_architectures(tmp_path)
 
 
+def test_arm_build_resolves_for_the_deployment_platform(monkeypatch: MonkeyPatch) -> None:
+    builder = object.__new__(_macos_build.MacOSBuilder)
+    builder.base_environment = {'MACOSX_DEPLOYMENT_TARGET': '11.0'}
+    commands: list[tuple[list[str], dict[str, str] | None]] = []
+    verified_slices: list[tuple[str, str]] = []
+
+    def subprocess_run(
+        command: list[str], *, environment: dict[str, str] | None = None, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        commands.append((command, environment))
+        return subprocess.CompletedProcess(command, 0, '', '')
+
+    def verify_slice(architecture: str, label: str) -> None:
+        verified_slices.append((architecture, label))
+
+    monkeypatch.setattr(builder, '_verify_slice', verify_slice)
+    monkeypatch.setattr(_macos_build, 'subprocess_run', subprocess_run)
+
+    builder._build_arm64()
+
+    assert commands[0] == (
+        [
+            'uv',
+            'sync',
+            '--locked',
+            '--python-platform',
+            _macos_build.ARM64_PYTHON_PLATFORM,
+            '--group',
+            'dev',
+        ],
+        builder.base_environment,
+    )
+    assert commands[1][0] == [
+        _macos_build.sys.executable,
+        '-m',
+        'fleasion.scripts.build',
+        '--clean',
+    ]
+    assert commands[1][1] == {
+        'MACOSX_DEPLOYMENT_TARGET': '11.0',
+        'MACOS_TARGET_ARCH': 'arm64',
+        _macos_build._SLICE_BUILD_ENV: '1',
+    }
+    assert verified_slices == [('arm64', 'Build')]
+
+
 def test_x86_build_uses_the_project_python_pin(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     builder = object.__new__(_macos_build.MacOSBuilder)
     builder.x86_environment_path = tmp_path / 'venv-x86'
@@ -124,7 +170,16 @@ def test_x86_build_uses_the_project_python_pin(monkeypatch: MonkeyPatch, tmp_pat
 
     builder._build_x86_64()
 
-    assert uv_calls == [('sync', '--locked', '--group', 'dev')]
+    assert uv_calls == [
+        (
+            'sync',
+            '--locked',
+            '--python-platform',
+            _macos_build.X86_64_PYTHON_PLATFORM,
+            '--group',
+            'dev',
+        )
+    ]
     assert commands == [
         ['arch', '-x86_64', str(builder.x86_uv_path), 'run', '--no-sync', 'build', '--clean']
     ]

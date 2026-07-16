@@ -25,6 +25,8 @@ log = logging.getLogger(__name__)
 DEFAULT_TARGET_ARCHITECTURE = 'universal2'
 DEFAULT_DEPLOYMENT_TARGET = '11.0'
 DEFAULT_X86_ENVIRONMENT_PATH = '.tools/venv-x86'
+ARM64_PYTHON_PLATFORM = 'aarch64-apple-darwin'
+X86_64_PYTHON_PLATFORM = 'x86_64-apple-darwin'
 
 _SLICE_BUILD_ENV = 'FLEASION_MACOS_SLICE_BUILD'
 _HELPER_NAME = 'fleasion-proxy-helper'
@@ -305,6 +307,19 @@ class MacOSBuilder:
 
     def _build_arm64(self) -> None:
         """Build the native arm64 slice with the active pinned Python."""
+        # Explicit platform resolution makes uv respect MACOSX_DEPLOYMENT_TARGET.
+        subprocess_run(
+            [
+                'uv',
+                'sync',
+                '--locked',
+                '--python-platform',
+                ARM64_PYTHON_PLATFORM,
+                '--group',
+                'dev',
+            ],
+            environment=self.base_environment,
+        )
         environment = self.base_environment.copy()
         environment.update({'MACOS_TARGET_ARCH': 'arm64', _SLICE_BUILD_ENV: '1'})
         # Reuse the interpreter selected by the outer `uv run build` invocation.
@@ -347,8 +362,15 @@ class MacOSBuilder:
         """Build the Intel slice in an isolated Rosetta environment."""
         self._ensure_x86_uv()
         shutil.rmtree(self.x86_environment_path, ignore_errors=True)
-        # Intel uv resolves the same project-level .python-version pin.
-        self._x86_uv('sync', '--locked', '--group', 'dev')
+        # Intel uv resolves the same Python pin for the configured macOS target.
+        self._x86_uv(
+            'sync',
+            '--locked',
+            '--python-platform',
+            X86_64_PYTHON_PLATFORM,
+            '--group',
+            'dev',
+        )
         environment = self.x86_environment
         environment.update({'MACOS_TARGET_ARCH': 'x86_64', _SLICE_BUILD_ENV: '1'})
         subprocess_run(
