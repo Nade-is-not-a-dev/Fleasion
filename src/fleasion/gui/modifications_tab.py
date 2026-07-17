@@ -2038,12 +2038,13 @@ class CustomFFlagEditor(QWidget):
         else:
             self._update_status()
 
-    def _load_flags(self):
+    def _load_flags(self, sync_hotkeys: bool = True):
         flags = dict(getattr(self._config, 'custom_fflags', {}) or {}) if self._config else {}
         self._replace_table_rows(sorted(flags.items(), key=lambda item: item[0].lower()))
         self._filter_rows(self._search.text())
         self._update_status()
-        self._sync_hotkeys()
+        if sync_hotkeys:
+            self._sync_hotkeys()
 
     def _replace_table_rows(self, rows: list[tuple[str, str]]):
         """Bulk-load rows without constructing a widget for every boolean value."""
@@ -2214,7 +2215,7 @@ class CustomFFlagEditor(QWidget):
         log_buffer.log(
             'CustomFFlags', f'Windows keybind turned {name} {"on" if is_enabled else "off"}',
         )
-        self._load_flags()
+        self._load_flags(sync_hotkeys=False)
 
     def closeEvent(self, event):
         if self._hotkey_service is not None:

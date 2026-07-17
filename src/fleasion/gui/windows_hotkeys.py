@@ -185,14 +185,23 @@ class WindowsHotkeyService(QObject):
                 result |= MOD_WIN
             return result
 
-        was_active = {name: False for name in translated}
-        while not self._stop.wait(self._POLL_SECONDS):
+        def binding_is_active(virtual_key: int, required_modifiers: int) -> bool:
             modifiers = active_modifiers()
+            main_modifier = modifier_mask_for_virtual_key(virtual_key)
+            return is_pressed(virtual_key) and (
+                modifiers & ~main_modifier
+            ) == required_modifiers
+
+        # A newly started poller must treat keys that are already held as its
+        # baseline, not as a new press.  This prevents a settings refresh from
+        # retriggering the same hotkey until the user releases it first.
+        was_active = {
+            name: binding_is_active(virtual_key, required_modifiers)
+            for name, (virtual_key, required_modifiers) in translated.items()
+        }
+        while not self._stop.wait(self._POLL_SECONDS):
             for name, (virtual_key, required_modifiers) in translated.items():
-                main_modifier = modifier_mask_for_virtual_key(virtual_key)
-                active = is_pressed(virtual_key) and (
-                    modifiers & ~main_modifier
-                ) == required_modifiers
+                active = binding_is_active(virtual_key, required_modifiers)
                 if active and not was_active[name]:
                     self.activated.emit(name)
                 was_active[name] = active
