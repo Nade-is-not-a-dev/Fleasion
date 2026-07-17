@@ -1505,6 +1505,13 @@ def _looks_like_fleasion_gui_command(command: str) -> bool:
     if executable == 'fleasion' or executable.startswith('fleasion-v'):
         return True
 
+    # ``uv run fleasion`` and virtual-environment entry points are executed as
+    # ``python …/bin/fleasion``.  The old check only considered argv[0], so
+    # Linux's Kill Others action missed the already-running GUI and a second
+    # instance later failed on the proxy backend port.
+    if any(Path(token).name.lower() == 'fleasion' for token in tokens[1:]):
+        return True
+
     for index, token in enumerate(tokens):
         if Path(token).name == 'launcher.py':
             return True
