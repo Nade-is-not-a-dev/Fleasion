@@ -1,9 +1,8 @@
 """Windows scan-code hotkeys for custom FastFlag toggles.
 
-This follows the same physical-key model used by Spencer Macro Utilities: a
-binding stores its scan code, whether it is extended, and the modifier state
-required alongside it.  A low-level keyboard hook is necessary because
-RegisterHotKey cannot reliably represent bare keys or modifier-only binds.
+Bindings are captured as physical scan codes and converted to virtual keys for
+``GetAsyncKeyState`` polling.  Polling is deliberately used instead of a
+keyboard hook: it observes input but cannot consume or block the user's keys.
 """
 
 from __future__ import annotations
@@ -119,36 +118,18 @@ def binding_text(binding) -> str:
     return '+'.join([*labels, key_text])
 
 
-class _KeyboardData(ctypes.Structure):
-    _fields_ = [
-        ('vkCode', wintypes.DWORD),
-        ('scanCode', wintypes.DWORD),
-        ('flags', wintypes.DWORD),
-        ('time', wintypes.DWORD),
-        ('dwExtraInfo', ctypes.c_size_t),
-    ]
-
-
 class WindowsHotkeyService(QObject):
-    """Dispatch global Windows key-down edges matched by physical scan code."""
+    """Poll global key state and dispatch a binding exactly once per key press."""
 
     activated = pyqtSignal(str)
 
-    _WH_KEYBOARD_LL = 13
-    _HC_ACTION = 0
-    _WM_KEYDOWN = 0x0100
-    _WM_KEYUP = 0x0101
-    _WM_SYSKEYDOWN = 0x0104
-    _WM_SYSKEYUP = 0x0105
-    _WM_QUIT = 0x0012
-    _LLKHF_EXTENDED = 0x01
+    _MAPVK_VSC_TO_VK_EX = 3
+    _POLL_SECONDS = 0.01
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._thread: threading.Thread | None = None
-        self._thread_id: int | None = None
         self._stop = threading.Event()
-        self._lock = threading.Lock()
 
     def set_bindings(self, bindings: Mapping[str, Mapping[str, int]]) -> None:
         """Replace active bindings. Bare and modifier-only keys are supported."""
@@ -168,103 +149,56 @@ class WindowsHotkeyService(QObject):
         )
         self._thread.start()
 
-    @staticmethod
-    def _active_modifier_mask(pressed: Mapping[tuple[int, bool], int]) -> int:
-        result = 0
-        for virtual_key in pressed.values():
-            result |= modifier_mask_for_virtual_key(virtual_key)
-        return result
-
     def _run(self, bindings: Mapping[str, Mapping[str, int | bool]]) -> None:
         user32 = ctypes.windll.user32
-        kernel32 = ctypes.windll.kernel32
-        message = wintypes.MSG()
-        user32.PeekMessageW(ctypes.byref(message), None, 0, 0, 0)
-        pressed: dict[tuple[int, bool], int] = {}
-        used_modifier_keys: set[tuple[int, bool]] = set()
-        callback_type = ctypes.WINFUNCTYPE(
-            wintypes.LPARAM, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
-        )
-        kernel32.GetModuleHandleW.restype = ctypes.c_void_p
-        kernel32.GetModuleHandleW.argtypes = (wintypes.LPCWSTR,)
-        user32.SetWindowsHookExW.restype = ctypes.c_void_p
-        user32.SetWindowsHookExW.argtypes = (
-            ctypes.c_int, callback_type, ctypes.c_void_p, wintypes.DWORD
-        )
-        user32.UnhookWindowsHookEx.argtypes = (ctypes.c_void_p,)
-
-        @callback_type
-        def keyboard_hook(code, message_type, lparam):
-            if code == self._HC_ACTION:
-                data = ctypes.cast(lparam, ctypes.POINTER(_KeyboardData)).contents
-                extended = bool(data.flags & self._LLKHF_EXTENDED)
-                identity = (int(data.scanCode), extended)
-                if message_type in (self._WM_KEYDOWN, self._WM_SYSKEYDOWN):
-                    if identity not in pressed:  # Ignore operating-system autorepeat.
-                        # Modifier-only binds activate on release.  Mark any
-                        # already-held modifier as used when another key joins
-                        # it, so Ctrl alone does not also fire for Ctrl+F1.
-                        used_modifier_keys.update(
-                            pressed_identity
-                            for pressed_identity, virtual_key in pressed.items()
-                            if modifier_mask_for_virtual_key(virtual_key)
-                        )
-                        pressed[identity] = int(data.vkCode)
-                        active_modifiers = self._active_modifier_mask(pressed)
-                        main_modifier = modifier_mask_for_virtual_key(int(data.vkCode))
-                        if not main_modifier:
-                            for name, binding in bindings.items():
-                                if (
-                                    identity
-                                    == (int(binding['scan_code']), bool(binding['extended']))
-                                    and active_modifiers == int(binding['modifiers'])
-                                ):
-                                    self.activated.emit(name)
-                                    break
-                elif message_type in (self._WM_KEYUP, self._WM_SYSKEYUP):
-                    virtual_key = pressed.get(identity, int(data.vkCode))
-                    main_modifier = modifier_mask_for_virtual_key(virtual_key)
-                    if main_modifier and identity not in used_modifier_keys:
-                        active_modifiers = self._active_modifier_mask(pressed) & ~main_modifier
-                        for name, binding in bindings.items():
-                            if (
-                                identity
-                                == (int(binding['scan_code']), bool(binding['extended']))
-                                and active_modifiers == int(binding['modifiers'])
-                            ):
-                                self.activated.emit(name)
-                                break
-                    pressed.pop(identity, None)
-                    used_modifier_keys.discard(identity)
-            return user32.CallNextHookEx(None, code, message_type, lparam)
-
-        hook = None
+        user32.GetAsyncKeyState.argtypes = (ctypes.c_int,)
+        user32.GetAsyncKeyState.restype = ctypes.c_short
+        user32.MapVirtualKeyW.argtypes = (wintypes.UINT, wintypes.UINT)
+        user32.MapVirtualKeyW.restype = wintypes.UINT
+        translated: dict[str, tuple[int, int]] = {}
         try:
-            hook = user32.SetWindowsHookExW(
-                self._WH_KEYBOARD_LL, keyboard_hook, kernel32.GetModuleHandleW(None), 0
-            )
-            if not hook:
-                log_buffer.log('CustomFFlags', 'Could not install the Windows FastFlag keyboard hook.')
-                return
-            with self._lock:
-                self._thread_id = kernel32.GetCurrentThreadId()
-            if self._stop.is_set():
-                return
-            while not self._stop.is_set() and user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
-                user32.TranslateMessage(ctypes.byref(message))
-                user32.DispatchMessageW(ctypes.byref(message))
-        finally:
-            if hook:
-                user32.UnhookWindowsHookEx(hook)
-            with self._lock:
-                self._thread_id = None
+            for name, binding in bindings.items():
+                scan_code = int(binding['scan_code'])
+                if binding['extended']:
+                    scan_code |= 0xE000
+                virtual_key = int(user32.MapVirtualKeyW(scan_code, self._MAPVK_VSC_TO_VK_EX))
+                if virtual_key:
+                    translated[name] = (virtual_key, int(binding['modifiers']))
+                else:
+                    log_buffer.log('CustomFFlags', f'Could not map the keybind for {name}.')
+        except Exception as exc:
+            log_buffer.log('CustomFFlags', f'Could not start Windows FastFlag key polling: {exc}')
+            return
+
+        def is_pressed(virtual_key: int) -> bool:
+            return bool(user32.GetAsyncKeyState(virtual_key) & 0x8000)
+
+        def active_modifiers() -> int:
+            result = 0
+            if is_pressed(_VK_LSHIFT) or is_pressed(_VK_RSHIFT):
+                result |= MOD_SHIFT
+            if is_pressed(_VK_LCONTROL) or is_pressed(_VK_RCONTROL):
+                result |= MOD_CTRL
+            if is_pressed(_VK_LMENU) or is_pressed(_VK_RMENU):
+                result |= MOD_ALT
+            if is_pressed(_VK_LWIN) or is_pressed(_VK_RWIN):
+                result |= MOD_WIN
+            return result
+
+        was_active = {name: False for name in translated}
+        while not self._stop.wait(self._POLL_SECONDS):
+            modifiers = active_modifiers()
+            for name, (virtual_key, required_modifiers) in translated.items():
+                main_modifier = modifier_mask_for_virtual_key(virtual_key)
+                active = is_pressed(virtual_key) and (
+                    modifiers & ~main_modifier
+                ) == required_modifiers
+                if active and not was_active[name]:
+                    self.activated.emit(name)
+                was_active[name] = active
 
     def stop(self) -> None:
         self._stop.set()
-        with self._lock:
-            thread_id = self._thread_id
-        if thread_id and sys.platform == 'win32':
-            ctypes.windll.user32.PostThreadMessageW(thread_id, self._WM_QUIT, 0, 0)
         if self._thread and self._thread is not threading.current_thread():
             self._thread.join(timeout=1.0)
         self._thread = None

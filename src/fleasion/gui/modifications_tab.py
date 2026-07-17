@@ -1835,6 +1835,22 @@ class WindowsHotkeyCaptureDialog(QDialog):
         self.clear_requested = True
         self.accept()
 
+    @staticmethod
+    def _modifier_preview(modifiers: int) -> str:
+        from .windows_hotkeys import MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_WIN
+
+        labels = [
+            label
+            for flag, label in (
+                (MOD_WIN, 'Win'),
+                (MOD_CTRL, 'Ctrl'),
+                (MOD_ALT, 'Alt'),
+                (MOD_SHIFT, 'Shift'),
+            )
+            if modifiers & flag
+        ]
+        return '+'.join([*labels, '…']) if labels else 'Waiting for a key combination…'
+
     def keyPressEvent(self, event):
         key = int(event.key())
         if event.isAutoRepeat():
@@ -1845,9 +1861,15 @@ class WindowsHotkeyCaptureDialog(QDialog):
             self._preview.setText('That key could not be read as a Windows scan code.')
             return
         if key in self._MODIFIER_KEYS:
+            from .windows_hotkeys import modifier_mask_for_virtual_key
+
             self._pending_modifier = binding
             self._pending_modifier_key = key
-            self._preview.setText('Release the modifier to bind it, or press another key to make a combination…')
+            self._preview.setText(
+                self._modifier_preview(
+                    modifiers | modifier_mask_for_virtual_key(int(event.nativeVirtualKey()))
+                )
+            )
             return
         self.binding = binding
         self.accept()
@@ -2038,7 +2060,8 @@ class CustomFFlagEditor(QWidget):
                 if self._windows_keybinds:
                     status_item = QTableWidgetItem('Enabled')
                     status_item.setFlags(
-                        status_item.flags() | Qt.ItemFlag.ItemIsUserCheckable
+                        (status_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                        & ~Qt.ItemFlag.ItemIsEditable
                     )
                     status_item.setCheckState(
                         Qt.CheckState.Unchecked
@@ -2134,7 +2157,10 @@ class CustomFFlagEditor(QWidget):
 
     def _sync_hotkeys(self):
         if self._hotkey_service is not None:
-            self._hotkey_service.set_bindings(self._keybinds())
+            feature_enabled = bool(
+                self._config and getattr(self._config, 'custom_fflags_enabled', False)
+            )
+            self._hotkey_service.set_bindings(self._keybinds() if feature_enabled else {})
 
     def _edit_keybind(self, row: int, column: int):
         if column != 3:
@@ -2171,7 +2197,11 @@ class CustomFFlagEditor(QWidget):
         self._load_flags()
 
     def _toggle_flag_from_hotkey(self, name: str):
-        if self._config is None or name not in self._flags_from_table():
+        if (
+            self._config is None
+            or not getattr(self._config, 'custom_fflags_enabled', False)
+            or name not in self._flags_from_table()
+        ):
             return
         disabled = self._disabled_flag_names()
         is_enabled = name in disabled
@@ -2262,6 +2292,7 @@ class CustomFFlagEditor(QWidget):
             self._config.custom_fflags_warning_accepted = True
 
         self._config.custom_fflags_enabled = checked
+        self._sync_hotkeys()
         self._refresh_proxy_hosts()
         self._update_status()
 
