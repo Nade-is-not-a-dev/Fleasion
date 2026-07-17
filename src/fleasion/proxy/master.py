@@ -1258,6 +1258,11 @@ _HOSTS_IPV4_LOOPBACK = '127.0.0.1'
 _HOSTS_IPV6_LOOPBACK = '::1'
 _HOSTS_LOOPBACK_IPS = frozenset({_HOSTS_IPV4_LOOPBACK, _HOSTS_IPV6_LOOPBACK})
 _HOSTS_ACTIVE_LOOPBACK_IPS: tuple[str, ...] | None = None
+# Voidstrap has been observed leaving stale Roblox edge-IP mappings tagged with
+# this marker.  They prevent our loopback proxy from owning the same hostnames.
+# Keep this deliberately narrow: only lines with this exact marker *and* one
+# of the hostnames we are about to intercept are eligible for cleanup.
+_VOIDSTRAP_GU_ACC_MARKER = '#gu_acc'
 
 
 def _required_hosts_loopbacks() -> tuple[str, ...]:
@@ -1411,6 +1416,56 @@ def _hosts_file_loopback_hosts(hosts: Set[str]) -> set[str]:
     return present
 
 
+def _is_voidstrap_gu_acc_line(raw_line: str, hosts: Set[str]) -> bool:
+    """Return whether *raw_line* is a known stale Voidstrap hosts entry.
+
+    Some affected files prefix an existing line with ``#gu_acc`` while other
+    lines end in that marker.  Matching host tokens, rather than attempting to
+    parse the line as an active mapping, handles both forms without touching
+    unrelated ``#gu_acc`` content.
+    """
+    if _VOIDSTRAP_GU_ACC_MARKER not in raw_line.lower():
+        return False
+    target_hosts = {host.lower() for host in hosts}
+    return any(token.lower() in target_hosts for token in raw_line.split())
+
+
+def _remove_voidstrap_gu_acc_entries(
+    hosts: Set[str], error_details: Optional[dict] = None
+) -> bool:
+    """Remove known Voidstrap ``#gu_acc`` entries for Fleasion proxy hosts."""
+    try:
+        existing = HOSTS_FILE.read_text(encoding='utf-8', errors='replace')
+    except FileNotFoundError:
+        return True
+    except OSError as exc:
+        _record_hosts_error(error_details, exc)
+        log_buffer.log('Hosts', f'Cannot read hosts file for Voidstrap cleanup: {exc}')
+        return False
+
+    lines = existing.splitlines(keepends=True)
+    filtered = [
+        line for line in lines if not _is_voidstrap_gu_acc_line(line, hosts)
+    ]
+    removed_count = len(lines) - len(filtered)
+    if not removed_count:
+        return True
+
+    try:
+        _write_hosts_file(''.join(filtered))
+    except OSError as exc:
+        _record_hosts_error(error_details, exc)
+        log_buffer.log('Hosts', f'Failed to remove Voidstrap #gu_acc entries: {exc}')
+        return False
+
+    log_buffer.log(
+        'Hosts',
+        f'Removed {removed_count} stale Voidstrap #gu_acc hosts entr'
+        f'{"y" if removed_count == 1 else "ies"}',
+    )
+    return True
+
+
 def _write_hosts_file(content: str) -> None:
     """Write *content* to the system hosts file, working around security
     software (e.g. Webroot SecureAnywhere / WRSVC) that intermittently or
@@ -1546,6 +1601,18 @@ def _add_hosts_entries(hosts: Set[str], error_details: Optional[dict] = None) ->
             return False
     except OSError as exc:
         log_buffer.log('Hosts', f'Cannot read hosts file: {exc}')
+        _record_hosts_error(error_details, exc)
+        return False
+
+    # Remove only the known Voidstrap marker before evaluating conflicts.  Its
+    # active edge-IP mappings would otherwise make Fleasion fail to start, and
+    # its commented-out copies can accumulate beside our regenerated entries.
+    if not _remove_voidstrap_gu_acc_entries(hosts, error_details=error_details):
+        return False
+    try:
+        existing = HOSTS_FILE.read_text(encoding='utf-8', errors='replace')
+    except OSError as exc:
+        log_buffer.log('Hosts', f'Cannot reread hosts file after Voidstrap cleanup: {exc}')
         _record_hosts_error(error_details, exc)
         return False
 
