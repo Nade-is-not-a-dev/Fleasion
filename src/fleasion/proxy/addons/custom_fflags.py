@@ -65,6 +65,7 @@ class CustomFFlagModifier:
         self._settings_signature: tuple[int, int] | None = None
         self._disk_enabled: bool | None = None
         self._disk_flags: dict | None = None
+        self._disk_disabled: list | None = None
 
     def _refresh_settings_from_disk(self) -> None:
         """Refresh only the custom-flag fields when the saved settings change."""
@@ -84,6 +85,8 @@ class CustomFFlagModifier:
             self._disk_enabled = bool(data.get('custom_fflags_enabled', False))
             saved_flags = data.get('custom_fflags', {})
             self._disk_flags = saved_flags if isinstance(saved_flags, dict) else {}
+            disabled = data.get('custom_fflag_disabled', [])
+            self._disk_disabled = disabled if isinstance(disabled, list) else []
 
     def is_enabled(self) -> bool:
         self._refresh_settings_from_disk()
@@ -120,6 +123,13 @@ class CustomFFlagModifier:
             else getattr(self.config_manager, 'custom_fflags', {})
         )
         flags = normalize_custom_fflags(saved_flags)
+        disabled = (
+            self._disk_disabled
+            if self._disk_disabled is not None
+            else getattr(self.config_manager, 'custom_fflag_disabled', [])
+        )
+        disabled_names = {str(name).strip() for name in disabled}
+        flags = {name: value for name, value in flags.items() if name not in disabled_names}
         # Roblox/Sober reads the reloader interval before applying the response
         # it has just fetched. Therefore, when this companion flag first
         # arrives through Sober's 120-second dynamic fetch, its next wait can

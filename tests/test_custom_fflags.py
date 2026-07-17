@@ -37,6 +37,19 @@ def test_normalize_custom_fflags_matches_roblox_string_values():
     }
 
 
+def test_runtime_flags_skip_individually_disabled_custom_fflags():
+    config = SimpleNamespace(
+        custom_fflags_enabled=True,
+        custom_fflags={'FFlagEnabled': 'True', 'FFlagDisabled': 'False'},
+        custom_fflag_disabled=['FFlagDisabled'],
+    )
+
+    flags = CustomFFlagModifier(config).runtime_flags()
+
+    assert flags['FFlagEnabled'] == 'True'
+    assert 'FFlagDisabled' not in flags
+
+
 def test_modifier_merges_all_platform_application_settings():
     config = SimpleNamespace(
         custom_fflags_enabled=True,

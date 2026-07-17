@@ -1755,6 +1755,55 @@ class FFlagBrowserDialog(QDialog):
             self.accept()
 
 
+class WindowsHotkeyCaptureDialog(QDialog):
+    """Capture one modifier-based key combination for RegisterHotKey."""
+
+    _MODIFIER_MASK = 0x1E000000
+    _MODIFIER_KEYS = {
+        int(Qt.Key.Key_Control),
+        int(Qt.Key.Key_Shift),
+        int(Qt.Key.Key_Alt),
+        int(Qt.Key.Key_Meta),
+        int(Qt.Key.Key_AltGr),
+    }
+
+    def __init__(self, flag_name: str, parent=None):
+        super().__init__(parent)
+        self.binding: dict[str, int] | None = None
+        self.setWindowTitle('Set FastFlag Keybind')
+        self.setMinimumWidth(460)
+        layout = QVBoxLayout(self)
+        label = QLabel(
+            f'Press the global keybind for <b>{flag_name}</b>.<br>'
+            'Use Ctrl, Alt, Shift, or Win plus a supported key. Press Escape to cancel.'
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        self._preview = QLabel('Waiting for a key combination…')
+        self._preview.setStyleSheet('color: #999; padding: 10px 0;')
+        layout.addWidget(self._preview)
+
+    def keyPressEvent(self, event):
+        key = int(event.key())
+        modifiers = int(event.modifiers()) & self._MODIFIER_MASK
+        if key == int(Qt.Key.Key_Escape):
+            self.reject()
+            return
+        if key in self._MODIFIER_KEYS:
+            self._preview.setText('Hold a modifier, then press the other key…')
+            return
+        if not modifiers:
+            self._preview.setText('Add Ctrl, Alt, Shift, or Win to make this a global keybind.')
+            return
+        from .windows_hotkeys import WindowsHotkeyService
+
+        if WindowsHotkeyService._virtual_key(key) is None:
+            self._preview.setText('That key is not supported for a global Windows keybind.')
+            return
+        self.binding = {'key': key, 'modifiers': modifiers}
+        self.accept()
+
+
 class CustomFFlagEditor(QWidget):
     """Fishstrap-style name/value editor backed by Fleasion's proxy settings."""
 
@@ -1764,6 +1813,13 @@ class CustomFFlagEditor(QWidget):
         super().__init__(parent)
         self._config = config_manager
         self._proxy_master = proxy_master
+        self._windows_keybinds = sys.platform == 'win32'
+        self._hotkey_service = None
+        if self._windows_keybinds:
+            from .windows_hotkeys import WindowsHotkeyService
+
+            self._hotkey_service = WindowsHotkeyService(self)
+            self._hotkey_service.activated.connect(self._toggle_flag_from_hotkey)
         self._loading = False
         self._sort_column: int | None = 0
         self._sort_ascending = True
@@ -1815,13 +1871,27 @@ class CustomFFlagEditor(QWidget):
         self._status.setWordWrap(True)
         layout.addWidget(self._status)
 
+        if self._windows_keybinds:
+            hotkey_help = QLabel(
+                'Windows keybinds are global: assign one to a FastFlag, then press it to turn '
+                'that override on or off while Roblox is focused.'
+            )
+            hotkey_help.setWordWrap(True)
+            hotkey_help.setStyleSheet('color: #999;')
+            layout.addWidget(hotkey_help)
+
         self._search = QLineEdit()
         self._search.setPlaceholderText('Search custom FastFlags…')
         self._search.textChanged.connect(self._filter_rows)
         layout.addWidget(self._search)
 
-        self._table = QTableWidget(0, 2)
-        self._table.setHorizontalHeaderLabels(['Name', 'Value'])
+        column_count = 4 if self._windows_keybinds else 2
+        self._table = QTableWidget(0, column_count)
+        self._table.setHorizontalHeaderLabels(
+            ['Name', 'Value', 'Status', 'Keybind']
+            if self._windows_keybinds
+            else ['Name', 'Value']
+        )
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -1841,6 +1911,9 @@ class CustomFFlagEditor(QWidget):
         self._table.setMinimumHeight(180)
         self._table.setItemDelegateForColumn(1, FastFlagValueDelegate(self._table))
         self._table.cellChanged.connect(self._on_cell_changed)
+        if self._windows_keybinds:
+            self._table.setColumnWidth(2, 85)
+            self._table.setColumnWidth(3, 160)
         layout.addWidget(self._table)
 
         buttons = QHBoxLayout()
@@ -1874,6 +1947,15 @@ class CustomFFlagEditor(QWidget):
         delete_button = QPushButton('Delete Selected')
         delete_button.clicked.connect(self._delete_selected)
         buttons.addWidget(delete_button)
+        if self._windows_keybinds:
+            keybind_button = QPushButton('Assign Keybind…')
+            keybind_button.setToolTip('Assign a global Windows keybind to the selected FastFlag.')
+            keybind_button.clicked.connect(self._assign_keybind)
+            buttons.addWidget(keybind_button)
+
+            clear_keybind_button = QPushButton('Clear Keybind')
+            clear_keybind_button.clicked.connect(self._clear_keybind)
+            buttons.addWidget(clear_keybind_button)
         buttons.addStretch()
         layout.addLayout(buttons)
 
@@ -1887,6 +1969,7 @@ class CustomFFlagEditor(QWidget):
         self._replace_table_rows(sorted(flags.items(), key=lambda item: item[0].lower()))
         self._filter_rows(self._search.text())
         self._update_status()
+        self._sync_hotkeys()
 
     def _replace_table_rows(self, rows: list[tuple[str, str]]):
         """Bulk-load rows without constructing a widget for every boolean value."""
@@ -1900,6 +1983,20 @@ class CustomFFlagEditor(QWidget):
                 name_item.setToolTip(name)
                 self._table.setItem(row, 0, name_item)
                 self._set_value_editor(row, name, str(value))
+                if self._windows_keybinds:
+                    status_item = QTableWidgetItem('Enabled')
+                    status_item.setFlags(
+                        status_item.flags() | Qt.ItemFlag.ItemIsUserCheckable
+                    )
+                    status_item.setCheckState(
+                        Qt.CheckState.Unchecked
+                        if name in self._disabled_flag_names()
+                        else Qt.CheckState.Checked
+                    )
+                    self._table.setItem(row, 2, status_item)
+                    keybind_item = QTableWidgetItem(self._keybind_text(self._keybinds().get(name)))
+                    keybind_item.setFlags(keybind_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    self._table.setItem(row, 3, keybind_item)
         finally:
             self._table.blockSignals(False)
             self._table.setUpdatesEnabled(True)
@@ -1940,8 +2037,157 @@ class CustomFFlagEditor(QWidget):
         finally:
             self._loading = was_loading
 
+    def _disabled_flag_names(self) -> set[str]:
+        return set(getattr(self._config, 'custom_fflag_disabled', []) or [])
+
+    def _keybinds(self) -> dict[str, dict[str, int]]:
+        bindings = getattr(self._config, 'custom_fflag_keybinds', {}) or {}
+        return bindings if isinstance(bindings, dict) else {}
+
+    @staticmethod
+    def _keybind_text(binding) -> str:
+        if not isinstance(binding, dict):
+            return 'Not assigned'
+        modifiers = int(binding.get('modifiers', 0))
+        labels = []
+        for mask, label in (
+            (0x04000000, 'Ctrl'),
+            (0x08000000, 'Alt'),
+            (0x02000000, 'Shift'),
+            (0x10000000, 'Win'),
+        ):
+            if modifiers & mask:
+                labels.append(label)
+        key = int(binding.get('key', 0))
+        special_keys = {
+            0x01000000: 'Esc',
+            0x01000001: 'Tab',
+            0x01000003: 'Backspace',
+            0x01000004: 'Enter',
+            0x01000005: 'Enter',
+            0x01000006: 'Insert',
+            0x01000007: 'Delete',
+            0x01000010: 'Home',
+            0x01000011: 'End',
+            0x01000012: 'Left',
+            0x01000013: 'Up',
+            0x01000014: 'Right',
+            0x01000015: 'Down',
+            0x01000016: 'Page Up',
+            0x01000017: 'Page Down',
+        }
+        if 0x01000030 <= key <= 0x01000047:
+            key_text = f'F{key - 0x01000030 + 1}'
+        elif 0x20 <= key <= 0x7E:
+            key_text = chr(key).upper()
+        else:
+            key_text = special_keys.get(key, '')
+        return '+'.join([*labels, key_text]) if labels and key_text else 'Not assigned'
+
+    def _flag_is_enabled(self, row: int) -> bool:
+        item = self._table.item(row, 2)
+        return item is not None and item.checkState() == Qt.CheckState.Checked
+
+    def _save_hotkey_settings(self):
+        if not self._windows_keybinds or self._config is None or self._loading:
+            return
+        names = set(self._flags_from_table())
+        disabled = {
+            self._table.item(row, 0).text()
+            for row in range(self._table.rowCount())
+            if self._table.item(row, 0) is not None and not self._flag_is_enabled(row)
+        }
+        bindings = {name: spec for name, spec in self._keybinds().items() if name in names}
+        self._config.custom_fflag_disabled = sorted(disabled)
+        self._config.custom_fflag_keybinds = bindings
+        self._sync_hotkeys()
+        self._refresh_proxy_hosts()
+        self._update_status()
+
+    def _prune_hotkey_settings(self, names: set[str]):
+        if not self._windows_keybinds or self._config is None:
+            return
+        disabled = self._disabled_flag_names() & names
+        bindings = {name: spec for name, spec in self._keybinds().items() if name in names}
+        self._config.custom_fflag_disabled = sorted(disabled)
+        self._config.custom_fflag_keybinds = bindings
+        self._sync_hotkeys()
+
+    def _sync_hotkeys(self):
+        if self._hotkey_service is not None:
+            self._hotkey_service.set_bindings(self._keybinds())
+
+    def _selected_flag_name(self) -> str | None:
+        rows = {index.row() for index in self._table.selectedIndexes()}
+        if len(rows) != 1:
+            QMessageBox.information(
+                self, 'Choose a FastFlag', 'Select exactly one custom FastFlag first.'
+            )
+            return None
+        item = self._table.item(rows.pop(), 0)
+        return item.text() if item else None
+
+    def _assign_keybind(self):
+        name = self._selected_flag_name()
+        if not name:
+            return
+        dialog = WindowsHotkeyCaptureDialog(name, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.binding is None:
+            return
+        bindings = self._keybinds()
+        duplicate = next(
+            (other_name for other_name, binding in bindings.items()
+             if other_name != name and binding == dialog.binding),
+            None,
+        )
+        if duplicate:
+            QMessageBox.warning(
+                self,
+                'Keybind Already Used',
+                f'{self._keybind_text(dialog.binding)} is already assigned to {duplicate}.',
+            )
+            return
+        bindings[name] = dialog.binding
+        self._config.custom_fflag_keybinds = bindings
+        self._load_flags()
+
+    def _clear_keybind(self):
+        name = self._selected_flag_name()
+        if not name:
+            return
+        bindings = self._keybinds()
+        if name not in bindings:
+            return
+        del bindings[name]
+        self._config.custom_fflag_keybinds = bindings
+        self._load_flags()
+
+    def _toggle_flag_from_hotkey(self, name: str):
+        if self._config is None or name not in self._flags_from_table():
+            return
+        disabled = self._disabled_flag_names()
+        is_enabled = name in disabled
+        if is_enabled:
+            disabled.remove(name)
+        else:
+            disabled.add(name)
+        self._config.custom_fflag_disabled = sorted(disabled)
+        self._refresh_proxy_hosts()
+        log_buffer.log(
+            'CustomFFlags', f'Windows keybind turned {name} {"on" if is_enabled else "off"}',
+        )
+        self._load_flags()
+
+    def closeEvent(self, event):
+        if self._hotkey_service is not None:
+            self._hotkey_service.stop()
+        super().closeEvent(event)
+
     def _on_cell_changed(self, row: int, column: int):
         if self._loading:
+            return
+        if self._windows_keybinds and column == 2:
+            self._save_hotkey_settings()
             return
         if column == 0:
             name_item = self._table.item(row, 0)
@@ -1958,6 +2204,7 @@ class CustomFFlagEditor(QWidget):
         if self._loading or self._config is None:
             return
         self._config.custom_fflags = self._flags_from_table()
+        self._prune_hotkey_settings(set(self._config.custom_fflags))
         self._refresh_proxy_hosts()
         self._update_status()
         self._filter_rows(self._search.text())
@@ -1966,10 +2213,16 @@ class CustomFFlagEditor(QWidget):
         if not hasattr(self, '_status'):
             return
         count = len(self._flags_from_table()) if hasattr(self, '_table') else 0
+        active_count = (
+            sum(self._flag_is_enabled(row) for row in range(self._table.rowCount()))
+            if self._windows_keybinds and hasattr(self, '_table')
+            else count
+        )
         enabled = bool(self._config and getattr(self._config, 'custom_fflags_enabled', False))
         if enabled:
             self._status.setText(
-                f'Active — {count} saved custom FastFlag(s) will override Roblox ClientSettings.'
+                f'Active — {active_count} of {count} saved custom FastFlag(s) will override '
+                'Roblox ClientSettings.'
             )
             self._status.setStyleSheet('color: #67c587;')
         else:
@@ -2060,6 +2313,7 @@ class CustomFFlagEditor(QWidget):
         if self._config is None:
             return
         self._config.custom_fflags = flags
+        self._prune_hotkey_settings(set(self._config.custom_fflags))
         self._refresh_proxy_hosts()
         self._load_flags()
 
@@ -2136,12 +2390,17 @@ class CustomFFlagEditor(QWidget):
             )
             for row in range(self._table.rowCount())
         ]
+        def sort_value(entry: tuple[str, str]) -> str:
+            if column == 0:
+                return entry[0]
+            if column == 1:
+                return entry[1]
+            if column == 2:
+                return 'disabled' if entry[0] in self._disabled_flag_names() else 'enabled'
+            return self._keybind_text(self._keybinds().get(entry[0]))
+
         rows.sort(
-            key=lambda entry: (
-                entry[column].casefold(),
-                entry[0].casefold(),
-                entry[1].casefold(),
-            ),
+            key=lambda entry: (sort_value(entry).casefold(), entry[0].casefold(), entry[1].casefold()),
             reverse=not self._sort_ascending,
         )
 
@@ -2175,7 +2434,17 @@ class CustomFFlagEditor(QWidget):
             name = self._table.item(row, 0)
             name_text = name.text() if name else ''
             value_text = self._value_from_row(row)
-            matches = not query or query in name_text.lower() or query in value_text.lower()
+            keybind_text = (
+                self._table.item(row, 3).text()
+                if self._windows_keybinds and self._table.item(row, 3)
+                else ''
+            )
+            matches = (
+                not query
+                or query in name_text.lower()
+                or query in value_text.lower()
+                or query in keybind_text.lower()
+            )
             self._table.setRowHidden(row, not matches)
             visible_count += matches
         self._resize_table_to_contents(visible_count)

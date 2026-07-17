@@ -121,6 +121,10 @@ DEFAULT_SETTINGS = {
     'custom_fflags_enabled': False,
     'custom_fflags_warning_accepted': False,
     'custom_fflags': {},
+    # Windows-only UI state.  Keeping this separate from custom_fflags means a
+    # disabled flag retains its chosen value and can be restored by a hotkey.
+    'custom_fflag_disabled': [],
+    'custom_fflag_keybinds': {},
     'macos_auth_source': '',
     'upstream_transport_mode': 'auto',
     'upstream_http_connect_host': '',
@@ -195,6 +199,41 @@ def _normalize_custom_fflags(value: Any) -> dict[str, str]:
             normalized[name] = raw_value
         elif isinstance(raw_value, int | float):
             normalized[name] = str(raw_value)
+    return normalized
+
+
+def _normalize_custom_fflag_disabled(value: Any) -> list[str]:
+    if not isinstance(value, list | tuple | set):
+        return []
+    return sorted({str(name).strip() for name in value if str(name).strip()}, key=str.casefold)
+
+
+def _normalize_custom_fflag_keybinds(value: Any) -> dict[str, dict[str, int]]:
+    """Keep only portable Qt key/modifier pairs used by the Windows hotkey service."""
+    if not isinstance(value, dict):
+        return {}
+
+    # Qt::ShiftModifier through Qt::MetaModifier.  Keypad and group-switch
+    # modifiers are not accepted by RegisterHotKey.
+    allowed_modifiers = 0x1E000000
+    normalized: dict[str, dict[str, int]] = {}
+    for raw_name, raw_binding in value.items():
+        name = str(raw_name).strip()
+        if not name or not isinstance(raw_binding, dict):
+            continue
+        key = raw_binding.get('key')
+        modifiers = raw_binding.get('modifiers')
+        if (
+            not isinstance(key, int)
+            or isinstance(key, bool)
+            or not isinstance(modifiers, int)
+            or isinstance(modifiers, bool)
+            or not 0 < key <= 0x01FFFFFF
+            or not modifiers
+            or modifiers & ~allowed_modifiers
+        ):
+            continue
+        normalized[name] = {'key': key, 'modifiers': modifiers}
     return normalized
 
 
@@ -541,6 +580,26 @@ class ConfigManager:
     @custom_fflags.setter
     def custom_fflags(self, value: dict):
         self.settings['custom_fflags'] = _normalize_custom_fflags(value)
+        self._save_settings()
+
+    @property
+    def custom_fflag_disabled(self) -> list[str]:
+        """Names of custom FastFlags temporarily disabled by the Windows manager."""
+        return _normalize_custom_fflag_disabled(self.settings.get('custom_fflag_disabled', []))
+
+    @custom_fflag_disabled.setter
+    def custom_fflag_disabled(self, value):
+        self.settings['custom_fflag_disabled'] = _normalize_custom_fflag_disabled(value)
+        self._save_settings()
+
+    @property
+    def custom_fflag_keybinds(self) -> dict[str, dict[str, int]]:
+        """Windows global hotkeys keyed by custom FastFlag name."""
+        return _normalize_custom_fflag_keybinds(self.settings.get('custom_fflag_keybinds', {}))
+
+    @custom_fflag_keybinds.setter
+    def custom_fflag_keybinds(self, value):
+        self.settings['custom_fflag_keybinds'] = _normalize_custom_fflag_keybinds(value)
         self._save_settings()
 
     @property

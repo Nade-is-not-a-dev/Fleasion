@@ -198,6 +198,25 @@ class ConfigManagerEncodingTests(unittest.TestCase):
                 },
             )
 
+    def test_custom_fflag_windows_toggle_state_and_keybinds_are_normalized(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_manager_module = self._load_manager_for(Path(tmp))
+            manager = config_manager_module.ConfigManager()
+
+            manager.custom_fflag_disabled = [' FFlagExample ', '', 'FFlagExample']
+            manager.custom_fflag_keybinds = {
+                ' FFlagExample ': {'key': 65, 'modifiers': 0x04000000},
+                'Invalid': {'key': 0, 'modifiers': 0x04000000},
+                'NoModifier': {'key': 66, 'modifiers': 0},
+            }
+
+            reloaded = config_manager_module.ConfigManager()
+            self.assertEqual(reloaded.custom_fflag_disabled, ['FFlagExample'])
+            self.assertEqual(
+                reloaded.custom_fflag_keybinds,
+                {'FFlagExample': {'key': 65, 'modifiers': 0x04000000}},
+            )
+
     def test_dummy_replacement_ids_are_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_manager_module = self._load_manager_for(Path(tmp))
