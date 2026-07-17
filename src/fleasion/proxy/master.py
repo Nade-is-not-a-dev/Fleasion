@@ -3172,6 +3172,28 @@ class ProxyMaster:
                 self._active_intercept_hosts = set(desired_hosts)
                 return
 
+            previous_hosts = set(self._active_intercept_hosts)
+            retained_hosts = previous_hosts & desired_hosts
+            added_hosts = desired_hosts - previous_hosts
+            removed_hosts = previous_hosts - desired_hosts
+
+            # Resolve only routes that are about to be added, and do so before
+            # the hosts update.  Re-resolving retained hosts here is unsafe:
+            # they already point at our loopback proxy, which forces the
+            # resolver down the public-DNS fallback and can replace a working
+            # nearby Roblox API edge mid-browser-session.
+            real_endpoints = self._proxy.upstream_endpoints_for_hosts(retained_hosts)
+            missing_retained_hosts = retained_hosts - set(real_endpoints)
+            if missing_retained_hosts:
+                log_buffer.log(
+                    'Hosts',
+                    'Keeping existing intercept routes unchanged because their upstream '
+                    f'endpoints are unavailable: {", ".join(sorted(missing_retained_hosts))}',
+                )
+            added_endpoints = _resolve_real_endpoints(added_hosts) if added_hosts else {}
+            real_endpoints.update(added_endpoints)
+            _log_upstream_ip_coverage(desired_hosts, real_endpoints)
+
             if _use_linux_privileged_helper():
                 from ..utils.linux_proxy_helper import update_helper_hosts
 
@@ -3181,8 +3203,6 @@ class ProxyMaster:
                         'Failed to request Linux helper username spoofer hosts update',
                     )
                     return
-                real_endpoints = _resolve_real_endpoints(desired_hosts)
-                _log_upstream_ip_coverage(desired_hosts, real_endpoints)
                 self._active_intercept_hosts = set(desired_hosts)
                 self._proxy.set_upstream_endpoints(real_endpoints)
                 scraper_ips = _first_endpoint_ips(real_endpoints)
@@ -3194,23 +3214,22 @@ class ProxyMaster:
                 )
                 return
 
-            previous_hosts = set(self._active_intercept_hosts)
-            _remove_hosts_entries(set(INTERCEPT_HOSTS))
-            _flush_dns()
-            real_endpoints = _resolve_real_endpoints(desired_hosts)
-            _log_upstream_ip_coverage(desired_hosts, real_endpoints)
-            if not _add_hosts_entries(desired_hosts):
+            # The unprivileged macOS helper accepts the complete desired set
+            # atomically.  Other platforms can update the small delta without
+            # briefly deleting every active Roblox route from the hosts file.
+            if IS_MACOS and not _is_admin():
+                hosts_updated = _add_hosts_entries(desired_hosts)
+            else:
+                hosts_updated = (
+                    (not removed_hosts or _remove_hosts_entries(removed_hosts))
+                    and (not added_hosts or _add_hosts_entries(added_hosts))
+                )
+            if not hosts_updated:
                 log_buffer.log('Hosts', 'Failed to update username spoofer hosts entries')
-                _add_hosts_entries(previous_hosts)
-                _flush_dns()
                 return
             _flush_dns()
             if not _verify_hosts_entries(desired_hosts):
                 log_buffer.log('Hosts', 'Failed to verify username spoofer hosts entries')
-                _remove_hosts_entries(set(INTERCEPT_HOSTS))
-                _add_hosts_entries(previous_hosts)
-                _flush_dns()
-                _verify_hosts_entries(previous_hosts)
                 return
 
             self._active_intercept_hosts = set(desired_hosts)

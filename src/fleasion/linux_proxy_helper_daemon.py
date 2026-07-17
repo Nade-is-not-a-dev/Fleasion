@@ -681,6 +681,53 @@ def _apply_hosts(hosts: set[str]) -> None:
     _write_hosts(new_content)
 
 
+def _apply_hosts_delta(previous_hosts: set[str], updated_hosts: set[str]) -> None:
+    """Apply a live host-set change without rewriting retained entries.
+
+    The browser can have active Roblox API requests while Custom FFlags arms.
+    Removing and immediately re-adding every managed entry needlessly disrupts
+    those requests, so live updates only touch the hosts that actually changed.
+    """
+    removed_hosts = previous_hosts - updated_hosts
+    added_hosts = updated_hosts - previous_hosts
+    if not removed_hosts and not added_hosts:
+        return
+    try:
+        existing = HOSTS_FILE.read_text(encoding='utf-8', errors='replace')
+    except FileNotFoundError:
+        existing = ''
+
+    retained_lines: list[str] = []
+    for line in existing.splitlines(keepends=True):
+        active = line.split('#', 1)[0].strip()
+        parts = active.split()
+        line_hosts = {part.lower() for part in parts[1:]} if len(parts) >= 2 else set()
+        if HOSTS_MARKER in line and line_hosts & removed_hosts:
+            continue
+        retained_lines.append(line)
+
+    content = ''.join(retained_lines)
+    entries = _parse_active_loopback_hosts(content)
+    lines_to_add = [
+        f'127.0.0.1 {host} {HOSTS_MARKER}\n'
+        for host in sorted(added_hosts)
+        if host not in entries
+    ]
+    if lines_to_add:
+        content = content.rstrip('\n') + '\n' + ''.join(lines_to_add)
+    _write_hosts(content)
+
+
+def _parse_active_loopback_hosts(content: str) -> set[str]:
+    hosts: set[str] = set()
+    for raw_line in content.splitlines():
+        active = raw_line.split('#', 1)[0].strip()
+        parts = active.split()
+        if len(parts) >= 2 and parts[0] == '127.0.0.1':
+            hosts.update(part.lower() for part in parts[1:])
+    return hosts
+
+
 def _apply_hosts_or_use_existing_read_only(hosts: set[str]) -> bool:
     """Apply hosts entries, or continue when an immutable hosts file already has them."""
     try:
@@ -690,6 +737,24 @@ def _apply_hosts_or_use_existing_read_only(hosts: set[str]) -> bool:
         return False
     except OSError as exc:
         if _is_read_only_filesystem_error(exc) and _hosts_file_has_loopback_entries(hosts):
+            _log(
+                'System hosts file is read-only, but required Fleasion loopback entries '
+                'are already present; continuing without managing /etc/hosts'
+            )
+            return True
+        raise
+
+
+def _apply_hosts_delta_or_use_existing_read_only(
+    previous_hosts: set[str], updated_hosts: set[str]
+) -> bool:
+    """Apply a live delta, retaining read-only compatibility from startup."""
+    try:
+        _install_boot_guard()
+        _apply_hosts_delta(previous_hosts, updated_hosts)
+        return False
+    except OSError as exc:
+        if _is_read_only_filesystem_error(exc) and _hosts_file_has_loopback_entries(updated_hosts):
             _log(
                 'System hosts file is read-only, but required Fleasion loopback entries '
                 'are already present; continuing without managing /etc/hosts'
@@ -1009,8 +1074,8 @@ async def _serve(args: argparse.Namespace) -> int:
                                     'Continuing Linux hosts update without confirmed system trust-store '
                                     f'install: {error}'
                                 )
-                            update_read_only_hosts_mode = _apply_hosts_or_use_existing_read_only(
-                                updated_hosts
+                            update_read_only_hosts_mode = _apply_hosts_delta_or_use_existing_read_only(
+                                current_hosts, updated_hosts
                             )
                             _flush_dns()
                             current_hosts = set(updated_hosts)

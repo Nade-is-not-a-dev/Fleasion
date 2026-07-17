@@ -796,6 +796,22 @@ class FleasionProxy:
     ) -> None:
         self._upstream_endpoints = normalize_endpoints(endpoints)
 
+    def upstream_endpoints_for_hosts(
+        self, hosts: Sequence[str],
+    ) -> Dict[str, List[UpstreamEndpoint]]:
+        """Return a copy of the already-resolved routes for *hosts*.
+
+        Hosts intercepted through the local proxy cannot safely be resolved via
+        the OS resolver again: they deliberately resolve to loopback.  Keeping
+        these routes available lets optional intercepts be added without
+        replacing working upstream CDN/API routes with public-DNS fallbacks.
+        """
+        return {
+            host: list(self._upstream_endpoints[host])
+            for host in hosts
+            if host in self._upstream_endpoints
+        }
+
     def _build_connector(self) -> BaseUpstreamConnector:
         if self._upstream_mode == UpstreamMode.DIRECT_IP:
             return self._direct_connector
