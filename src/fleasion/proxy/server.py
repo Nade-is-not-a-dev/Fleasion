@@ -796,6 +796,18 @@ class FleasionProxy:
     ) -> None:
         self._upstream_endpoints = normalize_endpoints(endpoints)
 
+    def _preserve_unmodified_wire_for_host(self, host: str) -> bool:
+        """Whether untouched traffic for *host* must retain its original wire form.
+
+        Browser calls to ``apis.roblox.com`` include CORS preflights and can
+        depend on repeated response headers.  Reassembling an untouched API
+        response from the normalized header map drops repeated headers, which
+        makes the browser report a CORS failure even when Roblox accepted the
+        request.  The Username Spoofer still receives and can modify its one
+        profile endpoint; only untouched API traffic gets raw passthrough.
+        """
+        return self._wire_preserving_passthrough or host == PROFILE_API_HOST
+
     def upstream_endpoints_for_hosts(
         self, hosts: Sequence[str],
     ) -> Dict[str, List[UpstreamEndpoint]]:
@@ -1385,7 +1397,7 @@ class FleasionProxy:
                     if not await ensure_upstream(path):
                         break
                     _profile_flow = ProxyFlow(req_first, req_headers, _req_body_plain, host)
-                    if self._wire_preserving_passthrough:
+                    if self._preserve_unmodified_wire_for_host(host):
                         up_writer.write(req_raw.raw_header_block + req_body.wire)
                     else:
                         up_writer.write(
@@ -1396,7 +1408,7 @@ class FleasionProxy:
                     if not await ensure_upstream(path):
                         break
                     if (
-                        self._wire_preserving_passthrough
+                        self._preserve_unmodified_wire_for_host(host)
                         and upstream_req_first == req_first
                         and upstream_req_headers is req_headers
                     ):
@@ -1735,7 +1747,7 @@ class FleasionProxy:
                         )
                     )
                 else:
-                    if self._wire_preserving_passthrough:
+                    if self._preserve_unmodified_wire_for_host(host):
                         writer.write(resp_raw.raw_header_block + resp_body.wire)
                     else:
                         writer.write(
