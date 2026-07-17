@@ -208,32 +208,34 @@ def _normalize_custom_fflag_disabled(value: Any) -> list[str]:
     return sorted({str(name).strip() for name in value if str(name).strip()}, key=str.casefold)
 
 
-def _normalize_custom_fflag_keybinds(value: Any) -> dict[str, dict[str, int]]:
-    """Keep only portable Qt key/modifier pairs used by the Windows hotkey service."""
+def _normalize_custom_fflag_keybinds(value: Any) -> dict[str, dict[str, int | bool]]:
+    """Keep only physical Windows scan-code bindings used by the hotkey service."""
     if not isinstance(value, dict):
         return {}
 
-    # Qt::ShiftModifier through Qt::MetaModifier.  Keypad and group-switch
-    # modifiers are not accepted by RegisterHotKey.
-    allowed_modifiers = 0x1E000000
-    normalized: dict[str, dict[str, int]] = {}
+    normalized: dict[str, dict[str, int | bool]] = {}
     for raw_name, raw_binding in value.items():
         name = str(raw_name).strip()
         if not name or not isinstance(raw_binding, dict):
             continue
-        key = raw_binding.get('key')
-        modifiers = raw_binding.get('modifiers')
+        scan_code = raw_binding.get('scan_code')
+        modifiers = raw_binding.get('modifiers', 0)
+        extended = raw_binding.get('extended', False)
         if (
-            not isinstance(key, int)
-            or isinstance(key, bool)
+            not isinstance(scan_code, int)
+            or isinstance(scan_code, bool)
             or not isinstance(modifiers, int)
             or isinstance(modifiers, bool)
-            or not 0 < key <= 0x01FFFFFF
-            or not modifiers
-            or modifiers & ~allowed_modifiers
+            or not isinstance(extended, bool)
+            or not 0 < scan_code <= 0xFF
+            or modifiers & ~0x0F
         ):
             continue
-        normalized[name] = {'key': key, 'modifiers': modifiers}
+        normalized[name] = {
+            'scan_code': scan_code,
+            'extended': extended,
+            'modifiers': modifiers,
+        }
     return normalized
 
 
@@ -593,7 +595,7 @@ class ConfigManager:
         self._save_settings()
 
     @property
-    def custom_fflag_keybinds(self) -> dict[str, dict[str, int]]:
+    def custom_fflag_keybinds(self) -> dict[str, dict[str, int | bool]]:
         """Windows global hotkeys keyed by custom FastFlag name."""
         return _normalize_custom_fflag_keybinds(self.settings.get('custom_fflag_keybinds', {}))
 

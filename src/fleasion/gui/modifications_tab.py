@@ -1756,9 +1756,8 @@ class FFlagBrowserDialog(QDialog):
 
 
 class WindowsHotkeyCaptureDialog(QDialog):
-    """Capture one modifier-based key combination for RegisterHotKey."""
+    """Capture one physical Windows key, including a bare modifier key."""
 
-    _MODIFIER_MASK = 0x1E000000
     _MODIFIER_KEYS = {
         int(Qt.Key.Key_Control),
         int(Qt.Key.Key_Shift),
@@ -1769,13 +1768,17 @@ class WindowsHotkeyCaptureDialog(QDialog):
 
     def __init__(self, flag_name: str, parent=None):
         super().__init__(parent)
-        self.binding: dict[str, int] | None = None
+        self.binding: dict[str, int | bool] | None = None
+        self.clear_requested = False
+        self._pending_modifier: dict[str, int | bool] | None = None
+        self._pending_modifier_key: int | None = None
         self.setWindowTitle('Set FastFlag Keybind')
         self.setMinimumWidth(460)
         layout = QVBoxLayout(self)
         label = QLabel(
             f'Press the global keybind for <b>{flag_name}</b>.<br>'
-            'Use Ctrl, Alt, Shift, or Win plus a supported key. Press Escape to cancel.'
+            'Single keys, modifier keys, and key combinations are supported. '
+            'Pressing Escape binds Escape; use Cancel to leave without changing it.'
         )
         label.setWordWrap(True)
         layout.addWidget(label)
@@ -1783,24 +1786,80 @@ class WindowsHotkeyCaptureDialog(QDialog):
         self._preview.setStyleSheet('color: #999; padding: 10px 0;')
         layout.addWidget(self._preview)
 
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        clear_button = buttons.addButton('Clear Keybind', QDialogButtonBox.ButtonRole.DestructiveRole)
+        clear_button.clicked.connect(self._clear)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    @staticmethod
+    def _enum_value(value) -> int:
+        """PyQt6 flag enums expose `.value`; they are not reliably int-convertible."""
+        return int(getattr(value, 'value', value))
+
+    @classmethod
+    def _modifier_mask(cls, modifiers) -> int:
+        from .windows_hotkeys import MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_WIN
+
+        qt_modifiers = cls._enum_value(modifiers)
+        result = 0
+        if qt_modifiers & 0x02000000:
+            result |= MOD_SHIFT
+        if qt_modifiers & 0x04000000:
+            result |= MOD_CTRL
+        if qt_modifiers & 0x08000000:
+            result |= MOD_ALT
+        if qt_modifiers & 0x10000000:
+            result |= MOD_WIN
+        return result
+
+    @staticmethod
+    def _event_binding(event, modifiers: int) -> dict[str, int | bool] | None:
+        from .windows_hotkeys import modifier_mask_for_virtual_key
+
+        scan_code = int(event.nativeScanCode())
+        virtual_key = int(event.nativeVirtualKey())
+        if not 0 < scan_code <= 0xFF:
+            return None
+        extended = virtual_key in {
+            0xA3, 0xA5, 0x2D, 0x2E, 0x24, 0x23, 0x21, 0x22,
+            0x25, 0x26, 0x27, 0x28, 0x5B, 0x5C,
+        }
+        return {
+            'scan_code': scan_code,
+            'extended': extended,
+            'modifiers': modifiers & ~modifier_mask_for_virtual_key(virtual_key),
+        }
+
+    def _clear(self):
+        self.clear_requested = True
+        self.accept()
+
     def keyPressEvent(self, event):
         key = int(event.key())
-        modifiers = int(event.modifiers()) & self._MODIFIER_MASK
-        if key == int(Qt.Key.Key_Escape):
-            self.reject()
+        if event.isAutoRepeat():
+            return
+        modifiers = self._modifier_mask(event.modifiers())
+        binding = self._event_binding(event, modifiers)
+        if binding is None:
+            self._preview.setText('That key could not be read as a Windows scan code.')
             return
         if key in self._MODIFIER_KEYS:
-            self._preview.setText('Hold a modifier, then press the other key…')
+            self._pending_modifier = binding
+            self._pending_modifier_key = key
+            self._preview.setText('Release the modifier to bind it, or press another key to make a combination…')
             return
-        if not modifiers:
-            self._preview.setText('Add Ctrl, Alt, Shift, or Win to make this a global keybind.')
-            return
-        from .windows_hotkeys import WindowsHotkeyService
+        self.binding = binding
+        self.accept()
 
-        if WindowsHotkeyService._virtual_key(key) is None:
-            self._preview.setText('That key is not supported for a global Windows keybind.')
+    def keyReleaseEvent(self, event):
+        if (
+            event.isAutoRepeat()
+            or self._pending_modifier is None
+            or int(event.key()) != self._pending_modifier_key
+        ):
             return
-        self.binding = {'key': key, 'modifiers': modifiers}
+        self.binding = self._pending_modifier
         self.accept()
 
 
@@ -1873,8 +1932,8 @@ class CustomFFlagEditor(QWidget):
 
         if self._windows_keybinds:
             hotkey_help = QLabel(
-                'Windows keybinds are global: assign one to a FastFlag, then press it to turn '
-                'that override on or off while Roblox is focused.'
+                'Double-click a Keybind cell to assign a global Windows key. Single keys, '
+                'modifier-only keys, and combinations all work while Roblox is focused.'
             )
             hotkey_help.setWordWrap(True)
             hotkey_help.setStyleSheet('color: #999;')
@@ -1912,6 +1971,8 @@ class CustomFFlagEditor(QWidget):
         self._table.setItemDelegateForColumn(1, FastFlagValueDelegate(self._table))
         self._table.cellChanged.connect(self._on_cell_changed)
         if self._windows_keybinds:
+            self._table.cellDoubleClicked.connect(self._edit_keybind)
+        if self._windows_keybinds:
             self._table.setColumnWidth(2, 85)
             self._table.setColumnWidth(3, 160)
         layout.addWidget(self._table)
@@ -1947,15 +2008,6 @@ class CustomFFlagEditor(QWidget):
         delete_button = QPushButton('Delete Selected')
         delete_button.clicked.connect(self._delete_selected)
         buttons.addWidget(delete_button)
-        if self._windows_keybinds:
-            keybind_button = QPushButton('Assign Keybind…')
-            keybind_button.setToolTip('Assign a global Windows keybind to the selected FastFlag.')
-            keybind_button.clicked.connect(self._assign_keybind)
-            buttons.addWidget(keybind_button)
-
-            clear_keybind_button = QPushButton('Clear Keybind')
-            clear_keybind_button.clicked.connect(self._clear_keybind)
-            buttons.addWidget(clear_keybind_button)
         buttons.addStretch()
         layout.addLayout(buttons)
 
@@ -1996,6 +2048,7 @@ class CustomFFlagEditor(QWidget):
                     self._table.setItem(row, 2, status_item)
                     keybind_item = QTableWidgetItem(self._keybind_text(self._keybinds().get(name)))
                     keybind_item.setFlags(keybind_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    keybind_item.setToolTip('Double-click to assign or clear this global Windows keybind.')
                     self._table.setItem(row, 3, keybind_item)
         finally:
             self._table.blockSignals(False)
@@ -2040,49 +2093,15 @@ class CustomFFlagEditor(QWidget):
     def _disabled_flag_names(self) -> set[str]:
         return set(getattr(self._config, 'custom_fflag_disabled', []) or [])
 
-    def _keybinds(self) -> dict[str, dict[str, int]]:
+    def _keybinds(self) -> dict[str, dict[str, int | bool]]:
         bindings = getattr(self._config, 'custom_fflag_keybinds', {}) or {}
         return bindings if isinstance(bindings, dict) else {}
 
     @staticmethod
     def _keybind_text(binding) -> str:
-        if not isinstance(binding, dict):
-            return 'Not assigned'
-        modifiers = int(binding.get('modifiers', 0))
-        labels = []
-        for mask, label in (
-            (0x04000000, 'Ctrl'),
-            (0x08000000, 'Alt'),
-            (0x02000000, 'Shift'),
-            (0x10000000, 'Win'),
-        ):
-            if modifiers & mask:
-                labels.append(label)
-        key = int(binding.get('key', 0))
-        special_keys = {
-            0x01000000: 'Esc',
-            0x01000001: 'Tab',
-            0x01000003: 'Backspace',
-            0x01000004: 'Enter',
-            0x01000005: 'Enter',
-            0x01000006: 'Insert',
-            0x01000007: 'Delete',
-            0x01000010: 'Home',
-            0x01000011: 'End',
-            0x01000012: 'Left',
-            0x01000013: 'Up',
-            0x01000014: 'Right',
-            0x01000015: 'Down',
-            0x01000016: 'Page Up',
-            0x01000017: 'Page Down',
-        }
-        if 0x01000030 <= key <= 0x01000047:
-            key_text = f'F{key - 0x01000030 + 1}'
-        elif 0x20 <= key <= 0x7E:
-            key_text = chr(key).upper()
-        else:
-            key_text = special_keys.get(key, '')
-        return '+'.join([*labels, key_text]) if labels and key_text else 'Not assigned'
+        from .windows_hotkeys import binding_text
+
+        return binding_text(binding)
 
     def _flag_is_enabled(self, row: int) -> bool:
         item = self._table.item(row, 2)
@@ -2117,24 +2136,24 @@ class CustomFFlagEditor(QWidget):
         if self._hotkey_service is not None:
             self._hotkey_service.set_bindings(self._keybinds())
 
-    def _selected_flag_name(self) -> str | None:
-        rows = {index.row() for index in self._table.selectedIndexes()}
-        if len(rows) != 1:
-            QMessageBox.information(
-                self, 'Choose a FastFlag', 'Select exactly one custom FastFlag first.'
-            )
-            return None
-        item = self._table.item(rows.pop(), 0)
-        return item.text() if item else None
-
-    def _assign_keybind(self):
-        name = self._selected_flag_name()
+    def _edit_keybind(self, row: int, column: int):
+        if column != 3:
+            return
+        name_item = self._table.item(row, 0)
+        name = name_item.text() if name_item else ''
         if not name:
             return
         dialog = WindowsHotkeyCaptureDialog(name, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.binding is None:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         bindings = self._keybinds()
+        if dialog.clear_requested:
+            bindings.pop(name, None)
+            self._config.custom_fflag_keybinds = bindings
+            self._load_flags()
+            return
+        if dialog.binding is None:
+            return
         duplicate = next(
             (other_name for other_name, binding in bindings.items()
              if other_name != name and binding == dialog.binding),
@@ -2148,17 +2167,6 @@ class CustomFFlagEditor(QWidget):
             )
             return
         bindings[name] = dialog.binding
-        self._config.custom_fflag_keybinds = bindings
-        self._load_flags()
-
-    def _clear_keybind(self):
-        name = self._selected_flag_name()
-        if not name:
-            return
-        bindings = self._keybinds()
-        if name not in bindings:
-            return
-        del bindings[name]
         self._config.custom_fflag_keybinds = bindings
         self._load_flags()
 

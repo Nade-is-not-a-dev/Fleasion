@@ -205,16 +205,20 @@ class ConfigManagerEncodingTests(unittest.TestCase):
 
             manager.custom_fflag_disabled = [' FFlagExample ', '', 'FFlagExample']
             manager.custom_fflag_keybinds = {
-                ' FFlagExample ': {'key': 65, 'modifiers': 0x04000000},
-                'Invalid': {'key': 0, 'modifiers': 0x04000000},
-                'NoModifier': {'key': 66, 'modifiers': 0},
+                ' FFlagExample ': {'scan_code': 0x1E, 'extended': False, 'modifiers': 0},
+                'CtrlOnly': {'scan_code': 0x1D, 'extended': False, 'modifiers': 0},
+                'Invalid': {'scan_code': 0, 'extended': False, 'modifiers': 0},
+                'BadModifier': {'scan_code': 0x30, 'extended': False, 'modifiers': 0x10},
             }
 
             reloaded = config_manager_module.ConfigManager()
             self.assertEqual(reloaded.custom_fflag_disabled, ['FFlagExample'])
             self.assertEqual(
                 reloaded.custom_fflag_keybinds,
-                {'FFlagExample': {'key': 65, 'modifiers': 0x04000000}},
+                {
+                    'FFlagExample': {'scan_code': 0x1E, 'extended': False, 'modifiers': 0},
+                    'CtrlOnly': {'scan_code': 0x1D, 'extended': False, 'modifiers': 0},
+                },
             )
 
     def test_dummy_replacement_ids_are_ignored(self):
