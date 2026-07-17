@@ -480,7 +480,10 @@ def test_linux_helper_custom_fflags_adds_only_clientsettings_endpoints(monkeypat
     proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
     proxy.config_manager = SimpleNamespace(settings={})
     proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: False)
-    proxy.custom_fflag_modifier = SimpleNamespace(is_enabled=lambda: True)
+    proxy.custom_fflag_modifier = SimpleNamespace(
+        is_enabled=lambda: True,
+        prime_windows_flag_cache=lambda: False,
+    )
     proxy._linux_sober_custom_fflag_routes_ready = lambda: True
     proxy._roblox_player_running = False
     proxy._active_intercept_hosts = set(proxy_master.BASE_INTERCEPT_HOSTS)
@@ -495,6 +498,34 @@ def test_linux_helper_custom_fflags_adds_only_clientsettings_endpoints(monkeypat
     assert helper_updates == [expected]
     assert resolved_host_sets == [set(proxy_master.CUSTOM_FFLAGS_INTERCEPT_HOSTS)]
     assert set(proxy._proxy.endpoints) == expected
+
+
+def test_intercept_configuration_log_distinguishes_tls_coverage_from_active_routes(monkeypatch):
+    logs = []
+    monkeypatch.setattr(
+        proxy_master,
+        'log_buffer',
+        SimpleNamespace(log=lambda category, message: logs.append((category, message))),
+    )
+    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
+    proxy.custom_fflag_modifier = SimpleNamespace(is_enabled=lambda: False)
+    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: True)
+
+    proxy._log_intercept_configuration(
+        'Startup routing selection',
+        set(proxy_master.BASE_INTERCEPT_HOSTS) | set(proxy_master.USERNAME_SPOOFER_INTERCEPT_HOSTS),
+    )
+
+    assert logs == [
+        (
+            'InterceptConfig',
+            'Startup routing selection: custom_fflags=disabled; '
+            'clientsettings_intercepted=no; username_spoofer=enabled; '
+            'profile_api_intercepted=yes; '
+            'hosts=apis.roblox.com, assetdelivery.roblox.com, '
+            'contentdelivery.roblox.com, fts.rbxcdn.com, gamejoin.roblox.com',
+        )
+    ]
 
 
 def test_linux_helper_refresh_skips_profile_api_when_webview_trust_fails(monkeypatch):

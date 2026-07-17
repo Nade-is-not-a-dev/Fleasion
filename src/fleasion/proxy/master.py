@@ -3031,6 +3031,30 @@ class ProxyMaster:
             hosts.update(CUSTOM_FFLAGS_INTERCEPT_HOSTS)
         return hosts
 
+    def _log_intercept_configuration(self, reason: str, hosts: set[str]) -> None:
+        """Log the feature state that selected the currently routed host set.
+
+        A TLS self-test intentionally covers every supported hostname, so it
+        cannot establish that a feature actually routed that hostname through
+        the proxy.  Keep that distinction explicit in support logs.
+        """
+        custom_modifier = getattr(self, 'custom_fflag_modifier', None)
+        custom_fflags_enabled = (
+            custom_modifier is not None and custom_modifier.is_enabled()
+        )
+        spoofer = getattr(self, 'username_spoofer', None)
+        username_spoofer_enabled = spoofer is not None and spoofer.is_enabled()
+        log_buffer.log(
+            'InterceptConfig',
+            f'{reason}: custom_fflags={"enabled" if custom_fflags_enabled else "disabled"}; '
+            'clientsettings_intercepted='
+            f'{"yes" if bool(set(hosts) & CUSTOM_FFLAGS_INTERCEPT_HOSTS) else "no"}; '
+            f'username_spoofer={"enabled" if username_spoofer_enabled else "disabled"}; '
+            'profile_api_intercepted='
+            f'{"yes" if bool(set(hosts) & USERNAME_SPOOFER_INTERCEPT_HOSTS) else "no"}; '
+            f'hosts={", ".join(sorted(hosts))}',
+        )
+
     @staticmethod
     def _sober_boottime() -> float:
         clock_id = getattr(time, 'CLOCK_BOOTTIME', None)
@@ -3149,6 +3173,7 @@ class ProxyMaster:
     def refresh_username_spoofer_interception(self) -> None:
         """Refresh hosts entries for optional proxy-backed features."""
         desired_hosts = self._desired_intercept_hosts()
+        self._log_intercept_configuration('Refresh requested', desired_hosts)
         with self._lock:
             if desired_hosts == self._active_intercept_hosts:
                 return
@@ -3176,6 +3201,13 @@ class ProxyMaster:
             retained_hosts = previous_hosts & desired_hosts
             added_hosts = desired_hosts - previous_hosts
             removed_hosts = previous_hosts - desired_hosts
+            log_buffer.log(
+                'InterceptConfig',
+                'Reconciling routes: '
+                f'added={", ".join(sorted(added_hosts)) or "none"}; '
+                f'removed={", ".join(sorted(removed_hosts)) or "none"}; '
+                f'retained={", ".join(sorted(retained_hosts)) or "none"}',
+            )
 
             # Resolve only routes that are about to be added, and do so before
             # the hosts update.  Re-resolving retained hosts here is unsafe:
@@ -3720,6 +3752,7 @@ class ProxyMaster:
         # writing new ones. This guarantees getaddrinfo() returns real IPs.
         active_hosts = self._startup_intercept_hosts()
         self._active_intercept_hosts = set(active_hosts)
+        self._log_intercept_configuration('Startup routing selection', active_hosts)
         if self._proxy_debug_enabled():
             log_buffer.log(
                 'ProxyDiag',
