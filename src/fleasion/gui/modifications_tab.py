@@ -2372,18 +2372,6 @@ class CustomFFlagEditor(QWidget):
             return
         if dialog.binding is None:
             return
-        duplicate = next(
-            (other_name for other_name, binding in bindings.items()
-             if other_name != name and binding == dialog.binding),
-            None,
-        )
-        if duplicate:
-            QMessageBox.warning(
-                self,
-                'Keybind Already Used',
-                f'{self._keybind_text(dialog.binding)} is already assigned to {duplicate}.',
-            )
-            return
         bindings[name] = dialog.binding
         self._config.custom_fflag_keybinds = bindings
         self._load_flags()

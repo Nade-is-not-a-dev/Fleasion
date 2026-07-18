@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 
 CLEAN_BUILD_ENV = 'FLEASION_CLEAN_BUILD'
+MACOS_SLICE_BUILD_ENV = 'FLEASION_MACOS_SLICE_BUILD'
 REPRODUCIBLE_ENV = {
     'PYTHONHASHSEED': '0',
     'SOURCE_DATE_EPOCH': '0',
@@ -41,37 +42,37 @@ def main(arguments: list[str] | None = None) -> int:
     options = _BuildArgumentParser().parse_args(arguments)
     setup_script_logging()
 
-    # Apply reproducible environment if necessary and restart build
+    # Environment changes such as PYTHONHASHSEED only apply after an interpreter restart
     if any(os.environ.get(name) != value for name, value in REPRODUCIBLE_ENV.items()):
         environment = os.environ.copy()
         environment.update(REPRODUCIBLE_ENV)
-        environment[CLEAN_BUILD_ENV] = '1' if options.clean else '0'
 
-        # Make command
         command = [sys.executable, '-m', 'fleasion.scripts.build']
         if options.clean:
             command.append('--clean')
 
-        # Restart build
         log.info('Restarting build with reproducible environment')
-        result = subprocess.run(
-            command,
-            cwd=Path.cwd(),
-            env=environment,
-            check=False,
-        )
+        result = subprocess.run(command, cwd=Path.cwd(), env=environment, check=False)
         return result.returncode
 
-    # Get PyInstaller CLI build arguments
     os.environ[CLEAN_BUILD_ENV] = '1' if options.clean else '0'
-    pyinstaller_arguments = ['--noconfirm', 'Fleasion.spec']
-    if options.clean:
-        pyinstaller_arguments.insert(0, '--clean')
 
-    # Build Fleasion
-    log.info('Building Fleasion from %s', Path.cwd())
-    run_pyinstaller(pyinstaller_arguments, skip_setup_logging=True)
-    return 0
+    # Build macOS
+    # Slice subprocesses bypass orchestration and run PyInstaller exactly once
+    if sys.platform == 'darwin' and os.environ.get(MACOS_SLICE_BUILD_ENV) != '1':
+        from .macos_build import MacOSBuilder
+
+        MacOSBuilder().build()
+        return 0
+    else:
+        # Build Windows and Linux
+        pyinstaller_arguments = ['--noconfirm', 'Fleasion.spec']
+        if options.clean:
+            pyinstaller_arguments.insert(0, '--clean')
+
+        log.info(f'Building Fleasion from {Path.cwd()}')
+        run_pyinstaller(pyinstaller_arguments, skip_setup_logging=True)
+        return 0
 
 
 if __name__ == '__main__':

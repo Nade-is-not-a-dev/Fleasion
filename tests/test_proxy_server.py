@@ -199,5 +199,38 @@ def test_profile_api_has_upstream_connection_limit(monkeypatch, tmp_path):
     assert PROFILE_API_HOST in proxy._upstream_host_limits
 
 
+def test_profile_api_preserves_unmodified_browser_wire(monkeypatch, tmp_path):
+    class FakeSSLContext:
+        verify_mode = None
+        minimum_version = None
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def load_cert_chain(self, *_args, **_kwargs):
+            pass
+
+        def set_alpn_protocols(self, *_args, **_kwargs):
+            pass
+
+        def set_servername_callback(self, *_args, **_kwargs):
+            pass
+
+    monkeypatch.setattr("fleasion.proxy.server.ssl.SSLContext", FakeSSLContext)
+    monkeypatch.setattr("fleasion.proxy.server.ssl.create_default_context", lambda: FakeSSLContext())
+
+    proxy = FleasionProxy(
+        texture_stripper=SimpleNamespace(),
+        cache_scraper=SimpleNamespace(),
+        host_certs={},
+        default_cert=(tmp_path / "default.crt", tmp_path / "default.key"),
+        upstream_endpoints={},
+        wire_preserving_passthrough=False,
+    )
+
+    assert proxy._preserve_unmodified_wire_for_host(PROFILE_API_HOST) is True
+    assert proxy._preserve_unmodified_wire_for_host('assetdelivery.roblox.com') is False
+
+
 if __name__ == "__main__":
     unittest.main()

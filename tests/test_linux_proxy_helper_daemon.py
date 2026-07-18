@@ -343,6 +343,28 @@ def test_apply_hosts_raises_when_read_only_hosts_is_missing_entries(tmp_path, mo
         raise AssertionError('expected read-only hosts failure when mappings are missing')
 
 
+def test_apply_hosts_delta_preserves_retained_entries(tmp_path, monkeypatch):
+    hosts_file = tmp_path / 'hosts'
+    retained = 'apis.roblox.com'
+    added = 'clientsettings.roblox.com'
+    hosts_file.write_text(
+        '127.0.0.1 apis.roblox.com # Fleasion proxy entry\n'
+        '127.0.0.1 gamejoin.roblox.com # Fleasion proxy entry\n',
+        encoding='utf-8',
+    )
+    monkeypatch.setattr(daemon, 'HOSTS_FILE', hosts_file)
+
+    daemon._apply_hosts_delta(
+        {retained, 'gamejoin.roblox.com'},
+        {retained, added},
+    )
+
+    assert hosts_file.read_text(encoding='utf-8') == (
+        '127.0.0.1 apis.roblox.com # Fleasion proxy entry\n'
+        '127.0.0.1 clientsettings.roblox.com # Fleasion proxy entry\n'
+    )
+
+
 def test_host_failure_payload_marks_read_only_hosts_error(monkeypatch):
     args = SimpleNamespace(hosts='gamejoin.roblox.com,assetdelivery.roblox.com')
     error = OSError(errno.EROFS, 'Read-only file system', '/etc/hosts')

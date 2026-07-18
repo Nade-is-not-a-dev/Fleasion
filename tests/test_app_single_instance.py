@@ -18,6 +18,9 @@ def test_macos_fleasion_process_matching_accepts_real_launch_forms():
     assert _looks_like_macos_fleasion_command('/project/.venv/bin/Fleasion')
     assert _looks_like_macos_fleasion_command('/usr/bin/python3 /project/launcher.py')
     assert _looks_like_macos_fleasion_command('/usr/bin/python3 -m Fleasion')
+    assert _looks_like_macos_fleasion_command(
+        '/project/.venv/bin/python /project/.venv/bin/fleasion'
+    )
 
 
 def test_macos_fleasion_process_matching_rejects_unrelated_commands():

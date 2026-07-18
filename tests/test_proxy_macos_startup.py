@@ -399,13 +399,28 @@ def test_linux_helper_refresh_requests_helper_update_without_direct_hosts_write(
     endpoint_hosts = []
 
     class ProxyStub:
+        def __init__(self):
+            self.endpoints = {
+                host: [proxy_master.UpstreamEndpoint(host=host, ip='203.0.113.1')]
+                for host in proxy_master.BASE_INTERCEPT_HOSTS
+            }
+
+        def upstream_endpoints_for_hosts(self, hosts):
+            return {host: self.endpoints[host] for host in hosts if host in self.endpoints}
+
         def set_upstream_endpoints(self, endpoints):
+            self.endpoints = endpoints
             endpoint_hosts.append(set(endpoints))
 
     monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
     monkeypatch.setattr(proxy_master, "_add_hosts_entries", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("direct add should not run")))
     monkeypatch.setattr(proxy_master, "_remove_hosts_entries", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("direct remove should not run")))
-    monkeypatch.setattr(proxy_master, "_resolve_real_endpoints", lambda hosts: {host: [] for host in hosts})
+    resolved_host_sets = []
+    monkeypatch.setattr(
+        proxy_master,
+        "_resolve_real_endpoints",
+        lambda hosts: resolved_host_sets.append(set(hosts)) or {host: [] for host in hosts},
+    )
     monkeypatch.setattr(proxy_master, "_ensure_linux_system_trust_for_hosts", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda category, message: logs.append((category, message))))
 
@@ -428,8 +443,89 @@ def test_linux_helper_refresh_requests_helper_update_without_direct_hosts_write(
     expected = set(proxy_master.BASE_INTERCEPT_HOSTS) | set(proxy_master.USERNAME_SPOOFER_INTERCEPT_HOSTS)
     assert helper_updates == [expected]
     assert endpoint_hosts == [expected]
+    assert resolved_host_sets == [set(proxy_master.USERNAME_SPOOFER_INTERCEPT_HOSTS)]
     assert proxy._active_intercept_hosts == expected
     assert any("Requested Linux helper intercept update" in message for _category, message in logs)
+
+
+def test_linux_helper_custom_fflags_adds_only_clientsettings_endpoints(monkeypatch):
+    helper_updates = []
+    resolved_host_sets = []
+
+    class ProxyStub:
+        def __init__(self):
+            self.endpoints = {
+                host: [proxy_master.UpstreamEndpoint(host=host, ip='203.0.113.1')]
+                for host in proxy_master.BASE_INTERCEPT_HOSTS
+            }
+
+        def upstream_endpoints_for_hosts(self, hosts):
+            return {host: self.endpoints[host] for host in hosts if host in self.endpoints}
+
+        def set_upstream_endpoints(self, endpoints):
+            self.endpoints = endpoints
+
+    monkeypatch.setattr(proxy_master, "_use_linux_privileged_helper", lambda: True)
+    monkeypatch.setattr(
+        proxy_master,
+        "_resolve_real_endpoints",
+        lambda hosts: resolved_host_sets.append(set(hosts)) or {host: [] for host in hosts},
+    )
+    monkeypatch.setattr(proxy_master, "log_buffer", SimpleNamespace(log=lambda *_args: None))
+
+    import fleasion.utils.linux_proxy_helper as linux_proxy_helper
+
+    monkeypatch.setattr(linux_proxy_helper, "update_helper_hosts", lambda hosts: helper_updates.append(set(hosts)) or True)
+
+    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
+    proxy.config_manager = SimpleNamespace(settings={})
+    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: False)
+    proxy.custom_fflag_modifier = SimpleNamespace(
+        is_enabled=lambda: True,
+        prime_windows_flag_cache=lambda: False,
+    )
+    proxy._linux_sober_custom_fflag_routes_ready = lambda: True
+    proxy._roblox_player_running = False
+    proxy._active_intercept_hosts = set(proxy_master.BASE_INTERCEPT_HOSTS)
+    proxy._hosts_installed = True
+    proxy._proxy = ProxyStub()
+    proxy._lock = threading.Lock()
+    proxy.cache_scraper = SimpleNamespace(set_real_ips=lambda _ips: None)
+
+    proxy.refresh_custom_fflag_interception()
+
+    expected = set(proxy_master.BASE_INTERCEPT_HOSTS) | set(proxy_master.CUSTOM_FFLAGS_INTERCEPT_HOSTS)
+    assert helper_updates == [expected]
+    assert resolved_host_sets == [set(proxy_master.CUSTOM_FFLAGS_INTERCEPT_HOSTS)]
+    assert set(proxy._proxy.endpoints) == expected
+
+
+def test_intercept_configuration_log_distinguishes_tls_coverage_from_active_routes(monkeypatch):
+    logs = []
+    monkeypatch.setattr(
+        proxy_master,
+        'log_buffer',
+        SimpleNamespace(log=lambda category, message: logs.append((category, message))),
+    )
+    proxy = proxy_master.ProxyMaster.__new__(proxy_master.ProxyMaster)
+    proxy.custom_fflag_modifier = SimpleNamespace(is_enabled=lambda: False)
+    proxy.username_spoofer = SimpleNamespace(is_enabled=lambda: True)
+
+    proxy._log_intercept_configuration(
+        'Startup routing selection',
+        set(proxy_master.BASE_INTERCEPT_HOSTS) | set(proxy_master.USERNAME_SPOOFER_INTERCEPT_HOSTS),
+    )
+
+    assert logs == [
+        (
+            'InterceptConfig',
+            'Startup routing selection: custom_fflags=disabled; '
+            'clientsettings_intercepted=no; username_spoofer=enabled; '
+            'profile_api_intercepted=yes; '
+            'hosts=apis.roblox.com, assetdelivery.roblox.com, '
+            'contentdelivery.roblox.com, fts.rbxcdn.com, gamejoin.roblox.com',
+        )
+    ]
 
 
 def test_linux_helper_refresh_skips_profile_api_when_webview_trust_fails(monkeypatch):

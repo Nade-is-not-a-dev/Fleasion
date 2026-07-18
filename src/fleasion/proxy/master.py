@@ -1258,6 +1258,11 @@ _HOSTS_IPV4_LOOPBACK = '127.0.0.1'
 _HOSTS_IPV6_LOOPBACK = '::1'
 _HOSTS_LOOPBACK_IPS = frozenset({_HOSTS_IPV4_LOOPBACK, _HOSTS_IPV6_LOOPBACK})
 _HOSTS_ACTIVE_LOOPBACK_IPS: tuple[str, ...] | None = None
+# Voidstrap has been observed leaving stale Roblox edge-IP mappings tagged with
+# this marker.  They prevent our loopback proxy from owning the same hostnames.
+# Keep this deliberately narrow: only lines with this exact marker *and* one
+# of the hostnames we are about to intercept are eligible for cleanup.
+_VOIDSTRAP_GU_ACC_MARKER = '#gu_acc'
 
 
 def _required_hosts_loopbacks() -> tuple[str, ...]:
@@ -1411,6 +1416,56 @@ def _hosts_file_loopback_hosts(hosts: Set[str]) -> set[str]:
     return present
 
 
+def _is_voidstrap_gu_acc_line(raw_line: str, hosts: Set[str]) -> bool:
+    """Return whether *raw_line* is a known stale Voidstrap hosts entry.
+
+    Some affected files prefix an existing line with ``#gu_acc`` while other
+    lines end in that marker.  Matching host tokens, rather than attempting to
+    parse the line as an active mapping, handles both forms without touching
+    unrelated ``#gu_acc`` content.
+    """
+    if _VOIDSTRAP_GU_ACC_MARKER not in raw_line.lower():
+        return False
+    target_hosts = {host.lower() for host in hosts}
+    return any(token.lower() in target_hosts for token in raw_line.split())
+
+
+def _remove_voidstrap_gu_acc_entries(
+    hosts: Set[str], error_details: Optional[dict] = None
+) -> bool:
+    """Remove known Voidstrap ``#gu_acc`` entries for Fleasion proxy hosts."""
+    try:
+        existing = HOSTS_FILE.read_text(encoding='utf-8', errors='replace')
+    except FileNotFoundError:
+        return True
+    except OSError as exc:
+        _record_hosts_error(error_details, exc)
+        log_buffer.log('Hosts', f'Cannot read hosts file for Voidstrap cleanup: {exc}')
+        return False
+
+    lines = existing.splitlines(keepends=True)
+    filtered = [
+        line for line in lines if not _is_voidstrap_gu_acc_line(line, hosts)
+    ]
+    removed_count = len(lines) - len(filtered)
+    if not removed_count:
+        return True
+
+    try:
+        _write_hosts_file(''.join(filtered))
+    except OSError as exc:
+        _record_hosts_error(error_details, exc)
+        log_buffer.log('Hosts', f'Failed to remove Voidstrap #gu_acc entries: {exc}')
+        return False
+
+    log_buffer.log(
+        'Hosts',
+        f'Removed {removed_count} stale Voidstrap #gu_acc hosts entr'
+        f'{"y" if removed_count == 1 else "ies"}',
+    )
+    return True
+
+
 def _write_hosts_file(content: str) -> None:
     """Write *content* to the system hosts file, working around security
     software (e.g. Webroot SecureAnywhere / WRSVC) that intermittently or
@@ -1546,6 +1601,18 @@ def _add_hosts_entries(hosts: Set[str], error_details: Optional[dict] = None) ->
             return False
     except OSError as exc:
         log_buffer.log('Hosts', f'Cannot read hosts file: {exc}')
+        _record_hosts_error(error_details, exc)
+        return False
+
+    # Remove only the known Voidstrap marker before evaluating conflicts.  Its
+    # active edge-IP mappings would otherwise make Fleasion fail to start, and
+    # its commented-out copies can accumulate beside our regenerated entries.
+    if not _remove_voidstrap_gu_acc_entries(hosts, error_details=error_details):
+        return False
+    try:
+        existing = HOSTS_FILE.read_text(encoding='utf-8', errors='replace')
+    except OSError as exc:
+        log_buffer.log('Hosts', f'Cannot reread hosts file after Voidstrap cleanup: {exc}')
         _record_hosts_error(error_details, exc)
         return False
 
@@ -2964,6 +3031,30 @@ class ProxyMaster:
             hosts.update(CUSTOM_FFLAGS_INTERCEPT_HOSTS)
         return hosts
 
+    def _log_intercept_configuration(self, reason: str, hosts: set[str]) -> None:
+        """Log the feature state that selected the currently routed host set.
+
+        A TLS self-test intentionally covers every supported hostname, so it
+        cannot establish that a feature actually routed that hostname through
+        the proxy.  Keep that distinction explicit in support logs.
+        """
+        custom_modifier = getattr(self, 'custom_fflag_modifier', None)
+        custom_fflags_enabled = (
+            custom_modifier is not None and custom_modifier.is_enabled()
+        )
+        spoofer = getattr(self, 'username_spoofer', None)
+        username_spoofer_enabled = spoofer is not None and spoofer.is_enabled()
+        log_buffer.log(
+            'InterceptConfig',
+            f'{reason}: custom_fflags={"enabled" if custom_fflags_enabled else "disabled"}; '
+            'clientsettings_intercepted='
+            f'{"yes" if bool(set(hosts) & CUSTOM_FFLAGS_INTERCEPT_HOSTS) else "no"}; '
+            f'username_spoofer={"enabled" if username_spoofer_enabled else "disabled"}; '
+            'profile_api_intercepted='
+            f'{"yes" if bool(set(hosts) & USERNAME_SPOOFER_INTERCEPT_HOSTS) else "no"}; '
+            f'hosts={", ".join(sorted(hosts))}',
+        )
+
     @staticmethod
     def _sober_boottime() -> float:
         clock_id = getattr(time, 'CLOCK_BOOTTIME', None)
@@ -3082,6 +3173,7 @@ class ProxyMaster:
     def refresh_username_spoofer_interception(self) -> None:
         """Refresh hosts entries for optional proxy-backed features."""
         desired_hosts = self._desired_intercept_hosts()
+        self._log_intercept_configuration('Refresh requested', desired_hosts)
         with self._lock:
             if desired_hosts == self._active_intercept_hosts:
                 return
@@ -3105,6 +3197,35 @@ class ProxyMaster:
                 self._active_intercept_hosts = set(desired_hosts)
                 return
 
+            previous_hosts = set(self._active_intercept_hosts)
+            retained_hosts = previous_hosts & desired_hosts
+            added_hosts = desired_hosts - previous_hosts
+            removed_hosts = previous_hosts - desired_hosts
+            log_buffer.log(
+                'InterceptConfig',
+                'Reconciling routes: '
+                f'added={", ".join(sorted(added_hosts)) or "none"}; '
+                f'removed={", ".join(sorted(removed_hosts)) or "none"}; '
+                f'retained={", ".join(sorted(retained_hosts)) or "none"}',
+            )
+
+            # Resolve only routes that are about to be added, and do so before
+            # the hosts update.  Re-resolving retained hosts here is unsafe:
+            # they already point at our loopback proxy, which forces the
+            # resolver down the public-DNS fallback and can replace a working
+            # nearby Roblox API edge mid-browser-session.
+            real_endpoints = self._proxy.upstream_endpoints_for_hosts(retained_hosts)
+            missing_retained_hosts = retained_hosts - set(real_endpoints)
+            if missing_retained_hosts:
+                log_buffer.log(
+                    'Hosts',
+                    'Keeping existing intercept routes unchanged because their upstream '
+                    f'endpoints are unavailable: {", ".join(sorted(missing_retained_hosts))}',
+                )
+            added_endpoints = _resolve_real_endpoints(added_hosts) if added_hosts else {}
+            real_endpoints.update(added_endpoints)
+            _log_upstream_ip_coverage(desired_hosts, real_endpoints)
+
             if _use_linux_privileged_helper():
                 from ..utils.linux_proxy_helper import update_helper_hosts
 
@@ -3114,8 +3235,6 @@ class ProxyMaster:
                         'Failed to request Linux helper username spoofer hosts update',
                     )
                     return
-                real_endpoints = _resolve_real_endpoints(desired_hosts)
-                _log_upstream_ip_coverage(desired_hosts, real_endpoints)
                 self._active_intercept_hosts = set(desired_hosts)
                 self._proxy.set_upstream_endpoints(real_endpoints)
                 scraper_ips = _first_endpoint_ips(real_endpoints)
@@ -3127,23 +3246,22 @@ class ProxyMaster:
                 )
                 return
 
-            previous_hosts = set(self._active_intercept_hosts)
-            _remove_hosts_entries(set(INTERCEPT_HOSTS))
-            _flush_dns()
-            real_endpoints = _resolve_real_endpoints(desired_hosts)
-            _log_upstream_ip_coverage(desired_hosts, real_endpoints)
-            if not _add_hosts_entries(desired_hosts):
+            # The unprivileged macOS helper accepts the complete desired set
+            # atomically.  Other platforms can update the small delta without
+            # briefly deleting every active Roblox route from the hosts file.
+            if IS_MACOS and not _is_admin():
+                hosts_updated = _add_hosts_entries(desired_hosts)
+            else:
+                hosts_updated = (
+                    (not removed_hosts or _remove_hosts_entries(removed_hosts))
+                    and (not added_hosts or _add_hosts_entries(added_hosts))
+                )
+            if not hosts_updated:
                 log_buffer.log('Hosts', 'Failed to update username spoofer hosts entries')
-                _add_hosts_entries(previous_hosts)
-                _flush_dns()
                 return
             _flush_dns()
             if not _verify_hosts_entries(desired_hosts):
                 log_buffer.log('Hosts', 'Failed to verify username spoofer hosts entries')
-                _remove_hosts_entries(set(INTERCEPT_HOSTS))
-                _add_hosts_entries(previous_hosts)
-                _flush_dns()
-                _verify_hosts_entries(previous_hosts)
                 return
 
             self._active_intercept_hosts = set(desired_hosts)
@@ -3634,6 +3752,7 @@ class ProxyMaster:
         # writing new ones. This guarantees getaddrinfo() returns real IPs.
         active_hosts = self._startup_intercept_hosts()
         self._active_intercept_hosts = set(active_hosts)
+        self._log_intercept_configuration('Startup routing selection', active_hosts)
         if self._proxy_debug_enabled():
             log_buffer.log(
                 'ProxyDiag',
