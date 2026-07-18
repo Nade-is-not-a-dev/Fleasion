@@ -31,7 +31,7 @@ X86_64_PYTHON_PLATFORM = 'x86_64-apple-darwin'
 _SLICE_BUILD_ENV = 'FLEASION_MACOS_SLICE_BUILD'
 _HELPER_NAME = 'fleasion-proxy-helper'
 _SUPPORTED_ARCHITECTURES = frozenset({'arm64', 'x86_64', 'universal2'})
-# These optional Cryptodome accelerators are only published for Intel Macs.
+# These optional Cryptodome accelerators are only published for Intel Macs
 _ALLOWED_SINGLE_ARCH_MACHO = frozenset(
     {
         'Contents/Frameworks/Cryptodome/Hash/_ghash_clmul.abi3.so',
@@ -121,7 +121,7 @@ class MacOSBuilder:
     @staticmethod
     def _architectures(file_path: Path) -> set[str]:
         """Return the Mach-O architectures present in a file."""
-        # lipo fails for ordinary data files, which simply have no architectures.
+        # Lipo fails for ordinary data files, which simply have no architectures
         result = subprocess_run(
             ['lipo', '-archs', str(file_path)], capture_output=True, check=False, log_command=False
         )
@@ -241,7 +241,7 @@ class MacOSBuilder:
 
         invalid_files: list[str] = []
         for file_path in self._regular_files(app_path):
-            # Resources contains symlinks while the scan sees the Frameworks targets.
+            # Resources contains symlinks while the scan sees the Frameworks targets
             if file_path.name in helper_names:
                 continue
             architectures = self._architectures(file_path)
@@ -307,7 +307,7 @@ class MacOSBuilder:
 
     def _build_arm64(self) -> None:
         """Build the native arm64 slice with the active pinned Python."""
-        # Explicit platform resolution makes uv respect MACOSX_DEPLOYMENT_TARGET.
+        # Explicit platform resolution makes uv respect MACOSX_DEPLOYMENT_TARGET
         subprocess_run(
             [
                 'uv',
@@ -322,7 +322,7 @@ class MacOSBuilder:
         )
         environment = self.base_environment.copy()
         environment.update({'MACOS_TARGET_ARCH': 'arm64', _SLICE_BUILD_ENV: '1'})
-        # Reuse the interpreter selected by the outer `uv run build` invocation.
+        # Reuse the interpreter selected by the outer `uv run build` invocation
         subprocess_run(
             [sys.executable, '-m', 'fleasion.scripts.build', '--clean'], environment=environment
         )
@@ -362,7 +362,7 @@ class MacOSBuilder:
         """Build the Intel slice in an isolated Rosetta environment."""
         self._ensure_x86_uv()
         shutil.rmtree(self.x86_environment_path, ignore_errors=True)
-        # Intel uv resolves the same Python pin for the configured macOS target.
+        # Intel uv resolves the same Python pin for the configured macOS target
         self._x86_uv(
             'sync',
             '--locked',
@@ -401,9 +401,9 @@ class MacOSBuilder:
 
     def _merge_apps(self, arm_app: Path, x86_app: Path, universal_app: Path) -> None:
         """Merge matching Mach-O files from two app bundles."""
-        # Start with the arm bundle so resources and metadata have one source of truth.
+        # Start with the arm bundle so resources and metadata have one source of truth
         self._copy_app(arm_app, universal_app)
-        # Merge only files that provide complementary architecture slices.
+        # Merge only files that provide complementary architecture slices
         for x86_file in self._regular_files(x86_app):
             relative_path = x86_file.relative_to(x86_app)
             arm_file = universal_app / relative_path
@@ -434,7 +434,7 @@ class MacOSBuilder:
                 temporary_file.unlink(missing_ok=True)
                 raise
 
-        # Preserve Intel-only files, including the architecture-specific helper.
+        # Preserve Intel-only files, including the architecture-specific helper
         for x86_file in self._regular_files(x86_app):
             universal_file = universal_app / x86_file.relative_to(x86_app)
             if universal_file.exists():

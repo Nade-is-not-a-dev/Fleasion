@@ -42,11 +42,10 @@ def main(arguments: list[str] | None = None) -> int:
     options = _BuildArgumentParser().parse_args(arguments)
     setup_script_logging()
 
-    # Environment changes such as PYTHONHASHSEED only apply after an interpreter restart.
+    # Environment changes such as PYTHONHASHSEED only apply after an interpreter restart
     if any(os.environ.get(name) != value for name, value in REPRODUCIBLE_ENV.items()):
         environment = os.environ.copy()
         environment.update(REPRODUCIBLE_ENV)
-        environment[CLEAN_BUILD_ENV] = '1' if options.clean else '0'
 
         command = [sys.executable, '-m', 'fleasion.scripts.build']
         if options.clean:
@@ -58,20 +57,22 @@ def main(arguments: list[str] | None = None) -> int:
 
     os.environ[CLEAN_BUILD_ENV] = '1' if options.clean else '0'
 
-    # Slice subprocesses bypass orchestration and run PyInstaller exactly once.
+    # Build macOS
+    # Slice subprocesses bypass orchestration and run PyInstaller exactly once
     if sys.platform == 'darwin' and os.environ.get(MACOS_SLICE_BUILD_ENV) != '1':
-        from ._macos_build import build_macos_release
+        from .macos_build import MacOSBuilder
 
-        build_macos_release()
+        MacOSBuilder().build()
         return 0
+    else:
+        # Build Windows and Linux
+        pyinstaller_arguments = ['--noconfirm', 'Fleasion.spec']
+        if options.clean:
+            pyinstaller_arguments.insert(0, '--clean')
 
-    pyinstaller_arguments = ['--noconfirm', 'Fleasion.spec']
-    if options.clean:
-        pyinstaller_arguments.insert(0, '--clean')
-
-    log.info(f'Building Fleasion from {Path.cwd()}')
-    run_pyinstaller(pyinstaller_arguments, skip_setup_logging=True)
-    return 0
+        log.info(f'Building Fleasion from {Path.cwd()}')
+        run_pyinstaller(pyinstaller_arguments, skip_setup_logging=True)
+        return 0
 
 
 if __name__ == '__main__':
