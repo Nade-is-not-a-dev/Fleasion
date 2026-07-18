@@ -1,6 +1,6 @@
 import plistlib
 
-from Fleasion.utils import autostart
+from fleasion.utils import autostart
 
 
 def test_macos_launch_agent_update_does_not_start_second_instance(tmp_path, monkeypatch):

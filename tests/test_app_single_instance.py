@@ -1,19 +1,26 @@
-from Fleasion import app as app_module
-from Fleasion.app import (
+from fleasion import app as app_module
+from fleasion import __version__ as APP_VERSION
+from fleasion.app import (
     _handle_single_instance_command,
+    _linux_hosts_nix_snippet,
     _looks_like_macos_fleasion_command,
+    _should_reclaim_stale_single_instance,
     _should_sync_autostart_on_launch,
     kill_other_fleasion_instances,
 )
+from PyQt6.QtCore import QSharedMemory
 
 
 def test_macos_fleasion_process_matching_accepts_real_launch_forms():
     assert _looks_like_macos_fleasion_command(
-        "/Applications/Fleasion.app/Contents/MacOS/Fleasion-v2.2.1 --no-dashboard"
+        f'/Applications/Fleasion.app/Contents/MacOS/Fleasion-v{APP_VERSION} --no-dashboard'
     )
-    assert _looks_like_macos_fleasion_command("/project/.venv/bin/Fleasion")
-    assert _looks_like_macos_fleasion_command("/usr/bin/python3 /project/launcher.py")
-    assert _looks_like_macos_fleasion_command("/usr/bin/python3 -m Fleasion")
+    assert _looks_like_macos_fleasion_command('/project/.venv/bin/Fleasion')
+    assert _looks_like_macos_fleasion_command('/usr/bin/python3 /project/launcher.py')
+    assert _looks_like_macos_fleasion_command('/usr/bin/python3 -m Fleasion')
+    assert _looks_like_macos_fleasion_command(
+        '/project/.venv/bin/python /project/.venv/bin/fleasion'
+    )
 
 
 def test_macos_fleasion_process_matching_rejects_unrelated_commands():
@@ -21,9 +28,35 @@ def test_macos_fleasion_process_matching_rejects_unrelated_commands():
         "/bin/zsh -c tail '/Users/test/Library/Application Support/FleasionNT/logs/fleasion.log'"
     )
     assert not _looks_like_macos_fleasion_command(
-        "/bin/zsh -c ps -axo command | rg 'Fleasion-v2.2.1|launcher.py'"
+        f"/bin/zsh -c ps -axo command | rg 'Fleasion-v{APP_VERSION}|launcher.py'"
     )
-    assert not _looks_like_macos_fleasion_command("/usr/bin/python3 /tmp/not-fleasion.py")
+    assert not _looks_like_macos_fleasion_command('/usr/bin/python3 /tmp/not-fleasion.py')
+
+
+def test_fleasion_process_matching_rejects_linux_proxy_helper_commands():
+    assert not _looks_like_macos_fleasion_command(
+        '/opt/Fleasion/Fleasion --linux-proxy-helper --backend-port 8443'
+    )
+    assert not _looks_like_macos_fleasion_command(
+        '/usr/bin/python3 /project/launcher.py --linux-proxy-helper --backend-port 8443'
+    )
+    assert not _looks_like_macos_fleasion_command(
+        '/usr/bin/python3 /project/src/fleasion/linux_proxy_helper_daemon.py --backend-port 8443'
+    )
+
+
+def test_stale_single_instance_can_be_reclaimed_on_linux_without_gui_process(monkeypatch):
+    monkeypatch.setattr(app_module.sys, "platform", "linux")
+    monkeypatch.setattr(app_module, "_other_fleasion_pids", lambda: [])
+
+    assert _should_reclaim_stale_single_instance(QSharedMemory.SharedMemoryError.AlreadyExists)
+
+
+def test_stale_single_instance_not_reclaimed_on_linux_with_gui_process(monkeypatch):
+    monkeypatch.setattr(app_module.sys, "platform", "linux")
+    monkeypatch.setattr(app_module, "_other_fleasion_pids", lambda: [1234])
+
+    assert not _should_reclaim_stale_single_instance(QSharedMemory.SharedMemoryError.AlreadyExists)
 
 
 def test_kill_other_instances_prefers_graceful_exit(monkeypatch):
@@ -73,3 +106,9 @@ def test_autostart_resync_still_requires_admin_on_windows(monkeypatch):
 
     monkeypatch.setattr(app_module, "_is_admin", lambda: True)
     assert _should_sync_autostart_on_launch(True)
+
+
+def test_linux_hosts_nix_snippet_default_includes_profile_api_host():
+    snippet = _linux_hosts_nix_snippet({})
+
+    assert "127.0.0.1 apis.roblox.com" in snippet

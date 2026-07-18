@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from Fleasion.utils import platform_macos
+from fleasion.utils import platform_macos
 
 
 def test_terminate_roblox_requests_app_bundle_quit_before_signal(tmp_path, monkeypatch):

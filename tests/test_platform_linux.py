@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from Fleasion.utils import platform_linux
-from Fleasion.utils.roblox_dirs import _normalise_roblox_dir
+from fleasion.utils import platform_linux
+from fleasion.utils.roblox_dirs import _normalise_roblox_dir
 
 
 def _detached_kwargs_with_env(env: dict[str, str] | None = None) -> dict:
@@ -24,40 +24,31 @@ def test_find_sober_resource_dirs_prefers_asset_overlay(tmp_path, monkeypatch):
     assert platform_linux.find_roblox_resource_dirs() == [overlay, legacy]
 
 
+def test_sober_main_process_uses_pid_and_start_time_to_identify_engine(tmp_path, monkeypatch):
+    process = tmp_path / "4242"
+    process.mkdir()
+    (process / "cgroup").write_text(
+        "0::/user.slice/app-flatpak-org.vinegarhq.Sober-test.scope\n", encoding="utf-8"
+    )
+    fields = ["S", *(["0"] * 18), "54321"]
+    (process / "stat").write_text(f"4242 (Main) {' '.join(fields)}\n", encoding="utf-8")
+
+    monkeypatch.setattr(platform_linux, "PROC_ROOT", tmp_path)
+    monkeypatch.setattr(platform_linux, "_process_pids", lambda name: [4242] if name == "Main" else [])
+    monkeypatch.setattr(platform_linux.os, "sysconf", lambda _name: 100)
+
+    assert platform_linux.sober_main_process() == (4242, 543.21)
+
+
 def test_normalise_linux_sober_resource_dir(tmp_path, monkeypatch):
     overlay = tmp_path / "asset_overlay"
     overlay.mkdir()
 
-    monkeypatch.setattr("Fleasion.utils.roblox_dirs.sys.platform", "linux")
+    monkeypatch.setattr("fleasion.utils.roblox_dirs.sys.platform", "linux")
     monkeypatch.setattr(platform_linux, "SOBER_ASSET_OVERLAY_DIR", overlay)
     monkeypatch.setattr(platform_linux, "SOBER_LEGACY_EXE_DIR", tmp_path / "exe")
 
     assert _normalise_roblox_dir(overlay) == overlay
-
-
-def test_host_subprocess_env_restores_pyinstaller_original_library_path(monkeypatch, tmp_path):
-    bundle_root = tmp_path / "_MEI12345"
-    host_libs = tmp_path / "host-libs"
-    monkeypatch.setattr(platform_linux.sys, "_MEIPASS", str(bundle_root), raising=False)
-    monkeypatch.setenv("LD_LIBRARY_PATH", f"{bundle_root}:{host_libs}")
-    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", str(host_libs))
-
-    env = platform_linux._host_subprocess_env()
-
-    assert env["LD_LIBRARY_PATH"] == str(host_libs)
-    assert "LD_LIBRARY_PATH_ORIG" not in env
-
-
-def test_host_subprocess_env_removes_pyinstaller_bundle_path(monkeypatch, tmp_path):
-    bundle_root = tmp_path / "_MEI12345"
-    host_libs = tmp_path / "host-libs"
-    monkeypatch.setattr(platform_linux.sys, "_MEIPASS", str(bundle_root), raising=False)
-    monkeypatch.setenv("LD_LIBRARY_PATH", f"{bundle_root}:{host_libs}")
-    monkeypatch.delenv("LD_LIBRARY_PATH_ORIG", raising=False)
-
-    env = platform_linux._host_subprocess_env()
-
-    assert env["LD_LIBRARY_PATH"] == str(host_libs)
 
 
 def test_launch_as_standard_user_opens_http_url(monkeypatch):

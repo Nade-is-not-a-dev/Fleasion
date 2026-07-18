@@ -1,8 +1,8 @@
 import zipfile
 
-from Fleasion.modifications import platform_targets
-from Fleasion.modifications.manager import ModificationManager
-from Fleasion.utils import platform_linux
+from fleasion.modifications import platform_targets
+from fleasion.modifications.manager import ModificationManager
+from fleasion.utils import platform_linux
 
 
 def test_linux_sober_target_path_maps_pc_sky_to_android(monkeypatch):

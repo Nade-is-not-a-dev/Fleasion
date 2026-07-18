@@ -1,3 +1,4 @@
+import ast
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
@@ -9,8 +10,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from Fleasion import macos_proxy_helper_daemon as daemon
-from Fleasion.utils import macos_proxy_helper
+from fleasion import macos_proxy_helper_daemon as daemon
+from fleasion.utils import macos_proxy_helper
 
 
 def _reset_daemon_state(tmp_path, monkeypatch):
@@ -24,6 +25,12 @@ def _reset_daemon_state(tmp_path, monkeypatch):
     monkeypatch.setattr(daemon, "_active_hosts", set())
     monkeypatch.setattr(daemon, "_last_heartbeat", 0.0)
     return hosts_file, token_file
+
+
+def test_source_helper_remains_compatible_with_pre_314_python_syntax():
+    source = Path(daemon.__file__).read_text(encoding="utf-8")
+
+    ast.parse(source, filename=daemon.__file__, feature_version=(3, 13))
 
 
 def test_helper_only_manages_allowlisted_fleasion_hosts(tmp_path, monkeypatch):
@@ -109,48 +116,46 @@ def test_installed_helper_plist_runs_root_owned_helper_copy():
     assert "/Users/" not in args[0]
     assert plist["RunAtLoad"] is True
     assert plist["KeepAlive"] is True
+    assert plist["StandardOutPath"] == str(macos_proxy_helper.HELPER_STDOUT_LOG_PATH)
+    assert plist["StandardErrorPath"] == str(macos_proxy_helper.HELPER_STDERR_LOG_PATH)
+    assert plist["StandardOutPath"] != plist["StandardErrorPath"]
+    assert plist["StandardErrorPath"] != str(macos_proxy_helper.HELPER_LOG_PATH)
 
 
-def test_frozen_helper_source_prefers_native_arch_bundled_executable(tmp_path, monkeypatch):
-    frozen_root = tmp_path / "_MEIPASS"
-    frozen_root.mkdir()
-    bundled_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAMES["arm64"]
-    other_arch_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAMES["x86_64"]
-    legacy_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAME
-    bundled_source = frozen_root / "macos_proxy_helper_daemon.py"
-    bundled_executable.write_bytes(b"helper binary")
-    other_arch_executable.write_bytes(b"other helper binary")
-    legacy_executable.write_bytes(b"legacy helper binary")
-    bundled_source.write_text("# source fallback\n", encoding="utf-8")
+def test_frozen_app_uses_framework_helper_not_python_source(tmp_path, monkeypatch):
+    resources = tmp_path / "Fleasion.app" / "Contents" / "Resources"
+    frameworks = resources.parent / "Frameworks"
+    resources.mkdir(parents=True)
+    frameworks.mkdir()
+    (resources / "macos_proxy_helper_daemon.py").write_text("# source fallback\n", encoding="utf-8")
+    helper = frameworks / "fleasion-proxy-helper-arm64"
+    helper.write_text("native helper\n", encoding="utf-8")
+    helper.chmod(0o755)
 
-    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(frozen_root), raising=False)
+    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(resources), raising=False)
     monkeypatch.setattr(macos_proxy_helper.platform, "machine", lambda: "arm64")
 
-    assert macos_proxy_helper._source_helper_path() == bundled_executable
+    assert macos_proxy_helper._source_helper_path() == helper
 
 
-def test_frozen_helper_source_uses_x86_bundled_executable_on_intel(tmp_path, monkeypatch):
-    frozen_root = tmp_path / "_MEIPASS"
-    frozen_root.mkdir()
-    bundled_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAMES["x86_64"]
-    bundled_executable.write_bytes(b"helper binary")
+def test_frozen_app_without_native_helper_does_not_use_python_source(tmp_path, monkeypatch):
+    resources = tmp_path / "Fleasion.app" / "Contents" / "Resources"
+    resources.mkdir(parents=True)
+    (resources / "macos_proxy_helper_daemon.py").write_text("# source fallback\n", encoding="utf-8")
 
-    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(frozen_root), raising=False)
-    monkeypatch.setattr(macos_proxy_helper.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(resources), raising=False)
 
-    assert macos_proxy_helper._source_helper_path() == bundled_executable
+    assert macos_proxy_helper._source_helper_path() == (
+        resources.parent / "Frameworks" / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAME
+    )
 
 
-def test_frozen_helper_source_falls_back_to_legacy_bundled_executable(tmp_path, monkeypatch):
-    frozen_root = tmp_path / "_MEIPASS"
-    frozen_root.mkdir()
-    bundled_executable = frozen_root / macos_proxy_helper.HELPER_BUNDLED_EXECUTABLE_NAME
-    bundled_executable.write_bytes(b"legacy helper binary")
+def test_source_run_uses_python_helper_when_not_frozen(monkeypatch):
+    monkeypatch.delattr(macos_proxy_helper.sys, "_MEIPASS", raising=False)
 
-    monkeypatch.setattr(macos_proxy_helper.sys, "_MEIPASS", str(frozen_root), raising=False)
-    monkeypatch.setattr(macos_proxy_helper.platform, "machine", lambda: "arm64")
-
-    assert macos_proxy_helper._source_helper_path() == bundled_executable
+    assert macos_proxy_helper._source_helper_path() == (
+        Path(macos_proxy_helper.__file__).resolve().parents[1] / "macos_proxy_helper_daemon.py"
+    )
 
 
 def test_helper_installer_stages_helper_before_privileged_install(tmp_path, monkeypatch):
@@ -167,7 +172,7 @@ def test_helper_installer_stages_helper_before_privileged_install(tmp_path, monk
     monkeypatch.setattr(macos_proxy_helper.sys, "platform", "darwin")
     monkeypatch.setattr(macos_proxy_helper, "_source_helper_path", lambda: source)
     monkeypatch.setattr(macos_proxy_helper, "_ensure_token", lambda: "x" * 48)
-    monkeypatch.setattr(macos_proxy_helper, "helper_is_ready", lambda: True)
+    monkeypatch.setattr(macos_proxy_helper, "_helper_readiness_diagnostic", lambda: (True, ""))
     monkeypatch.setattr(macos_proxy_helper.subprocess, "run", fake_run)
 
     ok, detail = macos_proxy_helper.install_helper()
@@ -182,6 +187,55 @@ def test_helper_installer_stages_helper_before_privileged_install(tmp_path, monk
     assert script.index("/usr/bin/xattr -c") > script.index("/usr/bin/install")
     assert "launchctl bootstrap system" in script
     assert "launchctl load -w" in script
+    for log_path in (
+        macos_proxy_helper.HELPER_LOG_PATH,
+        macos_proxy_helper.HELPER_STDOUT_LOG_PATH,
+        macos_proxy_helper.HELPER_STDERR_LOG_PATH,
+    ):
+        assert f"/usr/bin/install -o root -g wheel -m 644 /dev/null {log_path}" in script
+
+
+def test_helper_installer_retries_until_helper_becomes_ready(tmp_path, monkeypatch):
+    source = tmp_path / "macos_proxy_helper_daemon.py"
+    source.write_text("# helper\n", encoding="utf-8")
+    attempts = []
+
+    monkeypatch.setattr(macos_proxy_helper.sys, "platform", "darwin")
+    monkeypatch.setattr(macos_proxy_helper, "_source_helper_path", lambda: source)
+    monkeypatch.setattr(macos_proxy_helper, "_ensure_token", lambda: "x" * 48)
+    monkeypatch.setattr(
+        macos_proxy_helper.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+
+    def readiness():
+        attempts.append(None)
+        if len(attempts) < 3:
+            return False, "Could not contact the helper control service: ConnectionRefusedError"
+        return True, ""
+
+    monkeypatch.setattr(macos_proxy_helper, "_helper_readiness_diagnostic", readiness)
+    monkeypatch.setattr(macos_proxy_helper.time, "sleep", lambda _seconds: None)
+
+    ok, detail = macos_proxy_helper.install_helper()
+
+    assert ok is True, detail
+    assert len(attempts) == 3
+
+
+def test_helper_readiness_diagnostic_preserves_connection_error(monkeypatch):
+    monkeypatch.setattr(
+        macos_proxy_helper,
+        "_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError("connection refused")),
+    )
+
+    ready, detail = macos_proxy_helper._helper_readiness_diagnostic()
+
+    assert ready is False
+    assert "ConnectionRefusedError" in detail
+    assert "connection refused" in detail
 
 
 def _fake_roblox_resources(tmp_path: Path) -> Path:

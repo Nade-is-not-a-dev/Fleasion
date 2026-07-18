@@ -9,8 +9,8 @@ from urllib.parse import unquote
 
 import pytest
 
-from Fleasion.gui import rando_stuff_tab
-from Fleasion.utils import roblox_auth
+from fleasion.gui import rando_stuff_tab
+from fleasion.utils import roblox_auth
 
 
 class _FakeRequest:
@@ -94,7 +94,10 @@ def test_set_roblosecurity_clears_read_only_before_write(tmp_path, monkeypatch):
     monkeypatch.setattr(
         roblox_auth,
         'win32crypt',
-        SimpleNamespace(CryptProtectData=lambda data, *_args: data),
+        SimpleNamespace(
+            CryptProtectData=lambda data, *_args: data,
+            CryptUnprotectData=lambda data, *_args: (None, data),
+        ),
     )
 
     assert roblox_auth.set_roblosecurity('new-cookie', cookie_path) is True
@@ -246,6 +249,23 @@ def test_account_private_server_subplace_launch_preserves_private_game_uri(monke
     assert "placeId=1930863474" in decoded
     assert "accessCode=access-123" in decoded
     assert "linkCode=link-123" in decoded
+
+
+def test_account_plain_windows_launch_uses_app_auth_ticket_uri(monkeypatch):
+    owner = _account_manager_owner()
+    launched = []
+
+    monkeypatch.setattr(rando_stuff_tab, "IS_WINDOWS", True)
+    monkeypatch.setattr(rando_stuff_tab, "IS_MACOS", False)
+    monkeypatch.setattr(rando_stuff_tab, "_find_roblox_exe", lambda: "/RobloxPlayerBeta.exe")
+    monkeypatch.setattr(rando_stuff_tab, "_get_auth_ticket", lambda cookie: "ticket-123")
+    monkeypatch.setattr(rando_stuff_tab, "launch_as_standard_user", lambda target: launched.append(target) or True)
+    owner._write_cookie_to_dat = lambda cookie: None
+
+    owner._launch_account_thread("cookie-secret", "KeepItComingBack0")
+
+    assert len(launched) == 1
+    assert launched[0].startswith("roblox-player:1+launchmode:app+gameinfo:ticket-123")
 
 
 def test_account_subplace_root_preseed_disables_proxy_cert_verification(monkeypatch):

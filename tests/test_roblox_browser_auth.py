@@ -5,7 +5,7 @@ import stat
 import threading
 import time
 
-from Fleasion.utils import roblox_auth
+from fleasion.utils import roblox_auth
 
 
 def _cookie(name, value, domain=".roblox.com", expires=None):
@@ -51,7 +51,7 @@ def test_browser_discovery_is_domain_and_name_scoped(monkeypatch):
     jar.set_cookie(_cookie(".ROBLOSECURITY", "wrong-domain", domain=".example.com"))
     monkeypatch.setattr(roblox_auth, "_browser_cookie_loaders", lambda include_keychain: [("Firefox", lambda **_: jar)])
 
-    cookie, source = roblox_auth.discover_browser_roblosecurity()
+    cookie, source = roblox_auth.discover_browser_roblosecurity(explicit_import=True)
 
     assert cookie == "secret-cookie"
     assert source == "Firefox"
@@ -147,25 +147,6 @@ def test_macos_default_lookup_is_prompt_free_by_default(monkeypatch):
 
     assert roblox_auth.get_roblosecurity() is None
     assert calls == [(False, {})]
-
-
-def test_macos_startup_lookup_can_request_configured_keychain_browser(monkeypatch):
-    _reset(monkeypatch)
-    calls = []
-
-    monkeypatch.setattr(roblox_auth.sys, "platform", "darwin")
-    monkeypatch.setattr(roblox_auth, "_iter_user_profile_cookie_candidates", lambda: [])
-    monkeypatch.setattr(roblox_auth, "_get_configured_macos_auth_source", lambda: "Chrome")
-    monkeypatch.setattr(
-        roblox_auth,
-        "discover_browser_roblosecurity",
-        lambda include_keychain=False, **kwargs: (
-            calls.append((include_keychain, kwargs.get("browser"))) or ("chrome-secret", "Chrome")
-        ),
-    )
-
-    assert roblox_auth.get_roblosecurity(include_keychain_browsers=True) == "chrome-secret"
-    assert calls == [(True, "Chrome")]
 
 
 def test_browser_discovery_can_target_selected_browser(monkeypatch):

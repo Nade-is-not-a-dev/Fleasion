@@ -76,7 +76,7 @@ def test_runtime_hook_trusts_only_current_meipass(monkeypatch, tmp_path):
 
 
 def test_frozen_ktx_loader_does_not_search_executable_directory(monkeypatch, tmp_path):
-    from Fleasion.cache.tools.ktx_to_png import ktx_to_png
+    from fleasion.cache.tools.ktx_to_png import ktx_to_png
 
     source_dir = tmp_path / "source"
     meipass = tmp_path / "_MEI54321"

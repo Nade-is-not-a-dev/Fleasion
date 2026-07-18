@@ -9,33 +9,33 @@ from unittest.mock import patch
 
 def _load_username_spoofer():
     root = Path(__file__).resolve().parents[1]
-    module_name = "Fleasion.proxy.addons.username_spoofer"
+    module_name = "fleasion.proxy.addons.username_spoofer"
     stubbed_names = (
-        "Fleasion",
-        "Fleasion.proxy",
-        "Fleasion.proxy.addons",
-        "Fleasion.utils",
-        "Fleasion.utils.roblox_auth",
+        "fleasion",
+        "fleasion.proxy",
+        "fleasion.proxy.addons",
+        "fleasion.utils",
+        "fleasion.utils.roblox_auth",
         module_name,
     )
     previous_modules = {name: sys.modules.get(name) for name in stubbed_names}
 
     try:
-        for package_name in ("Fleasion", "Fleasion.proxy", "Fleasion.proxy.addons"):
+        for package_name in ("fleasion", "fleasion.proxy", "fleasion.proxy.addons"):
             package = sys.modules.setdefault(package_name, types.ModuleType(package_name))
             package.__path__ = []
 
-        utils = types.ModuleType("Fleasion.utils")
+        utils = types.ModuleType("fleasion.utils")
         utils.log_buffer = types.SimpleNamespace(log=lambda *_args, **_kwargs: None)
-        sys.modules["Fleasion.utils"] = utils
+        sys.modules["fleasion.utils"] = utils
 
-        roblox_auth = types.ModuleType("Fleasion.utils.roblox_auth")
+        roblox_auth = types.ModuleType("fleasion.utils.roblox_auth")
         roblox_auth.get_roblosecurity = lambda: None
-        sys.modules["Fleasion.utils.roblox_auth"] = roblox_auth
+        sys.modules["fleasion.utils.roblox_auth"] = roblox_auth
 
         spec = importlib.util.spec_from_file_location(
             module_name,
-            root / "src" / "Fleasion" / "proxy" / "addons" / "username_spoofer.py",
+            root / "src" / "fleasion" / "proxy" / "addons" / "username_spoofer.py",
         )
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module

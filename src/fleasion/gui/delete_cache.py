@@ -1,0 +1,91 @@
+"""Delete cache window."""
+
+import threading
+import time
+
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtWidgets import QDialog, QLabel, QPushButton, QTextEdit, QVBoxLayout
+
+from ..utils import delete_cache, get_icon_path, log_buffer
+
+
+class DeleteCacheWindow(QDialog):
+    """Delete cache result window."""
+
+    log_signal = pyqtSignal(str)
+    done_signal = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle('Clear Cache')
+        self.setFixedSize(400, 200)
+
+        # Set window flags to allow minimize
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+
+        self._setup_ui()
+        self._set_icon()
+        self._start_deletion()
+
+    def _set_icon(self):
+        """Set window icon."""
+        if icon_path := get_icon_path():
+            from PyQt6.QtGui import QIcon
+
+            self.setWindowIcon(QIcon(str(icon_path)))
+
+    def _setup_ui(self):
+        """Setup the UI."""
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Title
+        title_label = QLabel('Deleting Cache...')
+        title_label.setStyleSheet('font-size: 11pt; font-weight: bold;')
+        layout.addWidget(title_label)
+
+        # Status text area
+        self.status_text = QTextEdit()
+        self.status_text.setReadOnly(True)
+        self.status_text.setFont(self._get_monospace_font())
+        self.status_text.setFixedHeight(120)
+        layout.addWidget(self.status_text)
+
+        self.setLayout(layout)
+
+        # Connect signals
+        self.log_signal.connect(self._append_log)
+        self.done_signal.connect(self._on_done)
+
+    def _get_monospace_font(self):
+        """Get a monospace font."""
+        from PyQt6.QtGui import QFontDatabase
+
+        font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        font.setPointSize(9)
+        return font
+
+    def _append_log(self, message: str):
+        """Append a log message."""
+        self.status_text.append(message)
+
+    def _on_done(self):
+        """Called when deletion is complete."""
+        self.status_text.append('\nDone.')
+
+    def _start_deletion(self):
+        """Start the cache deletion in a background thread."""
+
+        def perform():
+            for msg in delete_cache():
+                log_buffer.log('Cache', msg)
+                self.log_signal.emit(msg)
+                time.sleep(0.3)
+            self.done_signal.emit()
+
+        thread = threading.Thread(target=perform, daemon=True)
+        thread.start()

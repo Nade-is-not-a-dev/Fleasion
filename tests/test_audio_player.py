@@ -1,5 +1,4 @@
 import os
-import sys
 import threading
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -7,8 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np
 from PyQt6.QtWidgets import QApplication
 
-from Fleasion.cache import audio_player
-from Fleasion.cache.audio_player import AudioPlayerWidget
+from fleasion.cache.audio_player import AudioPlayerWidget
 
 
 _APP = None
@@ -67,13 +65,12 @@ def test_stop_does_not_close_stream_on_ui_thread(monkeypatch):
     assert stream.close_calls == 0
     player.deleteLater()
 
-
 def test_playback_worker_closes_stream_after_stop(monkeypatch):
     _qapp()
     monkeypatch.setattr(AudioPlayerWidget, "_load_audio", _stub_loaded_audio)
     stream = RecordingStream()
     monkeypatch.setattr(
-        "Fleasion.cache.audio_player.sd.OutputStream",
+        "fleasion.cache.audio_player.sd.OutputStream",
         lambda **kwargs: stream,
     )
     player = AudioPlayerWidget("unused")
@@ -107,7 +104,7 @@ def test_playback_callback_outputs_nonzero_float32_audio(monkeypatch):
             captured["outdata"] = outdata
 
     monkeypatch.setattr(
-        "Fleasion.cache.audio_player.sd.OutputStream",
+        "fleasion.cache.audio_player.sd.OutputStream",
         lambda **kwargs: CallbackStream(**kwargs),
     )
     player = AudioPlayerWidget("unused")
@@ -120,52 +117,3 @@ def test_playback_callback_outputs_nonzero_float32_audio(monkeypatch):
     assert captured["outdata"].dtype == np.float32
     assert np.any(captured["outdata"] != 0)
     player.deleteLater()
-
-
-def test_bundled_portaudio_path_prefers_pyinstaller_root(tmp_path, monkeypatch):
-    bundled = tmp_path / "libportaudio.so.2"
-    bundled.write_bytes(b"portaudio")
-    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-
-    assert audio_player._bundled_portaudio_path() == bundled
-
-
-def test_bundled_portaudio_path_checks_pyinstaller_internal_dir(tmp_path, monkeypatch):
-    internal = tmp_path / "_internal"
-    internal.mkdir()
-    bundled = internal / "libportaudio.so.2"
-    bundled.write_bytes(b"portaudio")
-    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-
-    assert audio_player._bundled_portaudio_path() == bundled
-
-
-def test_bundled_portaudio_path_ignores_unfrozen_runtime(monkeypatch):
-    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
-
-    assert audio_player._bundled_portaudio_path() is None
-
-
-def test_resolve_library_path_finds_bare_library_name(tmp_path, monkeypatch):
-    library = tmp_path / "libportaudio.so.2"
-    library.write_bytes(b"portaudio")
-    monkeypatch.setattr(audio_player.ctypes.util, "find_library", lambda name: library.name)
-
-    assert audio_player._resolve_library_path("portaudio", [tmp_path]) == library
-
-
-def test_preferred_portaudio_uses_system_before_bundled(tmp_path, monkeypatch):
-    system_dir = tmp_path / "system"
-    bundle_dir = tmp_path / "bundle"
-    system_dir.mkdir()
-    bundle_dir.mkdir()
-    system_library = system_dir / "libportaudio.so.2"
-    bundled_library = bundle_dir / "libportaudio.so.2"
-    system_library.write_bytes(b"system")
-    bundled_library.write_bytes(b"bundled")
-    monkeypatch.setattr(sys, "_MEIPASS", str(bundle_dir), raising=False)
-    monkeypatch.setattr(audio_player, "_LINUX_LIBRARY_SEARCH_DIRS", (str(system_dir),))
-    monkeypatch.setattr(audio_player.ctypes.util, "find_library", lambda name: system_library.name)
-    monkeypatch.setattr(audio_player.sys, "platform", "linux")
-
-    assert audio_player._preferred_portaudio_path() == system_library

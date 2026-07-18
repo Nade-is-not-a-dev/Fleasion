@@ -1,4 +1,4 @@
-from Fleasion.proxy import master as proxy_master
+from fleasion.proxy import master as proxy_master
 
 
 def test_windows_hosts_writer_creates_missing_immediate_parent(tmp_path, monkeypatch):
@@ -53,3 +53,27 @@ def test_hosts_cleanup_removes_ipv4_and_ipv6_loopback_entries(tmp_path, monkeypa
     assert "assetdelivery.roblox.com" not in content
     assert "gamejoin.roblox.com" not in content
     assert "127.0.0.1 localhost" in content
+
+
+def test_hosts_writer_removes_only_voidstrap_gu_acc_entries_for_requested_hosts(tmp_path, monkeypatch):
+    hosts_file = tmp_path / "hosts"
+    hosts_file.write_text(
+        "128.116.54.3 assetdelivery.roblox.com #gu_acc\n"
+        "#gu_acc127.0.0.1 assetdelivery.roblox.com # Fleasion proxy entry\n"
+        "128.116.54.3 unrelated.example #gu_acc\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(proxy_master, "HOSTS_FILE", hosts_file)
+    monkeypatch.setattr(proxy_master, "IS_WINDOWS", True)
+    monkeypatch.setattr(proxy_master, "IS_MACOS", False)
+    monkeypatch.setattr(proxy_master, "_HOSTS_ACTIVE_LOOPBACK_IPS", None)
+
+    assert proxy_master._add_hosts_entries({"assetdelivery.roblox.com"})
+    content = hosts_file.read_text(encoding="utf-8")
+
+    assert "128.116.54.3 assetdelivery.roblox.com #gu_acc" not in content
+    assert "#gu_acc127.0.0.1 assetdelivery.roblox.com" not in content
+    assert "128.116.54.3 unrelated.example #gu_acc" in content
+    assert "127.0.0.1 assetdelivery.roblox.com # Fleasion proxy entry" in content
+    assert "::1 assetdelivery.roblox.com # Fleasion proxy entry" in content

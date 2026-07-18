@@ -8,45 +8,33 @@ from pathlib import Path
 from unittest.mock import patch
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_MANAGER_PATH = _REPO_ROOT / 'src' / 'Fleasion' / 'config' / 'manager.py'
-
-_DEFAULT_SETTINGS = {
-    'strip_textures': False,
-    'enabled_configs': [],
-    'last_config': 'Default',
-    'theme': 'System',
-    'wire_preserving_passthrough': False,
-    'run_on_boot': True,
-    'export_naming': ['name', 'id'],
-}
-
+_MANAGER_PATH = _REPO_ROOT / 'src' / 'fleasion' / 'config' / 'manager.py'
 
 class ConfigManagerEncodingTests(unittest.TestCase):
     def _load_manager_for(self, root: Path):
         config_dir = root / 'FleasionNT'
 
-        fleasion_pkg = types.ModuleType('Fleasion')
+        fleasion_pkg = types.ModuleType('fleasion')
         fleasion_pkg.__path__ = []
-        config_pkg = types.ModuleType('Fleasion.config')
+        config_pkg = types.ModuleType('fleasion.config')
         config_pkg.__path__ = []
-        utils_pkg = types.ModuleType('Fleasion.utils')
+        utils_pkg = types.ModuleType('fleasion.utils')
         utils_pkg.__path__ = []
-        paths_module = types.ModuleType('Fleasion.utils.paths')
+        paths_module = types.ModuleType('fleasion.utils.paths')
         paths_module.CONFIG_DIR = config_dir
         paths_module.CONFIG_FILE = config_dir / 'settings.json'
         paths_module.CONFIGS_FOLDER = config_dir / 'configs'
-        paths_module.DEFAULT_SETTINGS = _DEFAULT_SETTINGS
 
-        module_name = 'Fleasion.config.manager'
+        module_name = 'fleasion.config.manager'
         spec = importlib.util.spec_from_file_location(module_name, _MANAGER_PATH)
         module = importlib.util.module_from_spec(spec)
         with patch.dict(
             sys.modules,
             {
-                'Fleasion': fleasion_pkg,
-                'Fleasion.config': config_pkg,
-                'Fleasion.utils': utils_pkg,
-                'Fleasion.utils.paths': paths_module,
+                'fleasion': fleasion_pkg,
+                'fleasion.config': config_pkg,
+                'fleasion.utils': utils_pkg,
+                'fleasion.utils.paths': paths_module,
                 module_name: module,
             },
         ):
@@ -137,6 +125,28 @@ class ConfigManagerEncodingTests(unittest.TestCase):
 
             self.assertEqual(manager.replacement_rules, [])
 
+    def test_cached_config_refreshes_after_file_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_manager_module = self._load_manager_for(Path(tmp))
+            configs_dir = Path(tmp) / 'FleasionNT' / 'configs'
+            configs_dir.mkdir(parents=True)
+            config_path = configs_dir / 'Default.json'
+            config_path.write_text(
+                json.dumps({'replacement_rules': [{'name': 'Old', 'replace_ids': ['1']}]}),
+                encoding='utf-8',
+            )
+
+            manager = config_manager_module.ConfigManager()
+            self.assertEqual(manager.replacement_rules[0]['name'], 'Old')
+
+            config_path.write_text(
+                json.dumps({'replacement_rules': [{'name': 'New', 'replace_ids': ['2', '3']}]}),
+                encoding='utf-8',
+            )
+
+            self.assertEqual(manager.replacement_rules[0]['name'], 'New')
+            self.assertEqual(manager.replacement_rules[0]['replace_ids'], ['2', '3'])
+
     def test_wire_preserving_passthrough_defaults_off_and_rejects_string_trueish_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_manager_module = self._load_manager_for(Path(tmp))
@@ -157,7 +167,59 @@ class ConfigManagerEncodingTests(unittest.TestCase):
             manager = config_manager_module.ConfigManager()
 
             self.assertTrue(manager.run_on_boot)
+            self.assertTrue(manager.desktop_integration)
             self.assertEqual(manager.export_naming, ['name', 'id'])
+
+    def test_custom_fflags_are_risk_gated_disabled_and_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_manager_module = self._load_manager_for(Path(tmp))
+            manager = config_manager_module.ConfigManager()
+
+            self.assertFalse(manager.custom_fflags_enabled)
+            self.assertFalse(manager.custom_fflags_warning_accepted)
+            self.assertEqual(manager.custom_fflags, {})
+
+            manager.custom_fflags = {
+                'DFIntTaskSchedulerTargetFps': 20,
+                'FFlagExample': True,
+                'invalid': ['nested'],
+            }
+            manager.custom_fflags_warning_accepted = True
+            manager.custom_fflags_enabled = True
+
+            reloaded = config_manager_module.ConfigManager()
+            self.assertTrue(reloaded.custom_fflags_enabled)
+            self.assertTrue(reloaded.custom_fflags_warning_accepted)
+            self.assertEqual(
+                reloaded.custom_fflags,
+                {
+                    'DFIntTaskSchedulerTargetFps': '20',
+                    'FFlagExample': 'True',
+                },
+            )
+
+    def test_custom_fflag_windows_toggle_state_and_keybinds_are_normalized(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_manager_module = self._load_manager_for(Path(tmp))
+            manager = config_manager_module.ConfigManager()
+
+            manager.custom_fflag_disabled = [' FFlagExample ', '', 'FFlagExample']
+            manager.custom_fflag_keybinds = {
+                ' FFlagExample ': {'scan_code': 0x1E, 'extended': False, 'modifiers': 0},
+                'CtrlOnly': {'scan_code': 0x1D, 'extended': False, 'modifiers': 0},
+                'Invalid': {'scan_code': 0, 'extended': False, 'modifiers': 0},
+                'BadModifier': {'scan_code': 0x30, 'extended': False, 'modifiers': 0x10},
+            }
+
+            reloaded = config_manager_module.ConfigManager()
+            self.assertEqual(reloaded.custom_fflag_disabled, ['FFlagExample'])
+            self.assertEqual(
+                reloaded.custom_fflag_keybinds,
+                {
+                    'FFlagExample': {'scan_code': 0x1E, 'extended': False, 'modifiers': 0},
+                    'CtrlOnly': {'scan_code': 0x1D, 'extended': False, 'modifiers': 0},
+                },
+            )
 
     def test_dummy_replacement_ids_are_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:

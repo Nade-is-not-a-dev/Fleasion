@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
+import sys
+
+_use_upx = sys.platform == 'win32'
 
 a = Analysis(
-    ['src/Fleasion/linux_proxy_helper_daemon.py'],
+    ['src/fleasion/linux_proxy_helper_daemon.py'],
     pathex=['src'],
     binaries=[],
     datas=[],
@@ -25,7 +28,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=_use_upx,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
