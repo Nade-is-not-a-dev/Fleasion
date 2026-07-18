@@ -37,14 +37,11 @@ uv run fleasion
 
 # (OPTIONAL) Compile as a standalone application
 uv run build
-
-# (OPTIONAL) Build the native macOS application bundle
-./scripts/build_macos.sh
 ```
 
-On macOS, `./scripts/build_macos.sh` builds a universal release app by default. The output is copied to `dist/Fleasion-v{APP_VERSION}.app`, mirrored at `dist/Fleasion.app`, and zipped as `dist/Fleasion-v{APP_VERSION}-MacOS-Universal.zip`.
+`uv run build` is the build command on Windows, Linux, and macOS. On macOS, it builds a universal release app by default. The output is copied to `dist/Fleasion-v{APP_VERSION}.app`, mirrored at `dist/Fleasion.app`, and zipped as `dist/Fleasion-v{APP_VERSION}-MacOS-Universal.zip`.
 
-On Apple Silicon, the script builds the arm64 slice with the normal `uv` environment, bootstraps an ignored x86_64 build environment under `.tools/`, builds the Intel slice under Rosetta, merges the app with `lipo`, signs it ad hoc, and verifies every Mach-O binary contains both `arm64` and `x86_64`. Rosetta must be installed for the Intel build:
+On Apple Silicon, the command builds the arm64 slice with the normal `uv` environment, bootstraps an ignored x86_64 build environment under `.tools/`, and resolves Python for both from the tracked `.python-version` pin. It builds the Intel slice under Rosetta, merges the app with `lipo`, signs it ad hoc, and verifies every Mach-O binary contains both `arm64` and `x86_64`. Rosetta must be installed for the Intel build:
 
 ```bash
 softwareupdate --install-rosetta --agree-to-license
@@ -224,7 +221,7 @@ Fleasion can be configured to launch automatically via **Settings -> Run on Boot
 ├── pyinstaller_hooks/
 │   └── rthook_harden_dll_search.py  # Runtime hook used by PyInstaller on Windows
 ├── scripts/
-│   └── build_macos.sh  # Helper script for building the macOS app bundle
+│   └── clear_first_time_setup.py  # Development utility for resetting initial setup
 ├── src/
 │   └── fleasion/
 │       ├── __init__.py                   # Package marker
@@ -306,6 +303,9 @@ Fleasion can be configured to launch automatically via **Settings -> Run on Boot
 │       │       ├── cache_scraper.py     # Asset interception and caching addon
 │       │       ├── texture_stripper.py  # Asset replacement and texture removal addon
 │       │       └── username_spoofer.py  # Username spoofing addon
+│       ├── scripts/
+│       │   ├── build.py         # Cross-platform build command
+│       │   └── _macos_build.py  # Universal macOS build and packaging orchestration
 │       └── utils/
 │           ├── __init__.py            # Utilities package marker
 │           ├── anim_converter.py      # Animation format conversion helpers
@@ -331,6 +331,7 @@ Fleasion can be configured to launch automatically via **Settings -> Run on Boot
 │   ├── test_account_cookie_storage.py  # Cookie storage tests
 │   ├── test_app_single_instance.py     # Single-instance app behavior tests
 │   ├── test_autostart.py               # Run-on-boot tests
+│   ├── test_build_script.py             # Cross-platform build dispatch tests
 │   ├── test_config_manager.py          # Config manager tests
 │   ├── test_macos_proxy_helper.py      # macOS helper tests
 │   ├── test_modifications_manager.py   # Modification manager tests

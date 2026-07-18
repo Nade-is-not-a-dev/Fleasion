@@ -18,7 +18,6 @@ def run_pyinstaller(
 
 
 def main() -> None:
-    """Run PyInstaller with command-line arguments."""
     run_pyinstaller()
 
 

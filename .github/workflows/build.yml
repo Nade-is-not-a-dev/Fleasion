@@ -105,12 +105,11 @@ jobs:
           tests/test_logging.py
           tests/test_autostart.py
 
-      - name: Build Windows package
-        if: runner.os == 'Windows'
-        run: uv run build
+      - name: Install Rosetta
+        if: runner.os == 'macOS'
+        run: sudo softwareupdate --install-rosetta --agree-to-license
 
-      - name: Build Linux package
-        if: runner.os == 'Linux'
+      - name: Build package
         run: uv run build
 
       - name: Prepare Linux executable
@@ -134,14 +133,6 @@ jobs:
             echo "Linux package must use host audio backend libraries, not the GitHub runner copies." >&2
             exit 1
           fi
-
-      - name: Install Rosetta
-        if: runner.os == 'macOS'
-        run: sudo softwareupdate --install-rosetta --agree-to-license
-
-      - name: Build macOS package
-        if: runner.os == 'macOS'
-        run: ./scripts/build_macos.sh
 
       - name: Upload package
         uses: actions/upload-artifact@v7
