@@ -173,6 +173,7 @@ DEFAULT_SETTINGS = {
         'self_verified': False,
         'self_game_creator': False,
     },
+    'show_asset_id_in_game': False,
 }
 
 
@@ -961,6 +962,15 @@ class ConfigManager:
                 }
             )
         self.settings['username_spoofer'] = base
+        self._save_settings()
+
+    @property
+    def show_asset_id_in_game(self) -> bool:
+        return self.settings.get('show_asset_id_in_game', False)
+
+    @show_asset_id_in_game.setter
+    def show_asset_id_in_game(self, value: bool):
+        self.settings['show_asset_id_in_game'] = value
         self._save_settings()
 
     @property

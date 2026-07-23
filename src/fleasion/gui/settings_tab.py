@@ -371,6 +371,11 @@ class SettingsTab(QWidget):
         self._show_creator_id_chk.toggled.connect(self._on_show_creator_id_toggled)
         section.add_widget(self._show_creator_id_chk)
 
+        self._show_asset_id_in_game_chk = QCheckBox('Show Asset ID in Game (watermark)')
+        self._show_asset_id_in_game_chk.setChecked(self._config.show_asset_id_in_game)
+        self._show_asset_id_in_game_chk.toggled.connect(self._on_show_asset_id_in_game_toggled)
+        section.add_widget(self._show_asset_id_in_game_chk)
+
         return section
 
     # Export naming
@@ -460,6 +465,7 @@ class SettingsTab(QWidget):
             ),
             (self._show_names_chk, self._config.show_names),
             (self._show_creator_id_chk, self._config.show_creator_id),
+            (self._show_asset_id_in_game_chk, self._config.show_asset_id_in_game),
         ]:
             chk.blockSignals(True)
             chk.setChecked(value)
@@ -731,6 +737,9 @@ class SettingsTab(QWidget):
         if self._tray and hasattr(self._tray, 'show_creator_id_action'):
             self._tray.show_creator_id_action.setChecked(checked)
         self._apply_to_cache_viewer('show_creator_id', checked)
+
+    def _on_show_asset_id_in_game_toggled(self, checked: bool):
+        self._config.show_asset_id_in_game = checked
 
     def _apply_to_cache_viewer(self, setting: str, value: bool):
         if self._tray and self._tray.dashboard_window:

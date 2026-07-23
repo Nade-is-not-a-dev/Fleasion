@@ -252,6 +252,13 @@ def _is_empty_json_array(body: bytes) -> bool:
     return body.strip() == b'[]'
 
 
+def _watermark_cdn_response(body: bytes, asset_id: int, content_type: str) -> bytes | None:
+    """Watermark asset ID onto texture bytes.  Runs in thread executor."""
+    from ..utils.image_watermarker import watermark_image
+
+    return watermark_image(body, asset_id, content_type)
+
+
 def _make_proxy_error_response(status_code: int, message: str) -> bytes:
     reason_map = {
         400: 'Bad Request',
@@ -1651,6 +1658,9 @@ class FleasionProxy:
                         )
                         response_modified = True
 
+                    ct = resp_headers.get(b'content-type', b'').decode(
+                        'ascii', errors='replace'
+                    )
                     if self.cache_scraper.enabled:
                         # Cache the decompressed bytes for storage
                         resp_body_for_cache = (
@@ -1658,12 +1668,29 @@ class FleasionProxy:
                             if not response_modified
                             else resp_body_raw
                         )
-                        ct = resp_headers.get(b'content-type', b'').decode(
-                            'ascii', errors='replace'
-                        )
                         self.cache_scraper.process_cdn_response(
                             full_url, path, resp_body_for_cache, ct
                         )
+
+                    # ── Watermark asset ID onto texture ────────────────────────
+                    if (
+                        not response_modified
+                        and self.texture_stripper.config_manager.show_asset_id_in_game
+                    ):
+                        _base_url = full_url.split('?')[0]
+                        _asset_ids = self.cache_scraper.lookup_asset_ids(_base_url)
+                        if _asset_ids:
+                            _aid = _asset_ids[0]
+                            _watermarked = await asyncio.get_event_loop().run_in_executor(
+                                self._executor,
+                                _watermark_cdn_response,
+                                resp_body_raw,
+                                _aid,
+                                ct,
+                            )
+                            if _watermarked is not None:
+                                resp_body_raw = _watermarked
+                                response_modified = True
 
                 elif (
                     host in CLIENT_SETTINGS_HOSTS

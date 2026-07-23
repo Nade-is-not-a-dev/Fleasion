@@ -328,6 +328,18 @@ class CacheScraper:
         # Background thread pool for API conversion (KTX->PNG etc.)
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix='cache_api')
 
+    def lookup_asset_ids(self, base_url: str) -> list[int]:
+        """Return the list of asset IDs mapped to a CDN base URL.
+
+        Thread-safe call used by the server's watermark hook to discover
+        which asset(s) are served at a given CDN URL.
+        """
+        with self._lock:
+            ids = self._url_to_asset.get(base_url)
+            if not ids:
+                return []
+            return list(ids)
+
         # Real IPs for intercepted hosts - set by ProxyMaster after DNS resolution
         # (before the hosts file is written). Keyed by hostname.
         # Used to bypass our own hosts file when making direct API calls.
