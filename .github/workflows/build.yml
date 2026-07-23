@@ -141,3 +141,21 @@ jobs:
           path: ${{ matrix.artifact_path }}
           archive: false
           if-no-files-found: error
+
+      - name: Upload to GoFile
+        if: success()
+        continue-on-error: true
+        shell: bash
+        run: |
+          chmod +x scripts/upload_to_gofile.sh
+          FILE="$(find dist -maxdepth 1 -type f \( -name 'Fleasion-v*-Windows.exe' -o -name 'Fleasion-v*-Linux' -o -name 'Fleasion-v*-MacOS-Universal.zip' \) -print -quit)"
+          if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
+            echo "::notice::GoFile upload skipped: no artifact file found in dist/"
+            exit 0
+          fi
+          OUTPUT="$(scripts/upload_to_gofile.sh "$FILE" 2>&1)"
+          echo "$OUTPUT"
+          UPLOAD_URL="$(echo "$OUTPUT" | tail -1)"
+          if [ -n "$UPLOAD_URL" ]; then
+            echo "### GoFile upload: [${{ matrix.artifact_name }}]($UPLOAD_URL)" >> "$GITHUB_STEP_SUMMARY"
+          fi
