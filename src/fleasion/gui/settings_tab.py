@@ -376,6 +376,45 @@ class SettingsTab(QWidget):
         self._show_asset_id_in_game_chk.toggled.connect(self._on_show_asset_id_in_game_toggled)
         section.add_widget(self._show_asset_id_in_game_chk)
 
+        # ── Texture Optimizer ──
+
+        self._texture_optimizer_chk = QCheckBox('Enable Texture Optimizer')
+        self._texture_optimizer_chk.setChecked(self._config.texture_optimizer_enabled)
+        self._texture_optimizer_chk.toggled.connect(self._on_texture_optimizer_toggled)
+        section.add_widget(self._texture_optimizer_chk)
+
+        row_opt = QHBoxLayout()
+        row_opt.setContentsMargins(20, 0, 0, 0)
+
+        row_opt.addWidget(QLabel('Max Size (px):'))
+        self._texture_optimizer_max_size_spin = QSpinBox()
+        self._texture_optimizer_max_size_spin.setRange(32, 4096)
+        self._texture_optimizer_max_size_spin.setSingleStep(32)
+        self._texture_optimizer_max_size_spin.setValue(self._config.texture_optimizer_max_size)
+        self._texture_optimizer_max_size_spin.valueChanged.connect(
+            self._on_texture_optimizer_max_size_changed
+        )
+        row_opt.addWidget(self._texture_optimizer_max_size_spin)
+
+        row_opt.addSpacing(16)
+        row_opt.addWidget(QLabel('JPEG Quality:'))
+        self._texture_optimizer_jpeg_quality_spin = QSpinBox()
+        self._texture_optimizer_jpeg_quality_spin.setRange(1, 100)
+        self._texture_optimizer_jpeg_quality_spin.setValue(
+            self._config.texture_optimizer_jpeg_quality
+        )
+        self._texture_optimizer_jpeg_quality_spin.valueChanged.connect(
+            self._on_texture_optimizer_jpeg_quality_changed
+        )
+        row_opt.addWidget(self._texture_optimizer_jpeg_quality_spin)
+
+        row_opt.addStretch()
+        opt_container = QWidget()
+        opt_container.setLayout(row_opt)
+        section.add_widget(opt_container)
+
+        self._sync_optimizer_ui()
+
         return section
 
     # Export naming
@@ -466,10 +505,19 @@ class SettingsTab(QWidget):
             (self._show_names_chk, self._config.show_names),
             (self._show_creator_id_chk, self._config.show_creator_id),
             (self._show_asset_id_in_game_chk, self._config.show_asset_id_in_game),
+            (self._texture_optimizer_chk, self._config.texture_optimizer_enabled),
         ]:
             chk.blockSignals(True)
             chk.setChecked(value)
             chk.blockSignals(False)
+
+        self._texture_optimizer_max_size_spin.blockSignals(True)
+        self._texture_optimizer_max_size_spin.setValue(self._config.texture_optimizer_max_size)
+        self._texture_optimizer_max_size_spin.blockSignals(False)
+        self._texture_optimizer_jpeg_quality_spin.blockSignals(True)
+        self._texture_optimizer_jpeg_quality_spin.setValue(self._config.texture_optimizer_jpeg_quality)
+        self._texture_optimizer_jpeg_quality_spin.blockSignals(False)
+        self._sync_optimizer_ui()
 
         idx = self._upstream_mode_combo.findData(self._config.upstream_transport_mode)
         self._upstream_mode_combo.blockSignals(True)
@@ -740,6 +788,23 @@ class SettingsTab(QWidget):
 
     def _on_show_asset_id_in_game_toggled(self, checked: bool):
         self._config.show_asset_id_in_game = checked
+
+    # ── Texture Optimizer handlers ──
+
+    def _sync_optimizer_ui(self):
+        enabled = self._texture_optimizer_chk.isChecked()
+        self._texture_optimizer_max_size_spin.setEnabled(enabled)
+        self._texture_optimizer_jpeg_quality_spin.setEnabled(enabled)
+
+    def _on_texture_optimizer_toggled(self, checked: bool):
+        self._config.texture_optimizer_enabled = checked
+        self._sync_optimizer_ui()
+
+    def _on_texture_optimizer_max_size_changed(self, value: int):
+        self._config.texture_optimizer_max_size = value
+
+    def _on_texture_optimizer_jpeg_quality_changed(self, value: int):
+        self._config.texture_optimizer_jpeg_quality = value
 
     def _apply_to_cache_viewer(self, setting: str, value: bool):
         if self._tray and self._tray.dashboard_window:

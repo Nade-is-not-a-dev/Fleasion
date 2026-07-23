@@ -259,6 +259,15 @@ def _watermark_cdn_response(body: bytes, asset_id: int, content_type: str) -> by
     return watermark_image(body, asset_id, content_type)
 
 
+def _optimize_cdn_response(
+    body: bytes, max_size: int, jpeg_quality: int, content_type: str
+) -> bytes | None:
+    """Downscale/re-compress texture bytes.  Runs in thread executor."""
+    from ..utils.image_watermarker import optimize_image
+
+    return optimize_image(body, max_size=max_size, jpeg_quality=jpeg_quality, content_type=content_type)
+
+
 def _make_proxy_error_response(status_code: int, message: str) -> bytes:
     reason_map = {
         400: 'Bad Request',
@@ -1672,11 +1681,23 @@ class FleasionProxy:
                             full_url, path, resp_body_for_cache, ct
                         )
 
+                    # ── Texture Optimizer ─────────────────────────────────────────
+                    _cfg = self.texture_stripper.config_manager
+                    if _cfg.texture_optimizer_enabled:
+                        _optimized = await asyncio.get_event_loop().run_in_executor(
+                            self._executor,
+                            _optimize_cdn_response,
+                            resp_body_raw,
+                            _cfg.texture_optimizer_max_size,
+                            _cfg.texture_optimizer_jpeg_quality,
+                            ct,
+                        )
+                        if _optimized is not None:
+                            resp_body_raw = _optimized
+                            response_modified = True
+
                     # ── Watermark asset ID onto texture ────────────────────────
-                    if (
-                        not response_modified
-                        and self.texture_stripper.config_manager.show_asset_id_in_game
-                    ):
+                    if _cfg.show_asset_id_in_game:
                         _base_url = full_url.split('?')[0]
                         _asset_ids = self.cache_scraper.lookup_asset_ids(_base_url)
                         if _asset_ids:

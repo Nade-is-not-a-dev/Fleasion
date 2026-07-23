@@ -174,6 +174,9 @@ DEFAULT_SETTINGS = {
         'self_game_creator': False,
     },
     'show_asset_id_in_game': False,
+    'texture_optimizer_enabled': False,
+    'texture_optimizer_max_size': 512,
+    'texture_optimizer_jpeg_quality': 50,
 }
 
 
@@ -971,6 +974,35 @@ class ConfigManager:
     @show_asset_id_in_game.setter
     def show_asset_id_in_game(self, value: bool):
         self.settings['show_asset_id_in_game'] = value
+        self._save_settings()
+
+    # ── texture optimizer ──
+
+    @property
+    def texture_optimizer_enabled(self) -> bool:
+        return self.settings.get('texture_optimizer_enabled', False)
+
+    @texture_optimizer_enabled.setter
+    def texture_optimizer_enabled(self, value: bool):
+        self.settings['texture_optimizer_enabled'] = value
+        self._save_settings()
+
+    @property
+    def texture_optimizer_max_size(self) -> int:
+        return self.settings.get('texture_optimizer_max_size', 512)
+
+    @texture_optimizer_max_size.setter
+    def texture_optimizer_max_size(self, value: int):
+        self.settings['texture_optimizer_max_size'] = max(32, min(4096, value))
+        self._save_settings()
+
+    @property
+    def texture_optimizer_jpeg_quality(self) -> int:
+        return self.settings.get('texture_optimizer_jpeg_quality', 50)
+
+    @texture_optimizer_jpeg_quality.setter
+    def texture_optimizer_jpeg_quality(self, value: int):
+        self.settings['texture_optimizer_jpeg_quality'] = max(1, min(100, value))
         self._save_settings()
 
     @property
