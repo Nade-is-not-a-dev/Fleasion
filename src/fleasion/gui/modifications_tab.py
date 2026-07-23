@@ -2081,6 +2081,46 @@ class CustomFFlagEditor(QWidget):
 
     _BOOLEAN_FLAG_PREFIXES = ('FFlag', 'DFFlag')
 
+    _TEMPLATES: dict[str, dict[str, str]] = {
+        'Ping Boost': {
+            'DFIntClientPacketMaxDelayMs': '1',
+            'DFIntNetworkStopProducingPacketsToProcessThresholdMs': '0',
+            'DFIntMaxWaitTimeBeforeForcePacketProcessMS': '0',
+            'DFIntBandwidthManagerApplicationDefaultBps': '796850000',
+            'DFIntBandwidthManagerDataSenderMaxWorkCatchupMs': '5',
+            'DFIntTaskSchedulerTargetFps': '9999',
+        },
+        'Max Performance': {
+            'DFIntClientPacketMaxDelayMs': '1',
+            'DFIntNetworkStopProducingPacketsToProcessThresholdMs': '0',
+            'DFIntMaxWaitTimeBeforeForcePacketProcessMS': '0',
+            'DFIntBandwidthManagerApplicationDefaultBps': '796850000',
+            'DFIntBandwidthManagerDataSenderMaxWorkCatchupMs': '5',
+            'DFIntTaskSchedulerTargetFps': '9999',
+            'DFIntDebugFRMQualityLevelOverride': '0',
+            'DFIntTextureQualityOverride': '0',
+            'DFFlagTextureQualityOverrideEnabled': 'True',
+            'DFIntCSGLevelOfDetailSwitchingDistance': '0',
+            'FIntDebugForceMSAASamples': '0',
+            'FFlagDebugGraphicsDisableDirect3D11': 'True',
+            'DFFlagDebugPauseVoxelizer': 'True',
+            'FFlagDebugSkyGray': 'True',
+            'DFFlagDisableDPIScale': 'True',
+            'DFIntFRMMaxGrassDistance': '0',
+            'DFIntFRMMinGrassDistance': '0',
+        },
+        'Max Quality': {
+            'FIntDebugForceMSAASamples': '4',
+            'FFlagDebugGraphicsPreferD3D11': 'True',
+            'DFIntTextureQualityOverride': '3',
+            'DFFlagTextureQualityOverrideEnabled': 'True',
+            'DFIntCSGLevelOfDetailSwitchingDistance': '99999',
+            'DFIntDebugFRMQualityLevelOverride': '21',
+            'DFIntFRMMaxGrassDistance': '300',
+            'DFIntFRMMinGrassDistance': '100',
+        },
+    }
+
     def __init__(self, config_manager=None, proxy_master=None, parent=None):
         super().__init__(parent)
         self._config = config_manager
@@ -2199,6 +2239,15 @@ class CustomFFlagEditor(QWidget):
         add_button = QPushButton('Add New…')
         add_button.clicked.connect(self._add_flag)
         buttons.addWidget(add_button)
+
+        templates_button = QPushButton('Templates…')
+        tmpl_menu = QMenu(templates_button)
+        for name in self._TEMPLATES:
+            action = tmpl_menu.addAction(name)
+            action.setData(name)
+        tmpl_menu.triggered.connect(self._apply_template)
+        templates_button.setMenu(tmpl_menu)
+        buttons.addWidget(templates_button)
 
         import_button = QPushButton('Import JSON…')
         import_menu = QMenu(import_button)
@@ -2526,6 +2575,26 @@ class CustomFFlagEditor(QWidget):
             return
         flags = self._flags_from_table()
         flags.update(dialog.selected_flags)
+        self._set_flags(flags)
+
+    def _apply_template(self, action: QAction):
+        name = action.data()
+        template = self._TEMPLATES.get(name)
+        if not template:
+            return
+        reply = QMessageBox.question(
+            self,
+            f'Apply Template: {name}',
+            f'This will add {len(template)} flags from the "{name}" template to your '
+            f'custom FastFlags.\n\nExisting flags with the same name will be overwritten.\n\n'
+            f'Do you want to continue?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        flags = self._flags_from_table()
+        flags.update(template)
         self._set_flags(flags)
 
     def _set_flags(self, flags: dict):

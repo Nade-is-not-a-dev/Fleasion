@@ -383,13 +383,22 @@ class SettingsTab(QWidget):
         self._texture_optimizer_chk.toggled.connect(self._on_texture_optimizer_toggled)
         section.add_widget(self._texture_optimizer_chk)
 
+        self._texture_optimizer_extreme_chk = QCheckBox('Extreme Mode (flat color)')
+        self._texture_optimizer_extreme_chk.setChecked(
+            self._config.texture_optimizer_extreme_mode
+        )
+        self._texture_optimizer_extreme_chk.toggled.connect(
+            self._on_texture_optimizer_extreme_toggled
+        )
+        section.add_widget(self._texture_optimizer_extreme_chk)
+
         row_opt = QHBoxLayout()
         row_opt.setContentsMargins(20, 0, 0, 0)
 
         row_opt.addWidget(QLabel('Max Size (px):'))
-        self._texture_optimizer_max_size_spin = QSpinBox()
-        self._texture_optimizer_max_size_spin.setRange(32, 4096)
-        self._texture_optimizer_max_size_spin.setSingleStep(32)
+        self._texture_optimizer_max_size_spin = NoWheelSpinBox()
+        self._texture_optimizer_max_size_spin.setRange(16, 4096)
+        self._texture_optimizer_max_size_spin.setSingleStep(16)
         self._texture_optimizer_max_size_spin.setValue(self._config.texture_optimizer_max_size)
         self._texture_optimizer_max_size_spin.valueChanged.connect(
             self._on_texture_optimizer_max_size_changed
@@ -506,6 +515,10 @@ class SettingsTab(QWidget):
             (self._show_creator_id_chk, self._config.show_creator_id),
             (self._show_asset_id_in_game_chk, self._config.show_asset_id_in_game),
             (self._texture_optimizer_chk, self._config.texture_optimizer_enabled),
+            (
+                self._texture_optimizer_extreme_chk,
+                self._config.texture_optimizer_extreme_mode,
+            ),
         ]:
             chk.blockSignals(True)
             chk.setChecked(value)
@@ -793,11 +806,17 @@ class SettingsTab(QWidget):
 
     def _sync_optimizer_ui(self):
         enabled = self._texture_optimizer_chk.isChecked()
-        self._texture_optimizer_max_size_spin.setEnabled(enabled)
-        self._texture_optimizer_jpeg_quality_spin.setEnabled(enabled)
+        extreme = self._texture_optimizer_extreme_chk.isChecked()
+        self._texture_optimizer_extreme_chk.setEnabled(enabled)
+        self._texture_optimizer_max_size_spin.setEnabled(enabled and not extreme)
+        self._texture_optimizer_jpeg_quality_spin.setEnabled(enabled and not extreme)
 
     def _on_texture_optimizer_toggled(self, checked: bool):
         self._config.texture_optimizer_enabled = checked
+        self._sync_optimizer_ui()
+
+    def _on_texture_optimizer_extreme_toggled(self, checked: bool):
+        self._config.texture_optimizer_extreme_mode = checked
         self._sync_optimizer_ui()
 
     def _on_texture_optimizer_max_size_changed(self, value: int):

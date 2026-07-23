@@ -177,6 +177,7 @@ DEFAULT_SETTINGS = {
     'texture_optimizer_enabled': False,
     'texture_optimizer_max_size': 512,
     'texture_optimizer_jpeg_quality': 50,
+    'texture_optimizer_extreme_mode': False,
 }
 
 
@@ -993,7 +994,7 @@ class ConfigManager:
 
     @texture_optimizer_max_size.setter
     def texture_optimizer_max_size(self, value: int):
-        self.settings['texture_optimizer_max_size'] = max(32, min(4096, value))
+        self.settings['texture_optimizer_max_size'] = max(16, min(4096, value))
         self._save_settings()
 
     @property
@@ -1003,6 +1004,15 @@ class ConfigManager:
     @texture_optimizer_jpeg_quality.setter
     def texture_optimizer_jpeg_quality(self, value: int):
         self.settings['texture_optimizer_jpeg_quality'] = max(1, min(100, value))
+        self._save_settings()
+
+    @property
+    def texture_optimizer_extreme_mode(self) -> bool:
+        return self.settings.get('texture_optimizer_extreme_mode', False)
+
+    @texture_optimizer_extreme_mode.setter
+    def texture_optimizer_extreme_mode(self, value: bool):
+        self.settings['texture_optimizer_extreme_mode'] = value
         self._save_settings()
 
     @property

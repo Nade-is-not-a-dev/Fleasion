@@ -260,12 +260,18 @@ def _watermark_cdn_response(body: bytes, asset_id: int, content_type: str) -> by
 
 
 def _optimize_cdn_response(
-    body: bytes, max_size: int, jpeg_quality: int, content_type: str
+    body: bytes, max_size: int, jpeg_quality: int, content_type: str, extreme: bool = False
 ) -> bytes | None:
     """Downscale/re-compress texture bytes.  Runs in thread executor."""
     from ..utils.image_watermarker import optimize_image
 
-    return optimize_image(body, max_size=max_size, jpeg_quality=jpeg_quality, content_type=content_type)
+    return optimize_image(
+        body,
+        max_size=max_size,
+        jpeg_quality=jpeg_quality,
+        content_type=content_type,
+        extreme=extreme,
+    )
 
 
 def _make_proxy_error_response(status_code: int, message: str) -> bytes:
@@ -1691,6 +1697,7 @@ class FleasionProxy:
                             _cfg.texture_optimizer_max_size,
                             _cfg.texture_optimizer_jpeg_quality,
                             ct,
+                            _cfg.texture_optimizer_extreme_mode,
                         )
                         if _optimized is not None:
                             resp_body_raw = _optimized

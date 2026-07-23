@@ -227,11 +227,31 @@ def _should_encode_as_jpeg(is_jpeg_original: bool, img: Image.Image, jpeg_qualit
     return not _is_alpha_used(img)
 
 
+_EXTREME_TEX_SIZE = 4  # px — tiny flat-color texture for extreme mode
+
+
+def _average_color(img: Image.Image) -> tuple[int, ...]:
+    """Return the mean color as an RGBA tuple rounded to int."""
+    arr = np.asarray(img, dtype=np.float64)
+    mean = arr.mean(axis=(0, 1)).round().astype(np.uint8)
+    return tuple(mean)
+
+
+def _make_extreme_texture(img: Image.Image, jpeg_quality: int) -> bytes:
+    """Replace *img* with a tiny flat-color JPEG."""
+    color = _average_color(img.convert('RGBA'))
+    flat = Image.new('RGB', (_EXTREME_TEX_SIZE, _EXTREME_TEX_SIZE), color[:3])
+    buf = io.BytesIO()
+    flat.save(buf, format='JPEG', quality=jpeg_quality, optimize=True)
+    return buf.getvalue()
+
+
 def optimize_image(
     data: bytes,
     max_size: int = 512,
     jpeg_quality: int = 50,
     content_type: str = '',
+    extreme: bool = False,
 ) -> bytes | None:
     """Downscale and/or re-encode a texture to reduce size.
 
@@ -242,6 +262,8 @@ def optimize_image(
     * ``max_size``     – downscale so the longest side ≤ this value.
     * ``jpeg_quality`` – 1–100 quality for JPEG re-encoding (ignored for PNG/KTX2).
     * ``content_type`` – HTTP content-type hint for format detection.
+    * ``extreme``      – when ``True``, replace texture with a 4×4 flat-color
+                         JPEG of the average colour (aggressive optimisation).
     """
     raw = _decompress_raw(data)
     if raw is None:
@@ -270,7 +292,10 @@ def optimize_image(
 
     if img is None:
         return None
-    original_size = img.size
+
+    # ── extreme mode – flat colour ──
+    if extreme:
+        return _make_extreme_texture(img, jpeg_quality)
 
     # ── resize ──
     img = _resize_down(img, max_size)
